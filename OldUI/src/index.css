@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Outfit', Inter, system-ui, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color-scheme: dark;
+
+  /* Default (Midnight) Variables */
+  --bg-color: #0f172a;
+  --text-color: rgba(255, 255, 255, 0.9);
+  --primary-gradient: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f43f5e 100%);
+  --glass-bg: rgba(30, 41, 59, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+  --card-radius: 24px;
+  --accent-glow: rgba(168, 85, 247, 0.15);
+  --accent-glow-secondary: rgba(236, 72, 153, 0.15);
+}
+
+[data-theme='sunset'] {
+  --bg-color: #2a1b1b;
+  --primary-gradient: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #db2777 100%);
+  --glass-bg: rgba(67, 20, 7, 0.6);
+  --glass-border: rgba(255, 200, 150, 0.1);
+  --accent-glow: rgba(245, 158, 11, 0.2);
+  --accent-glow-secondary: rgba(239, 68, 68, 0.2);
+}
+
+[data-theme='cyberpunk'] {
+  --bg-color: #050505;
+  --primary-gradient: linear-gradient(135deg, #00ff00 0%, #00ffff 100%);
+  --glass-bg: rgba(0, 20, 0, 0.8);
+  --glass-border: rgba(0, 255, 0, 0.3);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 255, 0, 0.15);
+  --card-radius: 4px;
+  /* Sharper corners for cyberpunk */
+  --accent-glow: rgba(0, 255, 0, 0.2);
+  --accent-glow-secondary: rgba(0, 255, 255, 0.2);
+  --text-color: #e0e0e0;
+}
+
+[data-theme='genie'] {
+  --bg-color: #f8fafc;
+  --text-color: #0f172a;
+  --primary-gradient: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px 0 rgba(96, 165, 250, 0.15);
+  --card-radius: 32px;
+  --accent-glow: rgba(96, 165, 250, 0.2);
+  --accent-glow-secondary: rgba(253, 186, 116, 0.2);
+}
+
+[data-theme='monster'] {
+  --bg-color: #e0f2fe;
+  /* Sky 100 */
+  --text-color: #0f172a;
+  /* Slate 900 */
+  --primary-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+  /* Sky to Indigo */
+  --glass-bg: rgba(255, 255, 255, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px 0 rgba(56, 189, 248, 0.15);
+  --card-radius: 32px;
+  --accent-glow: rgba(56, 189, 248, 0.2);
+  --accent-glow-secondary: rgba(129, 140, 248, 0.2);
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-color);
+  background-image:
+    radial-gradient(circle at 15% 50%, var(--accent-glow) 0%, transparent 25%),
+    radial-gradient(circle at 85% 30%, var(--accent-glow-secondary) 0%, transparent 25%);
+  color: var(--text-color);
+  overflow-x: hidden;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  width: 100%;
+}
+
+/* Utilities */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+  border-radius: 32px;
+  /* More rounded as per reference */
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.text-gradient {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+}
+
+.btn-primary {
+  background: var(--primary-gradient);
+  border: none;
+  border-radius: 12px;
+  padding: 1em 2em;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: white;
+  /* Keep white text for buttons usually */
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme='cyberpunk'] .btn-primary {
+  color: black;
+  /* Dark text on neon buttons for contrast */
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 10px 25px -5px var(--accent-glow);
+}
+
+.btn-primary:hover::before {
+  opacity: 1;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Force uploaded image preview to stay small */
+.preview-image {
+  max-height: 250px;   /* adjust size */
+  width: auto;
+  object-fit: contain;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
