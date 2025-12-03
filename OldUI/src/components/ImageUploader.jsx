@@ -1,140 +1,112 @@
-import React, { useState, useRef } from 'react';
-import { Upload, Image as ImageIcon, X } from 'lucide-react';
+import React, { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { Upload, X, Image as ImageIcon, Sparkles } from 'lucide-react';
 
 const ImageUploader = ({ onImageSelect, isAnalyzing }) => {
     const [preview, setPreview] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef(null);
 
-    const [error, setError] = useState(null);
-
-    const handleFile = (file) => {
-        setError(null);
+    const onDrop = useCallback((acceptedFiles) => {
+        const file = acceptedFiles[0];
         if (file) {
-            // Basic validation
-            if (!file.type.startsWith('image/')) {
-                setError('Please upload a valid image file (JPG, PNG, WebP).');
-                return;
-            }
-
-            // Size validation (e.g., 20MB limit)
-            if (file.size > 20 * 1024 * 1024) {
-                setError('Image is too large. Please choose an image under 20MB.');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onloadstart = () => {
-                // Optional: set loading state if needed
-            };
-            reader.onloadend = () => {
-                setPreview(reader.result);
-                onImageSelect(file, reader.result);
-            };
-            reader.onerror = () => {
-                setError('Failed to read file. Please try again.');
-            };
-            reader.readAsDataURL(file);
+            const objectUrl = URL.createObjectURL(file);
+            setPreview(objectUrl);
+            onImageSelect(file, objectUrl);
         }
-    };
+    }, [onImageSelect]);
 
-    const onDragOver = (e) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
-
-    const onDragLeave = (e) => {
-        e.preventDefault();
-        setIsDragging(false);
-    };
-
-    const onDrop = (e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFile(e.dataTransfer.files[0]);
-        }
-    };
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: {
+            'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+        },
+        maxFiles: 1,
+        disabled: isAnalyzing,
+        onDragEnter: () => setIsDragging(true),
+        onDragLeave: () => setIsDragging(false),
+        onDropAccepted: () => setIsDragging(false)
+    });
 
     const clearImage = (e) => {
         e.stopPropagation();
         setPreview(null);
-        setError(null);
         onImageSelect(null, null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     return (
-        <div
-            className={`glass-panel p-4 md:p-8 transition-all duration-300 border-2 border-dashed 
-        ${isDragging ? 'border-purple-500 bg-slate-800/50' : 'border-slate-600'}
-        ${preview ? 'border-solid border-transparent p-2 md:p-4' : ''}
-        cursor-pointer relative group`}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            onClick={() => {
-                if (!preview && fileInputRef.current) {
-                    fileInputRef.current.value = ''; // Reset input to allow re-selecting same file
-                    fileInputRef.current.click();
-                }
-            }}
-        >
-            <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={(e) => handleFile(e.target.files[0])}
-                disabled={isAnalyzing}
-            />
+        <div className="w-full animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            <div
+                {...getRootProps()}
+                className={`
+                    relative group cursor-pointer rounded-2xl transition-all duration-500 ease-out overflow-hidden
+                    ${preview ? 'h-[400px]' : 'h-64'}
+                    ${isDragActive || isDragging
+                        ? 'border-2 border-indigo-500 bg-indigo-500/10 scale-[1.02] shadow-2xl shadow-indigo-500/20'
+                        : 'border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                    }
+                `}
+            >
+                <input {...getInputProps()} />
 
-            {error && (
-                <div className="absolute top-4 left-4 right-4 bg-red-500/90 text-white px-4 py-2 rounded-lg text-sm font-medium animate-fade-in z-10 flex items-center justify-between">
-                    <span>{error}</span>
-                    <button onClick={(e) => { e.stopPropagation(); setError(null); }} className="ml-2 hover:bg-white/20 rounded-full p-1">
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
-
-            {preview ? (
-                    <div className="relative rounded-lg overflow-hidden animate-fade-in 
-                    h-[300px] w-full flex items-center justify-center bg-black/20 p-2">
-
-                    <img
-                    src={preview}
-                    alt="Preview"
-                    className="preview-image"
-                    />
-
-
-
-                    {!isAnalyzing && (
-                        <button
-                            onClick={clearImage}
-                            className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-red-500/80 rounded-full text-white transition-colors z-10"
-                        >
-                            <X size={20} />
-                        </button>
-                    )}
-
-                    {isAnalyzing && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-sm z-20">
-                            <div className="text-white font-semibold flex flex-col items-center gap-2">
-                                <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-                                Analyzing Vibe...
-                            </div>
+                {preview ? (
+                    <>
+                        {/* Cinematic Background Preview */}
+                        <div className="absolute inset-0 z-0">
+                            <img
+                                src={preview}
+                                alt="Upload preview"
+                                className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-500"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                         </div>
-                    )}
-                </div>
-            ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-400 group-hover:text-purple-400 transition-colors">
-                    <Upload size={48} className="mb-4" />
-                    <p className="text-lg font-medium">Drop your image here</p>
-                    <p className="text-sm opacity-70 mt-2">or click to browse</p>
-                </div>
-            )}
+
+                        {/* Overlay Actions */}
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
+                            <button
+                                onClick={clearImage}
+                                className="flex items-center gap-2 px-6 py-3 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 backdrop-blur-md transition-all hover:scale-105"
+                            >
+                                <X size={18} />
+                                <span className="font-medium">Remove Image</span>
+                            </button>
+                            <p className="mt-4 text-white/60 text-sm">Click or drop to replace</p>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="absolute top-4 left-4 z-10 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-xs font-medium text-white/80">Image Ready</span>
+                        </div>
+                    </>
+                ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                        {/* Icon Circle */}
+                        <div className={`
+                            w-16 h-16 mb-6 rounded-2xl flex items-center justify-center
+                            bg-gradient-to-br from-indigo-500/20 to-purple-500/20
+                            border border-white/10 backdrop-blur-sm
+                            transition-all duration-500 group-hover:scale-110 group-hover:rotate-3
+                            ${isDragActive ? 'animate-pulse' : ''}
+                        `}>
+                            {isDragActive ? (
+                                <Sparkles className="w-8 h-8 text-indigo-400 animate-spin-slow" />
+                            ) : (
+                                <Upload className="w-8 h-8 text-slate-400 group-hover:text-white transition-colors" />
+                            )}
+                        </div>
+
+                        <div className="space-y-2 max-w-xs mx-auto">
+                            <h3 className="text-xl font-medium text-white transition-all">
+                                {isDragActive ? "Drop it here!" : "Upload Image"}
+                            </h3>
+                            <p className="text-slate-500 text-sm leading-relaxed">
+                                Drag & drop or click to browse. <br />
+                                <span className="text-xs opacity-60">JPG, PNG, WEBP up to 10MB</span>
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

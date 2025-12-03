@@ -2,6 +2,7 @@ import React from 'react';
 import { Settings, Key, Hash, MessageCircle, CheckCircle, ChevronDown, Sliders } from 'lucide-react';
 
 const MOODS = [
+    { id: 'best', label: 'Best Match', icon: '✨' },
     { id: 'adventurous', label: 'Adventurous', icon: '🌍' },
     { id: 'angry', label: 'Angry', icon: '😠' },
     { id: 'casual', label: 'Casual', icon: '😊' },
@@ -41,7 +42,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
         <div className="space-y-6 animate-fade-in">
 
             {/* Header */}
-            <div className="flex items-center gap-2 text-white/80 pb-2 border-b border-white/5">
+            <div className="flex items-center gap-2 text-primary/80 pb-2 border-b border-white/5">
                 <Sliders size={18} />
                 <h3 className="font-medium tracking-wide">Configuration</h3>
             </div>
@@ -50,7 +51,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                 {/* API Key Section */}
                 {!isEnvKey && (
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <label className="text-xs font-bold text-secondary uppercase tracking-wider">
                             Groq API Key
                         </label>
                         <input
@@ -58,7 +59,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                             value={settings.apiKey}
                             onChange={(e) => handleChange('apiKey', e.target.value)}
                             placeholder="Enter your Groq API Key"
-                            className="w-full input-liquid px-4 py-3 placeholder-slate-600 focus:ring-1 focus:ring-indigo-500/50"
+                            className="w-full input-liquid px-4 py-3 placeholder-secondary focus:ring-1 focus:ring-indigo-500/50"
                         />
                     </div>
                 )}
@@ -66,7 +67,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                 {/* Model Selector */}
                 {!isEnvModel && (
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <label className="text-xs font-bold text-secondary uppercase tracking-wider">
                             AI Model
                         </label>
                         <input
@@ -74,7 +75,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                             value={settings.model}
                             onChange={(e) => handleChange('model', e.target.value)}
                             placeholder="e.g., llama-3.2-11b-vision-preview"
-                            className="w-full input-liquid px-4 py-3 placeholder-slate-600 focus:ring-1 focus:ring-indigo-500/50"
+                            className="w-full input-liquid px-4 py-3 placeholder-secondary focus:ring-1 focus:ring-indigo-500/50"
                         />
                     </div>
                 )}
@@ -82,7 +83,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                 <div className="grid grid-cols-2 gap-4">
                     {/* Platform Selector */}
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <label className="text-xs font-bold text-secondary uppercase tracking-wider">
                             Platform
                         </label>
                         <div className="relative">
@@ -96,7 +97,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                                 <option value="twitter">Twitter / X</option>
                                 <option value="tiktok">TikTok</option>
                             </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-secondary">
                                 <ChevronDown size={14} />
                             </div>
                         </div>
@@ -104,7 +105,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
 
                     {/* Length Selector */}
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <label className="text-xs font-bold text-secondary uppercase tracking-wider">
                             Length
                         </label>
                         <div className="relative">
@@ -135,7 +136,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                             onClick={() => setIsMoodOpen(!isMoodOpen)}
                             className={`w-full input-liquid px-4 py-3 flex items-center justify-between transition-all hover:bg-white/5 ${showMoodError ? 'bg-red-500/10' : ''}`}
                         >
-                            <span className={`flex items-center gap-3 ${!selectedMood ? 'text-slate-500' : 'text-white'}`}>
+                            <span className={`flex items-center gap-3 ${!selectedMood ? 'text-secondary' : 'text-primary'}`}>
                                 {selectedMood ? (
                                     <>
                                         <span className="text-lg">{selectedMood.icon}</span>
@@ -145,11 +146,11 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                                     "Select a vibe..."
                                 )}
                             </span>
-                            <ChevronDown size={16} className={`text-slate-500 transition-transform duration-300 ${isMoodOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={16} className={`text-secondary transition-transform duration-300 ${isMoodOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {isMoodOpen && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-[#121212] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-h-[300px] overflow-y-auto animate-fade-in custom-scrollbar">
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-h-[300px] overflow-y-auto animate-fade-in custom-scrollbar">
                                 <div className="p-1 grid grid-cols-2 gap-1">
                                     {MOODS.map((mood) => (
                                         <button
@@ -158,7 +159,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                                             className={`px-3 py-2 text-left rounded-lg flex items-center gap-2 transition-all
                                                 ${settings.mood === mood.id
                                                     ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
-                                                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                                    : 'text-secondary hover:bg-white/5 hover:text-primary'
                                                 }`}
                                         >
                                             <span className="text-base">{mood.icon}</span>

@@ -6,13 +6,6 @@ export default {
     ],
     theme: {
         extend: {
-            colors: {
-                primary: 'var(--text-primary)',
-                secondary: 'var(--text-secondary)',
-                tertiary: 'var(--text-tertiary)',
-                'bg-main': 'var(--bg-dark)',
-                'bg-card': 'var(--bg-card)',
-            },
             animation: {
                 'blob': 'blob 7s infinite',
                 'fade-in': 'fadeIn 0.5s ease-out forwards',

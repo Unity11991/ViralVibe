@@ -29,7 +29,10 @@ export const analyzeImage = async (file, settings) => {
         { "song": "Song Name", "artist": "Artist Name", "reason": "Brief reason why it fits" },
         { "song": "Song Name", "artist": "Artist Name", "reason": "Brief reason why it fits" },
         { "song": "Song Name", "artist": "Artist Name", "reason": "Brief reason why it fits" }
-      ]
+      ],
+      "roast": "A spicy, one-sentence roast of the image. Be funny but not mean.",
+      "scores": { "lighting": 8, "composition": 7, "creativity": 9 },
+      "improvements": ["Tip 1", "Tip 2", "Tip 3"]
     }
   `;
 

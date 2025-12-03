@@ -65,8 +65,8 @@ const PurchaseTab = ({ onWatchAd, onPurchase }) => (
                         <button
                             onClick={() => onPurchase(pkg.coins, pkg.price)}
                             className={`w-full py-3 rounded-xl font-bold transition-all ${pkg.popular
-                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/25'
-                                    : 'bg-slate-700 hover:bg-slate-600 text-white'
+                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-lg shadow-purple-500/25'
+                                : 'bg-slate-700 hover:bg-slate-600 text-white'
                                 }`}
                         >
                             Pay ₹{pkg.price}
@@ -389,7 +389,7 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
     ];
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white p-4 pt-24 animate-fade-in">
+        <div className="h-screen overflow-y-auto bg-slate-900 text-white p-4 pt-24 animate-fade-in custom-scrollbar">
             <div className="max-w-5xl mx-auto space-y-8">
 
                 {/* Header */}
@@ -442,8 +442,8 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`px-6 py-2 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === tab.id
-                                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
-                                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
+                                : 'text-slate-400 hover:text-white hover:bg-white/5'
                                 }`}
                         >
                             <tab.icon size={16} />

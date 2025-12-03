@@ -21,7 +21,7 @@ function App() {
   const [settings, setSettings] = useState({
     apiKey: import.meta.env.VITE_GROQ_API_KEY || '',
     platform: 'instagram',
-    mood: '',
+    mood: 'best',
     model: import.meta.env.VITE_AI_MODEL || 'llama-3.2-11b-vision-preview',
     length: 'Medium',
     customInstructions: ''
@@ -213,7 +213,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden font-sans text-slate-200 selection:bg-indigo-500/30">
+    <div className="min-h-screen relative overflow-hidden font-sans text-primary selection:bg-indigo-500/30">
       <SeoWrapper />
 
       {/* Liquid Background */}
@@ -253,7 +253,7 @@ function App() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Zap className="text-white" size={20} fill="currentColor" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">ViralVibe</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-primary">ViralVibe</h1>
           </div>
 
           <Navbar
@@ -280,10 +280,10 @@ function App() {
             {/* Left Column: Controls (Scrollable) */}
             <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-20 lg:pb-0">
               <div className="space-y-2">
-                <h2 className="text-4xl font-light tracking-tight text-white">
+                <h2 className="text-4xl font-light tracking-tight text-primary">
                   Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
                 </h2>
-                <p className="text-slate-400 text-lg">Upload, customize, and let AI handle the rest.</p>
+                <p className="text-secondary text-lg">Upload, customize, and let AI handle the rest.</p>
               </div>
 
               <div className="space-y-6">
@@ -339,11 +339,11 @@ function App() {
                   <ResultsSection results={results} />
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-500">
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-secondary">
                   <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
-                    <Sparkles size={40} className="text-white/20" />
+                    <Sparkles size={40} className="text-primary/20" />
                   </div>
-                  <h3 className="text-xl font-medium text-white mb-2">Ready to Create?</h3>
+                  <h3 className="text-xl font-medium text-primary mb-2">Ready to Create?</h3>
                   <p className="max-w-xs mx-auto">Upload an image and configure your settings to see AI-generated insights here.</p>
                 </div>
               )}

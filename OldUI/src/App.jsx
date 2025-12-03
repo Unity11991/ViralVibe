@@ -1,24 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, AlertCircle, History, Coins } from 'lucide-react';
+import { Sparkles, AlertCircle, Zap } from 'lucide-react';
 import ImageUploader from './components/ImageUploader';
 import { ResultsSection } from './components/ResultCard';
 import OptionsPanel from './components/OptionsPanel';
 import SeoWrapper from './components/SeoWrapper';
 import HistoryPanel from './components/HistoryPanel';
-import ProModal from './components/ProModal';
 import AdModal from './components/AdModal';
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
 import { analyzeImage } from './utils/aiService';
-
-const THEMES = [
-  { id: 'midnight', label: 'Midnight', primaryGradient: 'from-purple-400 to-blue-400' },
-  { id: 'sunset', label: 'Sunset', primaryGradient: 'from-orange-400 to-pink-500' },
-  { id: 'cyberpunk', label: 'Cyberpunk', primaryGradient: 'from-green-400 to-blue-500' },
-  { id: 'genie', label: 'Genie', primaryGradient: 'from-cyan-400 to-purple-400' },
-  { id: 'monster', label: 'Monster', primaryGradient: 'from-teal-400 to-lime-400' },
-];
 
 function App() {
   const [image, setImage] = useState(null);
@@ -42,10 +33,6 @@ function App() {
   const [currentStep, setCurrentStep] = useState('upload');
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // Theme State
-  const [theme, setTheme] = useState(() => localStorage.getItem('viralvibe-theme') || 'midnight');
-  const activeTheme = THEMES.find(t => t.id === theme) || THEMES[0];
-
   // History State
   const [history, setHistory] = useState(() => {
     const saved = localStorage.getItem('viralvibe-history');
@@ -63,10 +50,19 @@ function App() {
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
   const [showAdModal, setShowAdModal] = useState(false);
 
+  // Theme State
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('viralvibe-theme') || 'dark';
+  });
+
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('viralvibe-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   useEffect(() => {
     localStorage.setItem('viralvibe-history', JSON.stringify(history));
@@ -104,9 +100,6 @@ function App() {
     // Validate Mood
     if (!settings.mood) {
       setShowMoodError(true);
-      // Scroll to options panel
-      const optionsPanel = document.querySelector('.glass-panel');
-      if (optionsPanel) optionsPanel.scrollIntoView({ behavior: 'smooth' });
       return;
     }
     setShowMoodError(false);
@@ -168,7 +161,11 @@ function App() {
         bestTime: data.bestTime,
         viralPotential: data.viralPotential, // Save viral potential
         platform: settings.platform,
-        mood: settings.mood // Changed from 'tone' to 'mood'
+        mood: settings.mood, // Changed from 'tone' to 'mood'
+        musicRecommendations: data.musicRecommendations, // Save music recommendations
+        roast: data.roast,
+        scores: data.scores,
+        improvements: data.improvements
       };
       setHistory(prev => [newHistoryItem, ...prev]);
     } catch (err) {
@@ -184,7 +181,11 @@ function App() {
       captions: item.captions,
       hashtags: item.hashtags,
       bestTime: item.bestTime,
-      viralPotential: item.viralPotential
+      viralPotential: item.viralPotential,
+      musicRecommendations: item.musicRecommendations,
+      roast: item.roast,
+      scores: item.scores,
+      improvements: item.improvements
     });
     setSettings(prev => ({
       ...prev,
@@ -211,22 +212,18 @@ function App() {
     }
   };
 
-  if (currentView === 'dashboard') {
-    return (
-      <Dashboard
-        balance={coinBalance}
-        history={history}
-        totalCoinsSpent={totalCoinsSpent}
-        onBack={() => setCurrentView('home')}
-        onWatchAd={() => setShowAdModal(true)}
-        onPurchase={handlePurchase}
-      />
-    );
-  }
-
   return (
-    <div className="min-h-screen flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8 pt-32">
+    <div className="min-h-screen relative overflow-hidden font-sans text-slate-200 selection:bg-indigo-500/30">
       <SeoWrapper />
+
+      {/* Liquid Background */}
+      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[var(--blob-1)] opacity-20 blur-[100px] animate-blob"></div>
+        <div className="absolute top-[40%] right-[-10%] w-[500px] h-[500px] rounded-full bg-[var(--blob-2)] opacity-20 blur-[100px] animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-[-20%] left-[20%] w-[600px] h-[600px] rounded-full bg-[var(--blob-3)] opacity-20 blur-[100px] animate-blob animation-delay-4000"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
+      </div>
+
       <AdModal
         isOpen={showAdModal}
         onAdComplete={handleAdComplete}
@@ -239,14 +236,6 @@ function App() {
         elapsedTime={elapsedTime}
       />
 
-      <Navbar
-        currentTheme={theme}
-        onThemeChange={setTheme}
-        onHistoryClick={() => setIsHistoryOpen(true)}
-        coinBalance={coinBalance}
-        onCoinsClick={() => setCurrentView('dashboard')}
-      />
-
       <HistoryPanel
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
@@ -255,55 +244,114 @@ function App() {
         onDelete={deleteHistoryItem}
       />
 
-      <header className="mb-12 text-center space-y-4 animate-fade-in">
-        <h1 className="text-5xl font-bold tracking-tight text-white mb-2">
-          Viral<span className="text-gradient">Vibe</span>
-        </h1>
-        <p className="text-lg text-slate-400 max-w-lg mx-auto">
-          Upload your photo and let AI generate the perfect caption, viral hashtags, and posting schedule.
-        </p>
-      </header>
+      {/* Main Layout */}
+      <div className="max-w-[1600px] mx-auto p-4 lg:p-8 h-screen flex flex-col">
 
-      <main className="w-full max-w-2xl mx-auto space-y-8">
-        <OptionsPanel
-          settings={settings}
-          onSettingsChange={setSettings}
-          showMoodError={showMoodError}
-        />
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <Zap className="text-white" size={20} fill="currentColor" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">ViralVibe</h1>
+          </div>
 
-        <ImageUploader
-          onImageSelect={handleImageSelect}
-          isAnalyzing={isAnalyzing}
-        />
+          <Navbar
+            onHistoryClick={() => setIsHistoryOpen(true)}
+            coinBalance={coinBalance}
+            onCoinsClick={() => setCurrentView('dashboard')}
+            theme={theme}
+            toggleTheme={toggleTheme}
+          />
+        </header>
 
-        {error && (
-          <div className="glass-panel p-4 border-red-500/50 bg-red-500/10 flex items-center gap-3 text-red-200 animate-fade-in">
-            <AlertCircle className="text-red-500" />
-            {error}
+        {currentView === 'dashboard' ? (
+          <Dashboard
+            balance={coinBalance}
+            history={history}
+            totalCoinsSpent={totalCoinsSpent}
+            onBack={() => setCurrentView('home')}
+            onWatchAd={() => setShowAdModal(true)}
+            onPurchase={handlePurchase}
+          />
+        ) : (
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
+
+            {/* Left Column: Controls (Scrollable) */}
+            <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-20 lg:pb-0">
+              <div className="space-y-2">
+                <h2 className="text-4xl font-light tracking-tight text-white">
+                  Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
+                </h2>
+                <p className="text-slate-400 text-lg">Upload, customize, and let AI handle the rest.</p>
+              </div>
+
+              <div className="space-y-6">
+                <ImageUploader
+                  onImageSelect={handleImageSelect}
+                  isAnalyzing={isAnalyzing}
+                />
+
+                <OptionsPanel
+                  settings={settings}
+                  onSettingsChange={setSettings}
+                  showMoodError={showMoodError}
+                />
+
+                {error && (
+                  <div className="glass-panel p-4 border-red-500/30 bg-red-500/10 flex items-center gap-3 text-red-200 animate-slide-in">
+                    <AlertCircle className="text-red-500 shrink-0" size={20} />
+                    <p className="font-medium text-sm">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleAnalyze}
+                  disabled={!image || isAnalyzing}
+                  className={`
+                    w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300
+                    ${!image || isAnalyzing
+                      ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                      : 'bg-white text-black hover:scale-[1.02] shadow-xl shadow-white/10'
+                    }
+                  `}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={20} />
+                      <span>Generate Content</span>
+                      <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">-50</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Results (Scrollable) */}
+            <div className={`lg:col-span-7 h-full min-h-[500px] glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
+              {results ? (
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
+                  <ResultsSection results={results} />
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-500">
+                  <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
+                    <Sparkles size={40} className="text-white/20" />
+                  </div>
+                  <h3 className="text-xl font-medium text-white mb-2">Ready to Create?</h3>
+                  <p className="max-w-xs mx-auto">Upload an image and configure your settings to see AI-generated insights here.</p>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
-
-        {image && !results && !isAnalyzing && (
-          <div className="flex flex-col items-center animate-fade-in">
-            <button
-              onClick={handleAnalyze}
-              className="btn-primary flex items-center gap-2 text-lg px-8 py-4 shadow-lg shadow-purple-500/20"
-            >
-              <Sparkles size={20} />
-              Generate Magic <span className="text-sm opacity-80 bg-black/20 px-2 py-0.5 rounded-full ml-1">-50 🪙</span>
-            </button>
-            <p className="text-sm text-slate-400 mt-3 font-medium">
-              Balance: {coinBalance} coins
-            </p>
-          </div>
-        )}
-
-        <ResultsSection results={results} />
-      </main>
-
-      <footer className="mt-20 text-slate-500 text-sm">
-        <p>© 2025 ViralVibe AI. Crafted for creators.</p>
-      </footer>
+      </div>
     </div>
   );
 }

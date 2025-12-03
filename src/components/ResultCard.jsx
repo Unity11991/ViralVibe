@@ -16,7 +16,7 @@ const CopyButton = ({ text }) => {
             onClick={handleCopy}
             className={`
                 p-2 rounded-lg transition-all duration-300 relative overflow-hidden
-                ${copied ? 'bg-green-500/20 text-green-400' : 'hover:bg-white/10 text-slate-400 hover:text-white'}
+                ${copied ? 'bg-green-500/20 text-green-400' : 'hover:bg-white/10 text-secondary hover:text-primary'}
             `}
             title="Copy to clipboard"
         >
@@ -105,7 +105,7 @@ export const ResultsSection = ({ results }) => {
                         <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
                             <Flame size={20} fill="currentColor" />
                         </div>
-                        <h3 className="text-xl font-bold text-white">Viral Audit</h3>
+                        <h3 className="text-xl font-bold text-primary">Viral Audit</h3>
                     </div>
 
                     {/* The Roast */}
@@ -122,21 +122,21 @@ export const ResultsSection = ({ results }) => {
                                         <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-700" />
                                         <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-orange-500" strokeDasharray={175.93} strokeDashoffset={175.93 - (175.93 * score) / 10} strokeLinecap="round" />
                                     </svg>
-                                    <span className="absolute text-lg font-bold text-white">{score}</span>
+                                    <span className="absolute text-lg font-bold text-primary">{score}</span>
                                 </div>
-                                <span className="text-xs text-slate-400 uppercase font-bold">{key}</span>
+                                <span className="text-xs text-secondary uppercase font-bold">{key}</span>
                             </div>
                         ))}
                     </div>
 
                     {/* The Fix */}
                     <div>
-                        <h4 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-secondary mb-3 flex items-center gap-2">
                             <Wrench size={14} className="text-blue-400" /> The Fix
                         </h4>
                         <ul className="space-y-2">
                             {(results.improvements || []).map((tip, idx) => (
-                                <li key={idx} className="flex items-start gap-2 text-sm text-slate-300">
+                                <li key={idx} className="flex items-start gap-2 text-sm text-secondary">
                                     <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"></span>
                                     {tip}
                                 </li>
@@ -151,10 +151,10 @@ export const ResultsSection = ({ results }) => {
                 {/* Viral Potential Card */}
                 <div className="glass-panel p-5 flex flex-col justify-between relative overflow-hidden">
                     <div className="flex items-center justify-between mb-4 relative z-10">
-                        <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                        <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider">
                             <TrendingUp size={14} className="text-emerald-400" /> Viral Score
                         </div>
-                        <span className="text-2xl font-bold text-white">{viralPotential}%</span>
+                        <span className="text-2xl font-bold text-primary">{viralPotential}%</span>
                     </div>
 
                     <div className="relative h-2 bg-white/10 rounded-full overflow-hidden mb-2">
@@ -163,17 +163,17 @@ export const ResultsSection = ({ results }) => {
                             style={{ width: `${viralPotential}%` }}
                         />
                     </div>
-                    <p className="text-xs text-slate-500">High probability of engagement.</p>
+                    <p className="text-xs text-tertiary">High probability of engagement.</p>
                 </div>
 
                 {/* Best Time Card */}
                 <div className="glass-panel p-5 flex flex-col justify-between">
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                    <div className="flex items-center gap-2 text-secondary text-xs font-bold uppercase tracking-wider mb-2">
                         <Clock size={14} className="text-amber-400" /> Best Time
                     </div>
                     <div>
-                        <p className="text-xl font-bold text-white">{bestTime}</p>
-                        <p className="text-xs text-slate-500 mt-1">Optimized for your audience.</p>
+                        <p className="text-xl font-bold text-primary">{bestTime}</p>
+                        <p className="text-xs text-tertiary mt-1">Optimized for your audience.</p>
                     </div>
                 </div>
             </div>
@@ -181,7 +181,7 @@ export const ResultsSection = ({ results }) => {
             {/* Captions */}
             <div className="glass-panel p-6">
                 <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-                    <div className="flex items-center gap-2 text-slate-300 font-medium">
+                    <div className="flex items-center gap-2 text-secondary font-medium">
                         <MessageSquare size={16} className="text-indigo-400" />
                         <h3>Captions</h3>
                     </div>
@@ -189,7 +189,7 @@ export const ResultsSection = ({ results }) => {
                 <div className="space-y-3">
                     {captions.map((caption, idx) => (
                         <div key={idx} className="group p-4 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 transition-all flex justify-between gap-4">
-                            <p className="text-slate-300 text-sm leading-relaxed font-medium">{caption}</p>
+                            <p className="text-secondary text-sm leading-relaxed font-medium">{caption}</p>
                             <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <CopyButton text={caption} />
                             </div>
@@ -201,7 +201,7 @@ export const ResultsSection = ({ results }) => {
             {/* Hashtags */}
             <div className="glass-panel p-6">
                 <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-                    <div className="flex items-center gap-2 text-slate-300 font-medium">
+                    <div className="flex items-center gap-2 text-secondary font-medium">
                         <Hash size={16} className="text-blue-400" />
                         <h3>Hashtags</h3>
                     </div>
@@ -223,7 +223,7 @@ export const ResultsSection = ({ results }) => {
             {musicRecommendations.length > 0 && (
                 <div className="glass-panel p-6">
                     <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-                        <div className="flex items-center gap-2 text-slate-300 font-medium">
+                        <div className="flex items-center gap-2 text-secondary font-medium">
                             <Music size={16} className="text-rose-400" />
                             <h3>Audio</h3>
                         </div>
@@ -237,8 +237,8 @@ export const ResultsSection = ({ results }) => {
                                         <Music size={16} />
                                     </div>
                                     <div>
-                                        <p className="text-white text-sm font-bold">{track.song}</p>
-                                        <p className="text-slate-500 text-xs">{track.artist}</p>
+                                        <p className="text-primary text-sm font-bold">{track.song}</p>
+                                        <p className="text-tertiary text-xs">{track.artist}</p>
                                     </div>
                                 </div>
                                 <MusicPlayer song={track.song} artist={track.artist} />
