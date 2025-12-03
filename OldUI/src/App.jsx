@@ -11,6 +11,7 @@ import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
 import { analyzeImage } from './utils/aiService';
 import PremiumHub from './components/PremiumHub';
+import { initializePayment } from './utils/paymentService';
 
 function App() {
   const [image, setImage] = useState(null);
@@ -208,10 +209,17 @@ function App() {
   };
 
   const handlePurchase = (coins, price) => {
-    if (confirm(`Confirm purchase of ${coins} coins for ₹${price}?`)) {
-      setCoinBalance(prev => prev + coins);
-      alert("Purchase successful! Coins added.");
-    }
+    initializePayment(
+      price,
+      (response) => {
+        setCoinBalance(prev => prev + coins);
+        setTotalCoinsSpent(prev => prev + coins); // Optional: track purchased coins separately if needed, but for now just adding to balance
+        alert(`Payment Successful! ${coins} coins added to your wallet.`);
+      },
+      (error) => {
+        alert(`Payment Failed: ${error.description}`);
+      }
+    );
   };
 
   return (
@@ -236,6 +244,9 @@ function App() {
         onClose={() => setShowPremiumHub(false)}
         settings={settings}
         image={image}
+        coinBalance={coinBalance}
+        setCoinBalance={setCoinBalance}
+        onOpenAdModal={() => setShowAdModal(true)}
       />
 
       <ProgressPopup
