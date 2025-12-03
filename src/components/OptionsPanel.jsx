@@ -150,7 +150,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                         </button>
 
                         {isMoodOpen && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-h-[300px] overflow-y-auto animate-fade-in custom-scrollbar">
+                            <div className="absolute top-full left-0 right-0 mt-2 glass-panel rounded-xl overflow-hidden z-50 max-h-[300px] overflow-y-auto animate-fade-in custom-scrollbar">
                                 <div className="p-1 grid grid-cols-2 gap-1">
                                     {MOODS.map((mood) => (
                                         <button

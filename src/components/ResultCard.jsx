@@ -83,7 +83,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results }) => {
+export const ResultsSection = ({ results, onOpenPremium }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
@@ -247,6 +247,19 @@ export const ResultsSection = ({ results }) => {
                     </div>
                 </div>
             )}
+            {/* Premium Features Button */}
+            <div className="flex justify-center pt-6">
+                <button
+                    onClick={onOpenPremium}
+                    className="group relative px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl font-bold text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-[1.02] transition-all overflow-hidden"
+                >
+                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                    <div className="relative flex items-center gap-2">
+                        <Sparkles size={20} className="animate-pulse" />
+                        <span>Unlock Premium Magic</span>
+                    </div>
+                </button>
+            </div>
         </div>
     );
 };
