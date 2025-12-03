@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, MessageCircle, Layers, Eye, Split, Palette, ArrowRight, Check, Lock, Repeat, Hash, UserCircle } from 'lucide-react';
+import { X, Sparkles, MessageCircle, Layers, Eye, Split, Palette, ArrowRight, Check, Lock, Repeat, Hash, UserCircle, Anchor, Calendar, Mail, MessageSquare, Type } from 'lucide-react';
 import { generatePremiumContent } from '../utils/aiService';
 
 const FEATURES = [
@@ -11,6 +11,11 @@ const FEATURES = [
     { id: 'repurpose', label: 'Repurpose Pro', icon: Repeat, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
     { id: 'hashtag', label: 'Hashtag Helix', icon: Hash, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
     { id: 'bio', label: 'Bio Doctor', icon: UserCircle, color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/20' },
+    { id: 'hooks', label: 'Hook Master', icon: Anchor, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+    { id: 'calendar', label: 'Content Calendar', icon: Calendar, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' },
+    { id: 'email', label: 'Email Architect', icon: Mail, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+    { id: 'response', label: 'Response Bot', icon: MessageSquare, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
+    { id: 'thumbnail', label: 'Thumbnail Text', icon: Type, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/20' },
 ];
 
 const PremiumHub = ({ isOpen, onClose, settings, image }) => {
@@ -27,6 +32,11 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
         'repurpose': { input: '', result: null },
         'hashtag': { input: '', result: null },
         'bio': { input: '', result: null },
+        'hooks': { input: '', result: null },
+        'calendar': { input: '', result: null },
+        'email': { input: '', result: null },
+        'response': { input: '', result: null },
+        'thumbnail': { input: '', result: null },
     });
 
     if (!isOpen) return null;
@@ -209,6 +219,74 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Analyze Another</button>
                         </div>
                     );
+                case 'hooks':
+                    return (
+                        <div className="space-y-3 animate-fade-in">
+                            {currentData.result.hooks.map((hook, idx) => (
+                                <div key={idx} className="p-4 rounded-xl bg-white/5 border border-white/10 flex gap-3 items-start">
+                                    <span className="text-red-400 font-bold text-lg">#{idx + 1}</span>
+                                    <p className="text-white font-medium text-lg leading-snug">{hook}</p>
+                                </div>
+                            ))}
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Generate More Hooks</button>
+                        </div>
+                    );
+                case 'calendar':
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {currentData.result.plan.map((day, idx) => (
+                                    <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                        <div className="flex justify-between mb-1">
+                                            <span className="text-xs font-bold text-indigo-400 uppercase">Day {idx + 1}</span>
+                                            <span className="text-xs text-secondary">{day.type}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-200 font-medium">{day.idea}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Create New Plan</button>
+                        </div>
+                    );
+                case 'email':
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="p-5 rounded-xl bg-white/5 border border-white/10">
+                                <h4 className="text-lg font-bold text-emerald-400 mb-2">{currentData.result.subject}</h4>
+                                <div className="w-full h-px bg-white/10 my-3" />
+                                <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{currentData.result.body}</p>
+                            </div>
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Draft Another</button>
+                        </div>
+                    );
+                case 'response':
+                    return (
+                        <div className="space-y-3 animate-fade-in">
+                            {currentData.result.replies.map((reply, idx) => (
+                                <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-xs font-bold text-sky-400 uppercase">{reply.tone}</span>
+                                    </div>
+                                    <p className="text-slate-200">{reply.text}</p>
+                                </div>
+                            ))}
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Generate More</button>
+                        </div>
+                    );
+                case 'thumbnail':
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="grid grid-cols-2 gap-3">
+                                {currentData.result.overlays.map((text, idx) => (
+                                    <div key={idx} className="aspect-video bg-gradient-to-br from-gray-800 to-black rounded-lg flex items-center justify-center p-4 border border-white/10 relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-fuchsia-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <h3 className="text-white font-black text-center text-xl uppercase leading-none drop-shadow-lg relative z-10">{text}</h3>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Generate More Ideas</button>
+                        </div>
+                    );
                 default:
                     return <pre className="text-xs text-secondary overflow-auto">{JSON.stringify(currentData.result, null, 2)}</pre>;
             }
@@ -298,6 +376,83 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
                             <UserCircle size={18} /> Optimize Bio
+                        </button>
+                    </div>
+                );
+            case 'hooks':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">What is your video about? We'll generate scroll-stopping hooks.</p>
+                        <input
+                            type="text"
+                            className="w-full input-liquid p-4"
+                            placeholder="E.g., How to save money on groceries..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Anchor size={18} /> Generate Hooks
+                        </button>
+                    </div>
+                );
+            case 'calendar':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Describe your niche and target audience for a 7-day content plan.</p>
+                        <textarea
+                            className="w-full h-32 input-liquid p-4 resize-none"
+                            placeholder="E.g., Fitness coach for busy moms..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Calendar size={18} /> Create Plan
+                        </button>
+                    </div>
+                );
+            case 'email':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Paste a social post to convert it into an engaging newsletter.</p>
+                        <textarea
+                            className="w-full h-32 input-liquid p-4 resize-none"
+                            placeholder="Paste your post content here..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Mail size={18} /> Draft Email
+                        </button>
+                    </div>
+                );
+            case 'response':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Paste a comment you received to generate professional or witty replies.</p>
+                        <textarea
+                            className="w-full h-32 input-liquid p-4 resize-none"
+                            placeholder="Paste the comment here..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <MessageSquare size={18} /> Generate Replies
+                        </button>
+                    </div>
+                );
+            case 'thumbnail':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Describe your video topic to get click-worthy thumbnail text overlays.</p>
+                        <input
+                            type="text"
+                            className="w-full input-liquid p-4"
+                            placeholder="E.g., Day in the life of a software engineer..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Type size={18} /> Generate Text
                         </button>
                     </div>
                 );

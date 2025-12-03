@@ -209,6 +209,88 @@ export const generatePremiumContent = async (type, data, settings) => {
             `;
             break;
 
+        case 'hooks':
+            systemRole = "You are a viral scriptwriter.";
+            prompt = `
+                Generate 5 scroll-stopping hooks for a short-form video about: "${input}".
+                The hooks should be catchy, controversial, or curiosity-inducing.
+            `;
+            jsonStructure = `
+                {
+                    "hooks": ["Hook 1", "Hook 2", "Hook 3", "Hook 4", "Hook 5"]
+                }
+            `;
+            break;
+
+        case 'calendar':
+            systemRole = "You are a social media manager.";
+            prompt = `
+                Create a 7-day content plan for this niche/audience: "${input}".
+                Include a mix of educational, entertaining, and promotional content.
+            `;
+            jsonStructure = `
+                {
+                    "plan": [
+                        { "day": 1, "type": "Educational", "idea": "Brief content idea" },
+                        { "day": 2, "type": "Entertainment", "idea": "Brief content idea" },
+                        { "day": 3, "type": "Promotion", "idea": "Brief content idea" },
+                        { "day": 4, "type": "Engagement", "idea": "Brief content idea" },
+                        { "day": 5, "type": "Educational", "idea": "Brief content idea" },
+                        { "day": 6, "type": "Personal", "idea": "Brief content idea" },
+                        { "day": 7, "type": "Trend", "idea": "Brief content idea" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'email':
+            systemRole = "You are an email marketing specialist.";
+            prompt = `
+                Turn this social media post into an engaging email newsletter.
+                Post Content: "${input}"
+                Subject line should be high-open rate. Body should be conversational.
+            `;
+            jsonStructure = `
+                {
+                    "subject": "Email Subject Line",
+                    "body": "Full email body text..."
+                }
+            `;
+            break;
+
+        case 'response':
+            systemRole = "You are a community manager.";
+            prompt = `
+                Generate 3 replies to this comment.
+                1. Professional & Grateful
+                2. Witty & Fun
+                3. Question to drive engagement
+                Comment: "${input}"
+            `;
+            jsonStructure = `
+                {
+                    "replies": [
+                        { "tone": "Professional", "text": "Reply text..." },
+                        { "tone": "Witty", "text": "Reply text..." },
+                        { "tone": "Engaging", "text": "Reply text..." }
+                    ]
+                }
+            `;
+            break;
+
+        case 'thumbnail':
+            systemRole = "You are a YouTube growth expert.";
+            prompt = `
+                Generate 4 punchy, high-CTR text overlays (3-5 words max) for a thumbnail about: "${input}".
+                They should be short, bold, and intriguing.
+            `;
+            jsonStructure = `
+                {
+                    "overlays": ["Text 1", "Text 2", "Text 3", "Text 4"]
+                }
+            `;
+            break;
+
         default:
             throw new Error("Unknown feature type");
     }

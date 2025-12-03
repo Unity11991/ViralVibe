@@ -18,7 +18,9 @@ const FEATURES = [
     { id: 'thumbnail', label: 'Thumbnail Text', icon: Type, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/20' },
 ];
 
-const PremiumHub = ({ isOpen, onClose, settings, image }) => {
+const COST_PER_USE = 50;
+
+const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, setCoinBalance, onOpenAdModal }) => {
     const [activeTab, setActiveTab] = useState('brand-voice');
     const [loading, setLoading] = useState(false);
 
@@ -42,6 +44,11 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
     if (!isOpen) return null;
 
     const handleGenerate = async () => {
+        if (coinBalance < COST_PER_USE) {
+            onOpenAdModal();
+            return;
+        }
+
         setLoading(true);
         try {
             const currentInput = featureData[activeTab].input;
@@ -51,6 +58,8 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                 ...prev,
                 [activeTab]: { ...prev[activeTab], result: data }
             }));
+
+            setCoinBalance(prev => prev - COST_PER_USE);
         } catch (error) {
             console.error(error);
         } finally {
@@ -305,7 +314,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Sparkles size={18} /> Analyze & Generate
+                            <Sparkles size={18} /> Analyze & Generate <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -314,7 +323,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                     <div className="space-y-4">
                         <p className="text-secondary">Generate a 5-slide carousel strategy based on your image.</p>
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Layers size={18} /> Create Carousel Plan
+                            <Layers size={18} /> Create Carousel Plan <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -329,7 +338,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Eye size={18} /> Spy on Competitor
+                            <Eye size={18} /> Spy on Competitor <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -344,7 +353,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Repeat size={18} /> Repurpose Content
+                            <Repeat size={18} /> Repurpose Content <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -360,7 +369,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Hash size={18} /> Generate Clusters
+                            <Hash size={18} /> Generate Clusters <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -375,7 +384,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <UserCircle size={18} /> Optimize Bio
+                            <UserCircle size={18} /> Optimize Bio <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -391,7 +400,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Anchor size={18} /> Generate Hooks
+                            <Anchor size={18} /> Generate Hooks <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -406,7 +415,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Calendar size={18} /> Create Plan
+                            <Calendar size={18} /> Create Plan <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -421,7 +430,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Mail size={18} /> Draft Email
+                            <Mail size={18} /> Draft Email <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -436,7 +445,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <MessageSquare size={18} /> Generate Replies
+                            <MessageSquare size={18} /> Generate Replies <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -452,7 +461,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                             onChange={(e) => updateInput(e.target.value)}
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Type size={18} /> Generate Text
+                            <Type size={18} /> Generate Text <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
@@ -461,7 +470,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image }) => {
                     <div className="space-y-4">
                         <p className="text-secondary">Unlock this premium feature to take your content to the next level.</p>
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <Sparkles size={18} /> Generate Insights
+                            <Sparkles size={18} /> Generate Insights <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
