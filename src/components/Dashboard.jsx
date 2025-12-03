@@ -393,10 +393,10 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
             <div className="max-w-5xl mx-auto space-y-8">
 
                 {/* Header */}
-                <div>
+                {/* <div>
                     <h3 className="text-lg font-bold text-emerald-300">The project is currently in the development phase, and all functionalities are placeholders/dummy implementations at this stage.</h3>
                     <p className="text-emerald-200/60">Watch a short ad to earn <span className="text-emerald-400 font-bold">+35 coins</span></p>
-                </div>
+                </div> */}
                 <div className="flex items-center justify-between">
                     <button
                         onClick={onBack}
