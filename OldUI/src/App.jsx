@@ -10,12 +10,14 @@ import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
 import { analyzeImage } from './utils/aiService';
+import PremiumHub from './components/PremiumHub';
 
 function App() {
   const [image, setImage] = useState(null);
   const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
+  const [showPremiumHub, setShowPremiumHub] = useState(false);
 
   // Settings State
   const [settings, setSettings] = useState({
@@ -229,6 +231,13 @@ function App() {
         onAdComplete={handleAdComplete}
       />
 
+      <PremiumHub
+        isOpen={showPremiumHub}
+        onClose={() => setShowPremiumHub(false)}
+        settings={settings}
+        image={image}
+      />
+
       <ProgressPopup
         isVisible={isAnalyzing}
         progress={progress}
@@ -336,7 +345,10 @@ function App() {
             <div className={`lg:col-span-7 h-full min-h-[500px] glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
               {results ? (
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
-                  <ResultsSection results={results} />
+                  <ResultsSection
+                    results={results}
+                    onOpenPremium={() => setShowPremiumHub(true)}
+                  />
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-secondary">
