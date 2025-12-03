@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket } from 'lucide-react';
 
 const PACKAGES = [
-    { id: 1, price: 49, coins: 2400, label: 'Starter' },
-    { id: 2, price: 99, coins: 6000, label: 'Best Value', popular: true },
-    { id: 3, price: 199, coins: 10000, label: 'Pro' },
-    { id: 4, price: 449, coins: 25000, label: 'Agency' },
-    { id: 5, price: 949, coins: 55000, label: 'Enterprise' },
+    { id: 1, price: 49, coins: 5000, label: 'Starter' },
+    { id: 2, price: 99, coins: 12000, label: 'Best Value', popular: true },
+    { id: 3, price: 199, coins: 25000, label: 'Pro' },
+    { id: 4, price: 449, coins: 60000, label: 'Agency' },
+    { id: 5, price: 949, coins: 150000, label: 'Enterprise' },
 ];
 
 const PurchaseTab = ({ onWatchAd, onPurchase }) => (
