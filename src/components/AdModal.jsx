@@ -6,16 +6,6 @@ const AdModal = ({ isOpen, onAdComplete }) => {
     const [isCompleted, setIsCompleted] = useState(false);
 
     useEffect(() => {
-        if (isOpen && !isCompleted) {
-            try {
-                (window.adsbygoogle = window.adsbygoogle || []).push({});
-            } catch (e) {
-                console.error("AdSense error", e);
-            }
-        }
-    }, [isOpen, isCompleted]);
-
-    useEffect(() => {
         if (isOpen) {
             setTimeLeft(5);
             setIsCompleted(false);
@@ -51,25 +41,6 @@ const AdModal = ({ isOpen, onAdComplete }) => {
                     <h2 className="text-2xl font-bold text-white mb-2">
                         {isCompleted ? "Reward Granted!" : "Watch Ad for +35 Coins"}
                     </h2>
-
-                    {/* AdSense Unit */}
-                    <div className="my-6 min-h-[250px] bg-white/5 rounded-lg overflow-hidden flex items-center justify-center">
-                        {!isCompleted ? (
-                            <div className="w-full h-full">
-                                {/* Replace data-ad-slot with your actual Ad Unit ID from AdSense dashboard */}
-                                <ins className="adsbygoogle"
-                                    style={{ display: 'block' }}
-                                    data-ad-client="ca-pub-9178133918559920"
-                                    data-ad-slot="1146521123" // REPLACE THIS WITH YOUR ACTUAL AD SLOT ID
-                                    data-ad-format="auto"
-                                    data-full-width-responsive="true"></ins>
-                            </div>
-                        ) : (
-                            <div className="text-green-400 font-bold">
-                                Ad Watched Successfully!
-                            </div>
-                        )}
-                    </div>
 
                     <p className="text-slate-300 mb-8">
                         {isCompleted
