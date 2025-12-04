@@ -30,7 +30,12 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const value = {
-        signUp: (data) => supabase.auth.signUp(data),
+        signUp: (data) => supabase.auth.signUp({
+            ...data,
+            options: {
+                emailRedirectTo: 'https://govyral.online/'
+            }
+        }),
         signIn: (data) => supabase.auth.signInWithPassword(data),
         signOut: () => supabase.auth.signOut(),
         user,
