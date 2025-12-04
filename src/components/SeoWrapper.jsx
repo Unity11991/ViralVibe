@@ -2,12 +2,12 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const SeoWrapper = ({ title, description, image, url }) => {
-    const siteTitle = 'ViralVibe - AI Social Media Caption Generator';
+    const siteTitle = 'GoVyral - AI Social Media Caption Generator';
     const defaultDescription = 'Generate viral captions, hashtags, and posting times for Instagram, LinkedIn, Twitter, and TikTok using AI.';
-    const defaultImage = 'https://viral-vibe.vercel.app/og-image.png'; // Placeholder, ideally replace with real URL
-    const siteUrl = 'https://viral-vibe.vercel.app';
+    const defaultImage = 'https://govyral.ai/og-image.png'; // Placeholder, ideally replace with real URL
+    const siteUrl = 'https://govyral.ai';
 
-    const finalTitle = title ? `${title} | ViralVibe` : siteTitle;
+    const finalTitle = title ? `${title} | GoVyral` : siteTitle;
     const finalDescription = description || defaultDescription;
     const finalImage = image || defaultImage;
     const finalUrl = url ? `${siteUrl}${url}` : siteUrl;

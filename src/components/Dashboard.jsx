@@ -81,7 +81,7 @@ const PurchaseTab = ({ onWatchAd, onPurchase }) => (
 const ReferralTab = () => {
     const [copied, setCopied] = useState(false);
     const referralCode = "REF487873";
-    const referralLink = `https://viralvibe.ai/referral/${referralCode}`;
+    const referralLink = `https://govyral.ai/referral/${referralCode}`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(referralLink);
@@ -172,15 +172,22 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     // Weekly Activity Logic
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const weeklyData = new Array(7).fill(0);
+    // Normalize today to midnight for accurate day comparison
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     history.forEach(item => {
-        const date = new Date(item.timestamp);
-        // Check if item is within the last 7 days
-        const diffTime = Math.abs(today - date);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const ts = item.timestamp || item.id; // Fallback to ID if timestamp is missing
+        if (!ts) return;
 
-        if (diffDays <= 7) {
+        const date = new Date(ts);
+        const itemDate = new Date(date);
+        itemDate.setHours(0, 0, 0, 0); // Normalize item date to midnight
+
+        const diffTime = today - itemDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays >= 0 && diffDays <= 6) {
             weeklyData[date.getDay()]++;
         }
     });
@@ -234,7 +241,7 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
                             const count = weeklyData[idx];
                             const heightPercentage = (count / maxActivity) * 100;
                             return (
-                                <div key={day} className="flex flex-col items-center gap-2 w-full group relative">
+                                <div key={day} className="flex flex-col items-center justify-end gap-2 w-full h-full group relative">
                                     <div
                                         className={`w-full rounded-t-lg transition-all duration-500 ${count > 0 ? 'bg-blue-500 group-hover:bg-blue-400' : 'bg-slate-700/30'}`}
                                         style={{ height: `${Math.max(heightPercentage, 5)}%` }}
@@ -320,7 +327,7 @@ const SupportTab = () => {
                 </div>
                 <h2 className="text-3xl font-bold text-white mb-4">Help us build the future</h2>
                 <p className="text-slate-400">
-                    ViralVibe is built by a passionate team of developers who believe in democratizing AI-powered content creation. Your support helps us keep innovating and improving the platform.
+                    GoVyral is built by a passionate team of developers who believe in democratizing AI-powered content creation. Your support helps us keep innovating and improving the platform.
                 </p>
             </div>
 
