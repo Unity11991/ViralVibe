@@ -13,7 +13,7 @@ const HistoryPanel = ({ history, onSelect, onDelete, isOpen, onClose }) => {
             />
 
             {/* Sidebar Drawer */}
-            <div className="fixed inset-y-0 right-0 w-80 glass-panel border-l border-white/10 z-50 transform transition-transform animate-drawer-slide flex flex-col shadow-2xl shadow-black/50">
+            <div className="!fixed inset-y-0 right-0 w-80 glass-panel border-l border-white/10 z-50 transform transition-transform animate-drawer-slide flex flex-col shadow-2xl shadow-black/50">
                 <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
                     <div className="flex items-center gap-2 text-purple-300">
                         <History size={20} />
@@ -24,7 +24,7 @@ const HistoryPanel = ({ history, onSelect, onDelete, isOpen, onClose }) => {
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0">
                     {history.length === 0 ? (
                         <div className="text-center text-slate-500 py-10">
                             <Clock size={32} className="mx-auto mb-3 opacity-50" />

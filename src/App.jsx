@@ -12,6 +12,10 @@ import ProgressPopup from './components/ProgressPopup';
 import { analyzeImage } from './utils/aiService';
 import PremiumHub from './components/PremiumHub';
 import { initializePayment } from './utils/paymentService';
+import { useAuth } from './context/AuthContext';
+import AuthModal from './components/AuthModal';
+import ProfileModal from './components/ProfileModal';
+import { supabase } from './lib/supabase';
 
 function App() {
   const [image, setImage] = useState(null);
@@ -19,6 +23,10 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const { user } = useAuth();
 
   // Settings State
   const [settings, setSettings] = useState({
@@ -37,19 +45,12 @@ function App() {
   const [elapsedTime, setElapsedTime] = useState(0);
 
   // History State
-  const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem('viralvibe-history');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [history, setHistory] = useState([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // Coin System State
-  const [coinBalance, setCoinBalance] = useState(() => {
-    return parseInt(localStorage.getItem('viralvibe-coins') || '100');
-  });
-  const [totalCoinsSpent, setTotalCoinsSpent] = useState(() => {
-    return parseInt(localStorage.getItem('viralvibe-coins-spent') || '0');
-  });
+  const [coinBalance, setCoinBalance] = useState(100);
+  const [totalCoinsSpent, setTotalCoinsSpent] = useState(0);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
   const [showAdModal, setShowAdModal] = useState(false);
 
@@ -67,17 +68,42 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
+  // Fetch Data from Supabase
   useEffect(() => {
-    localStorage.setItem('viralvibe-history', JSON.stringify(history));
-  }, [history]);
+    if (!user) {
+      // Fallback to localStorage for guest (optional, or just reset)
+      // For now, let's just reset or keep defaults to encourage login
+      setCoinBalance(100);
+      setHistory([]);
+      return;
+    }
 
-  useEffect(() => {
-    localStorage.setItem('viralvibe-coins', coinBalance.toString());
-  }, [coinBalance]);
+    const fetchData = async () => {
+      // Fetch Profile (Coins)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('coin_balance')
+        .eq('id', user.id)
+        .single();
 
-  useEffect(() => {
-    localStorage.setItem('viralvibe-coins-spent', totalCoinsSpent.toString());
-  }, [totalCoinsSpent]);
+      if (profile) {
+        setCoinBalance(profile.coin_balance);
+      }
+
+      // Fetch History
+      const { data: historyData } = await supabase
+        .from('history')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (historyData) {
+        setHistory(historyData);
+      }
+    };
+
+    fetchData();
+  }, [user]);
 
   useEffect(() => {
     let interval;
@@ -98,6 +124,11 @@ function App() {
   };
 
   const handleAnalyze = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!image) return;
 
     // Validate Mood
@@ -152,25 +183,42 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 400));
 
       setResults(data);
-      setCoinBalance(prev => prev - 50); // Deduct cost
-      setTotalCoinsSpent(prev => prev + 50); // Track total spent
 
-      // Add to history
+      // Update Coins in DB
+      const newBalance = coinBalance - 50;
+      setCoinBalance(newBalance);
+      setTotalCoinsSpent(prev => prev + 50);
+
+      await supabase
+        .from('profiles')
+        .update({ coin_balance: newBalance })
+        .eq('id', user.id);
+
+      // Add to history in DB
       const newHistoryItem = {
-        id: Date.now(),
-        timestamp: Date.now(),
+        user_id: user.id,
         captions: data.captions,
         hashtags: data.hashtags,
-        bestTime: data.bestTime,
-        viralPotential: data.viralPotential, // Save viral potential
+        best_time: data.bestTime,
+        viral_potential: data.viralPotential,
         platform: settings.platform,
-        mood: settings.mood, // Changed from 'tone' to 'mood'
-        musicRecommendations: data.musicRecommendations, // Save music recommendations
+        mood: settings.mood,
+        music_recommendations: data.musicRecommendations,
         roast: data.roast,
         scores: data.scores,
         improvements: data.improvements
       };
-      setHistory(prev => [newHistoryItem, ...prev]);
+
+      const { data: savedItem, error: historyError } = await supabase
+        .from('history')
+        .insert([newHistoryItem])
+        .select()
+        .single();
+
+      if (!historyError && savedItem) {
+        setHistory(prev => [savedItem, ...prev]);
+      }
+
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
@@ -183,9 +231,9 @@ function App() {
     setResults({
       captions: item.captions,
       hashtags: item.hashtags,
-      bestTime: item.bestTime,
-      viralPotential: item.viralPotential,
-      musicRecommendations: item.musicRecommendations,
+      bestTime: item.best_time,
+      viralPotential: item.viral_potential,
+      musicRecommendations: item.music_recommendations,
       roast: item.roast,
       scores: item.scores,
       improvements: item.improvements
@@ -198,23 +246,68 @@ function App() {
     setIsHistoryOpen(false);
   };
 
-  const deleteHistoryItem = (id) => {
+  const deleteHistoryItem = async (id) => {
     setHistory(prev => prev.filter(item => item.id !== id));
+    await supabase.from('history').delete().eq('id', id);
   };
 
-  const handleAdComplete = () => {
-    setCoinBalance(prev => prev + 35); // Reward
+  const handleAdComplete = async () => {
+    const reward = 35;
+    const newBalance = coinBalance + reward;
+    setCoinBalance(newBalance);
     setShowAdModal(false);
-    alert("You earned 35 coins!");
+    alert(`You earned ${reward} coins!`);
+
+    if (user) {
+      await supabase
+        .from('profiles')
+        .update({ coin_balance: newBalance })
+        .eq('id', user.id);
+    }
+  };
+
+  const handleSpendCoins = async (amount) => {
+    if (coinBalance < amount) {
+      setShowAdModal(true);
+      return false;
+    }
+
+    const newBalance = coinBalance - amount;
+    setCoinBalance(newBalance);
+    setTotalCoinsSpent(prev => prev + amount);
+
+    if (user) {
+      await supabase
+        .from('profiles')
+        .update({ coin_balance: newBalance })
+        .eq('id', user.id);
+    }
+    return true;
   };
 
   const handlePurchase = (coins, price) => {
     initializePayment(
       price,
-      (response) => {
-        setCoinBalance(prev => prev + coins);
-        setTotalCoinsSpent(prev => prev + coins); // Optional: track purchased coins separately if needed, but for now just adding to balance
+      async (response) => {
+        const newBalance = coinBalance + coins;
+        setCoinBalance(newBalance);
+        setTotalCoinsSpent(prev => prev + coins);
         alert(`Payment Successful! ${coins} coins added to your wallet.`);
+
+        if (user) {
+          await supabase
+            .from('profiles')
+            .update({ coin_balance: newBalance })
+            .eq('id', user.id);
+
+          // Optional: Record transaction
+          await supabase.from('transactions').insert([{
+            user_id: user.id,
+            amount: coins,
+            description: `Purchased ${coins} coins`,
+            payment_id: response.razorpay_payment_id
+          }]);
+        }
       },
       (error) => {
         alert(`Payment Failed: ${error.description}`);
@@ -239,13 +332,23 @@ function App() {
         onAdComplete={handleAdComplete}
       />
 
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
+
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
         settings={settings}
         image={image}
         coinBalance={coinBalance}
-        setCoinBalance={setCoinBalance}
+        onSpendCoins={handleSpendCoins}
         onOpenAdModal={() => setShowAdModal(true)}
       />
 
@@ -282,6 +385,8 @@ function App() {
             onCoinsClick={() => setCurrentView('dashboard')}
             theme={theme}
             toggleTheme={toggleTheme}
+            onLoginClick={() => setShowAuthModal(true)}
+            onProfileClick={() => setShowProfileModal(true)}
           />
         </header>
 
