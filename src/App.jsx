@@ -286,6 +286,10 @@ function App() {
   };
 
   const handlePurchase = (coins, price) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
     initializePayment(
       price,
       async (response) => {
@@ -376,13 +380,19 @@ function App() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Zap className="text-white" size={20} fill="currentColor" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-primary">GoVyral</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-primary hidden md:block">GoVyral</h1>
           </div>
 
           <Navbar
             onHistoryClick={() => setIsHistoryOpen(true)}
             coinBalance={coinBalance}
-            onCoinsClick={() => setCurrentView('dashboard')}
+            onCoinsClick={() => {
+              if (!user) {
+                setShowAuthModal(true);
+              } else {
+                setCurrentView('dashboard');
+              }
+            }}
             theme={theme}
             toggleTheme={toggleTheme}
             onLoginClick={() => setShowAuthModal(true)}

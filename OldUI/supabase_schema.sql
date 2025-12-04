@@ -74,10 +74,6 @@ create policy "Users can view their own transactions."
   on transactions for select
   using ( auth.uid() = user_id );
 
-create policy "Users can insert their own transactions."
-  on transactions for insert
-  with check ( auth.uid() = user_id );
-
 -- Function to handle new user signup
 create or replace function public.handle_new_user()
 returns trigger as $$

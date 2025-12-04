@@ -20,7 +20,7 @@ const FEATURES = [
 
 const COST_PER_USE = 50;
 
-const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, setCoinBalance, onOpenAdModal }) => {
+const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoins, onOpenAdModal }) => {
     const [activeTab, setActiveTab] = useState('brand-voice');
     const [loading, setLoading] = useState(false);
 
@@ -59,7 +59,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, setCoinBala
                 [activeTab]: { ...prev[activeTab], result: data }
             }));
 
-            setCoinBalance(prev => prev - COST_PER_USE);
+            onSpendCoins(COST_PER_USE);
         } catch (error) {
             console.error(error);
         } finally {

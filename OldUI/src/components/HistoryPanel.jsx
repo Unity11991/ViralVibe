@@ -40,7 +40,7 @@ const HistoryPanel = ({ history, onSelect, onDelete, isOpen, onClose }) => {
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="text-xs text-slate-400 font-mono">
-                                        {new Date(item.timestamp).toLocaleDateString()}
+                                        {new Date(item.created_at || item.timestamp).toLocaleDateString()}
                                     </span>
                                     <button
                                         onClick={(e) => {
