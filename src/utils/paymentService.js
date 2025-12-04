@@ -3,9 +3,9 @@ export const initializePayment = (amount, onSuccess, onError) => {
         key: "rzp_test_Rn4uvcKe2ZeyhB", // Replace with your actual Razorpay Key ID
         amount: amount * 100, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
         currency: "INR",
-        name: "ViralVibe",
+        name: "GoVyral",
         description: "Coin Purchase",
-        image: "https://viralvibe.ai/logo.png", // Optional: Add your logo URL here
+        image: "https://govyral.ai/logo.png", // Optional: Add your logo URL here
         handler: function (response) {
             // Validate payment at server - using post-payment callback
             // alert(response.razorpay_payment_id);
@@ -14,12 +14,12 @@ export const initializePayment = (amount, onSuccess, onError) => {
             onSuccess(response);
         },
         prefill: {
-            name: "ViralVibe User",
-            email: "user@viralvibe.ai",
+            name: "GoVyral User",
+            email: "user@govyral.ai",
             contact: "+919304273185"
         },
         notes: {
-            address: "ViralVibe Corporate Office"
+            address: "GoVyral Corporate Office"
         },
         theme: {
             color: "#8b5cf6" // Purple-600 to match theme
