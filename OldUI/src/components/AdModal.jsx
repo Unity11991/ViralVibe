@@ -74,7 +74,7 @@ const AdModal = ({ isOpen, onAdComplete }) => {
                     <p className="text-slate-300 mb-8">
                         {isCompleted
                             ? "You've earned 35 coins."
-                            : "Support ViralVibe by watching this short ad."}
+                            : "Support GoVyral by watching this short ad."}
                     </p>
 
                     {!isCompleted ? (
