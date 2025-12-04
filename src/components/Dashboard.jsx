@@ -81,7 +81,7 @@ const PurchaseTab = ({ onWatchAd, onPurchase }) => (
 const ReferralTab = () => {
     const [copied, setCopied] = useState(false);
     const referralCode = "REF487873";
-    const referralLink = `https://govyral.ai/referral/${referralCode}`;
+    const referralLink = `https://govyral.online/referral/${referralCode}`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(referralLink);
@@ -177,7 +177,7 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     today.setHours(0, 0, 0, 0);
 
     history.forEach(item => {
-        const ts = item.timestamp || item.id; // Fallback to ID if timestamp is missing
+        const ts = item.created_at || item.timestamp; // Use created_at from Supabase
         if (!ts) return;
 
         const date = new Date(ts);
@@ -203,7 +203,9 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     };
 
     history.forEach(item => {
-        const hour = new Date(item.timestamp).getHours();
+        const ts = item.created_at || item.timestamp;
+        if (!ts) return;
+        const hour = new Date(ts).getHours();
         if (hour >= 6 && hour < 12) timeSlots.morning.count++;
         else if (hour >= 12 && hour < 18) timeSlots.afternoon.count++;
         else if (hour >= 18 && hour < 24) timeSlots.evening.count++;
@@ -296,8 +298,8 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-xs text-slate-400">{new Date(item.timestamp).toLocaleDateString()}</p>
-                                    <p className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p className="text-xs text-slate-400">{new Date(item.created_at || item.timestamp).toLocaleDateString()}</p>
+                                    <p className="text-xs text-slate-500">{new Date(item.created_at || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                 </div>
                             </div>
                         ))
@@ -312,11 +314,11 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     );
 };
 
-const SupportTab = () => {
+const SupportTab = ({ onPurchase }) => {
     const handleSupport = (amount) => {
-        if (confirm(`Would you like to support us with ₹${amount}?`)) {
-            alert("Thank you for your support! ❤️");
-        }
+        // Treat support as a purchase of 0 coins (or just a payment)
+        // Since onPurchase takes (coins, price), we can pass 0 coins and the amount as price
+        onPurchase(0, amount);
     };
 
     return (
@@ -464,7 +466,7 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
                     {activeTab === 'purchase' && <PurchaseTab onWatchAd={onWatchAd} onPurchase={onPurchase} />}
                     {activeTab === 'referral' && <ReferralTab />}
                     {activeTab === 'analytics' && <AnalyticsTab history={history} totalCoinsSpent={totalCoinsSpent} />}
-                    {activeTab === 'support' && <SupportTab />}
+                    {activeTab === 'support' && <SupportTab onPurchase={onPurchase} />}
                 </div>
 
             </div>
