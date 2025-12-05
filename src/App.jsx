@@ -50,6 +50,7 @@ function App() {
 
   // Coin System State
   const [coinBalance, setCoinBalance] = useState(100);
+  const [streak, setStreak] = useState(0);
   const [totalCoinsSpent, setTotalCoinsSpent] = useState(0);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
   const [showAdModal, setShowAdModal] = useState(false);
@@ -82,12 +83,13 @@ function App() {
       // Fetch Profile (Coins)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('coin_balance')
+        .select('coin_balance, streak_count')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setCoinBalance(profile.coin_balance);
+        setStreak(profile.streak_count || 0);
       }
 
       // Fetch History
@@ -143,7 +145,7 @@ function App() {
           .select('count')
           .eq('ip_address', ip)
           .eq('usage_date', today)
-          .single();
+          .maybeSingle();
 
         if (data) {
           setGuestUsageCount(data.count);
@@ -176,7 +178,7 @@ function App() {
         .select('count')
         .eq('ip_address', userIP)
         .eq('usage_date', today)
-        .single();
+        .maybeSingle();
 
       const currentCount = currentUsage ? currentUsage.count : 0;
 
@@ -287,7 +289,7 @@ function App() {
           .select('*')
           .eq('ip_address', userIP)
           .eq('usage_date', today)
-          .single();
+          .maybeSingle();
 
         let newCount = 1;
         if (existingRow) {
@@ -491,6 +493,7 @@ function App() {
         {currentView === 'dashboard' ? (
           <Dashboard
             balance={coinBalance}
+            streak={streak}
             history={history}
             totalCoinsSpent={totalCoinsSpent}
             onBack={() => setCurrentView('home')}
