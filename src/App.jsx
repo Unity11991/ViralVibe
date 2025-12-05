@@ -21,7 +21,22 @@ import { supabase } from './lib/supabase';
 
 import ToolsModal from './components/ToolsModal';
 
+import { Routes, Route, useLocation } from 'react-router-dom';
+import PrivacyPolicy from './pages/policies/PrivacyPolicy';
+import TermsAndConditions from './pages/policies/TermsAndConditions';
+import RefundPolicy from './pages/policies/RefundPolicy';
+import ShippingPolicy from './pages/policies/ShippingPolicy';
+import ContactUs from './pages/policies/ContactUs';
+import Footer from './components/Footer';
+
 function App() {
+  const location = useLocation();
+  const isPolicyPage = location.pathname.includes('/privacy') ||
+    location.pathname.includes('/terms') ||
+    location.pathname.includes('/refund-policy') ||
+    location.pathname.includes('/shipping-policy') ||
+    location.pathname.includes('/contact');
+
   const [image, setImage] = useState(null);
   const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -36,18 +51,8 @@ function App() {
     setShowToolsModal(false);
     if (toolId === 'video-editor') {
       setShowMediaEditor(true);
-      // If we want to clear the current image when opening from tools, we can:
-      // setImage(null); 
-      // But keeping it might be useful if they just generated something.
-      // However, the requirement implies standalone usage.
-      // If we don't clear it, MediaEditor will use `image` prop.
-      // Let's modify MediaEditor usage below to handle this.
     }
   };
-
-  // ... (rest of the component)
-
-
 
   const { user } = useAuth();
 
@@ -95,8 +100,6 @@ function App() {
   // Fetch Data from Supabase
   useEffect(() => {
     if (!user) {
-      // Fallback to localStorage for guest (optional, or just reset)
-      // For now, let's just reset or keep defaults to encourage login
       setCoinBalance(100);
       setHistory([]);
       return;
@@ -463,74 +466,10 @@ function App() {
     );
   };
 
-  return (
-    <div className="min-h-screen relative overflow-hidden font-sans text-primary selection:bg-indigo-500/30">
-      <SeoWrapper />
-
-      {/* Liquid Background */}
-      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[var(--blob-1)] opacity-20 blur-[100px] animate-blob"></div>
-        <div className="absolute top-[40%] right-[-10%] w-[500px] h-[500px] rounded-full bg-[var(--blob-2)] opacity-20 blur-[100px] animate-blob animation-delay-2000"></div>
-        <div className="absolute bottom-[-20%] left-[20%] w-[600px] h-[600px] rounded-full bg-[var(--blob-3)] opacity-20 blur-[100px] animate-blob animation-delay-4000"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
-      </div>
-
-      <AdModal
-        isOpen={showAdModal}
-        onAdComplete={handleAdComplete}
-      />
-
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-      />
-
-      <ProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
-
-      <ToolsModal
-        isOpen={showToolsModal}
-        onClose={() => setShowToolsModal(false)}
-        onSelectTool={handleToolSelect}
-      />
-
-      {showMediaEditor && (
-        <MediaEditor
-          mediaFile={image}
-          onClose={() => setShowMediaEditor(false)}
-        />
-      )}
-
-      <PremiumHub
-        isOpen={showPremiumHub}
-        onClose={() => setShowPremiumHub(false)}
-        settings={settings}
-        image={image}
-        coinBalance={coinBalance}
-        onSpendCoins={handleSpendCoins}
-        onOpenAdModal={() => setShowAdModal(true)}
-      />
-
-      <ProgressPopup
-        isVisible={isAnalyzing}
-        progress={progress}
-        currentStep={currentStep}
-        elapsedTime={elapsedTime}
-      />
-
-      <HistoryPanel
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        history={history}
-        onSelect={restoreHistoryItem}
-        onDelete={deleteHistoryItem}
-      />
-
-      {/* Main Layout */}
-      <div className="max-w-[1600px] mx-auto p-4 lg:p-8 h-screen flex flex-col">
-
+  // Wrap the main app content in a component or render conditionally
+  const MainContent = () => (
+    <div className="flex flex-col min-h-screen">
+      <div className="flex-1 max-w-[1600px] mx-auto p-4 lg:p-8 w-full flex flex-col">
         {/* Header */}
         <header className="flex items-center justify-between mb-8 shrink-0">
           <div className="flex items-center gap-3">
@@ -630,7 +569,7 @@ function App() {
             </div>
 
             {/* Right Column: Results (Scrollable) */}
-            <div className={`lg:col-span-7 h-full min-h-[500px] glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
+            <div className={`lg:col-span-7 h-full glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
               {results ? (
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
                   <ResultsSection
@@ -659,6 +598,83 @@ function App() {
           </div>
         )}
       </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen relative font-sans text-primary selection:bg-indigo-500/30">
+      <SeoWrapper />
+
+      {/* Liquid Background */}
+      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[var(--blob-1)] opacity-20 blur-[100px] animate-blob"></div>
+        <div className="absolute top-[40%] right-[-10%] w-[500px] h-[500px] rounded-full bg-[var(--blob-2)] opacity-20 blur-[100px] animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-[-20%] left-[20%] w-[600px] h-[600px] rounded-full bg-[var(--blob-3)] opacity-20 blur-[100px] animate-blob animation-delay-4000"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
+      </div>
+
+      <AdModal
+        isOpen={showAdModal}
+        onAdComplete={handleAdComplete}
+      />
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
+
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+      />
+
+      <ToolsModal
+        isOpen={showToolsModal}
+        onClose={() => setShowToolsModal(false)}
+        onSelectTool={handleToolSelect}
+      />
+
+      {showMediaEditor && (
+        <MediaEditor
+          mediaFile={image}
+          onClose={() => setShowMediaEditor(false)}
+        />
+      )}
+
+      <PremiumHub
+        isOpen={showPremiumHub}
+        onClose={() => setShowPremiumHub(false)}
+        settings={settings}
+        image={image}
+        coinBalance={coinBalance}
+        onSpendCoins={handleSpendCoins}
+        onOpenAdModal={() => setShowAdModal(true)}
+      />
+
+      <ProgressPopup
+        isVisible={isAnalyzing}
+        progress={progress}
+        currentStep={currentStep}
+        elapsedTime={elapsedTime}
+      />
+
+      <HistoryPanel
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onSelect={restoreHistoryItem}
+        onDelete={deleteHistoryItem}
+      />
+
+      <Routes>
+        <Route path="/" element={<MainContent />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsAndConditions />} />
+        <Route path="/refund-policy" element={<RefundPolicy />} />
+        <Route path="/shipping-policy" element={<ShippingPolicy />} />
+        <Route path="/contact" element={<ContactUs />} />
+      </Routes>
+      <Footer />
     </div>
   );
 }

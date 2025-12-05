@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }) => {
         signUp: (data) => supabase.auth.signUp({
             ...data,
             options: {
-                emailRedirectTo: 'https://govyral.online/'
+                emailRedirectTo: window.location.origin
             }
         }),
         signIn: (data) => supabase.auth.signInWithPassword(data),
