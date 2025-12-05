@@ -9,12 +9,14 @@ import AdModal from './components/AdModal';
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
-import { analyzeImage } from './utils/aiService';
+import { analyzeImage, aggregateVideoInsights } from './utils/aiService';
+import { extractFramesFromVideo } from './utils/videoUtils';
 import PremiumHub from './components/PremiumHub';
 import { initializePayment } from './utils/paymentService';
 import { useAuth } from './context/AuthContext';
 import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
+import MediaEditor from './components/MediaEditor';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -24,7 +26,12 @@ function App() {
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // ... (rest of the component)
+
+
 
   const { user } = useAuth();
 
@@ -198,8 +205,11 @@ function App() {
     }
     setShowMoodError(false);
 
-    // Check Coin Balance (Cost: 50 coins) - Only for logged in users
-    if (user && coinBalance < 50) {
+    const isVideo = image.type.startsWith('video/');
+    const cost = isVideo ? 100 : 50;
+
+    // Check Coin Balance - Only for logged in users
+    if (user && coinBalance < cost) {
       setShowAdModal(true); // Show ad modal instead of confirm
       return;
     }
@@ -218,22 +228,51 @@ function App() {
     try {
       // Simulate Upload Step
       await new Promise(resolve => setTimeout(resolve, 800));
-      setProgress(25);
+      setProgress(10);
       setCurrentStep('analyze');
 
-      // Simulate Analysis Step (concurrent with actual API call)
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) return prev;
-          return prev + Math.random() * 10;
-        });
-      }, 500);
+      let data;
 
-      // Actual API Call
-      const data = await analyzeImage(image, settings);
+      if (isVideo) {
+        // --- VIDEO ANALYSIS FLOW ---
+        setProgress(20);
 
-      clearInterval(progressInterval);
-      setProgress(90);
+        // 1. Extract Frames
+        const frames = await extractFramesFromVideo(image, 3); // Extract 3 frames
+        setProgress(40);
+
+        // 2. Analyze Each Frame
+        const frameResults = [];
+        for (let i = 0; i < frames.length; i++) {
+          // Update progress to show which frame is being analyzed
+          const frameProgress = 40 + ((i / frames.length) * 40); // 40% to 80%
+          setProgress(frameProgress);
+
+          const frameResult = await analyzeImage(frames[i], settings);
+          frameResults.push(frameResult);
+        }
+
+        // 3. Aggregate Results
+        setProgress(90);
+        data = aggregateVideoInsights(frameResults);
+
+      } else {
+        // --- IMAGE ANALYSIS FLOW ---
+
+        // Simulate Analysis Step (concurrent with actual API call)
+        const progressInterval = setInterval(() => {
+          setProgress(prev => {
+            if (prev >= 90) return prev;
+            return prev + Math.random() * 10;
+          });
+        }, 500);
+
+        // Actual API Call
+        data = await analyzeImage(image, settings);
+        clearInterval(progressInterval);
+      }
+
+      setProgress(95);
       setCurrentStep('generate');
 
       // Simulate Generation Step
@@ -246,9 +285,9 @@ function App() {
 
       if (user) {
         // Update Coins in DB
-        const newBalance = coinBalance - 50;
+        const newBalance = coinBalance - cost;
         setCoinBalance(newBalance);
-        setTotalCoinsSpent(prev => prev + 50);
+        setTotalCoinsSpent(prev => prev + cost);
 
         await supabase
           .from('profiles')
@@ -435,6 +474,13 @@ function App() {
         onClose={() => setShowProfileModal(false)}
       />
 
+      {showMediaEditor && image && (
+        <MediaEditor
+          mediaFile={image}
+          onClose={() => setShowMediaEditor(false)}
+        />
+      )}
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
@@ -551,7 +597,9 @@ function App() {
                     <>
                       <Sparkles size={20} />
                       <span>Generate Content</span>
-                      <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">-50</span>
+                      <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">
+                        -{image?.type?.startsWith('video/') ? '100' : '50'}
+                      </span>
                     </>
                   )}
                 </button>
@@ -571,6 +619,7 @@ function App() {
                         setShowPremiumHub(true);
                       }
                     }}
+                    onOpenEditor={() => setShowMediaEditor(true)}
                   />
                 </div>
               ) : (

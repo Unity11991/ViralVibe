@@ -1,20 +1,30 @@
 import React from 'react';
-import { History, Coins, Sun, Moon, LogOut, User } from 'lucide-react';
+import { History, Coins, Sun, Moon, LogOut, User, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount }) => {
     const { user, signOut } = useAuth();
 
     return (
         <div className="flex items-center gap-3">
+            {/* Guest Usage Counter */}
+            {!user && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-medium">
+                    <Sparkles size={16} className="text-purple-400" />
+                    <span className="whitespace-nowrap">Free: {Math.max(0, 3 - (guestUsageCount || 0))}/3</span>
+                </div>
+            )}
+
             {/* Coin Balance */}
-            <button
-                onClick={onCoinsClick}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition-all border border-amber-500/20 hover:border-amber-500/40 group"
-            >
-                <Coins size={18} className="group-hover:scale-110 transition-transform" />
-                <span className="font-bold font-mono">{coinBalance}</span>
-            </button>
+            {user && (
+                <button
+                    onClick={onCoinsClick}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition-all border border-amber-500/20 hover:border-amber-500/40 group"
+                >
+                    <Coins size={18} className="group-hover:scale-110 transition-transform" />
+                    <span className="font-bold font-mono">{coinBalance}</span>
+                </button>
+            )}
 
             {/* History */}
             <button
@@ -53,7 +63,8 @@ const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme,
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-500/20"
                 >
                     <User size={18} />
-                    <span className="font-medium">Login</span>
+                    <span className="font-medium hidden sm:inline">Login</span>
+                    <span className="sm:hidden">Login</span>
                 </button>
             )}
         </div>

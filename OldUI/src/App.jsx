@@ -50,6 +50,7 @@ function App() {
 
   // Coin System State
   const [coinBalance, setCoinBalance] = useState(100);
+  const [streak, setStreak] = useState(0);
   const [totalCoinsSpent, setTotalCoinsSpent] = useState(0);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
   const [showAdModal, setShowAdModal] = useState(false);
@@ -82,12 +83,13 @@ function App() {
       // Fetch Profile (Coins)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('coin_balance')
+        .select('coin_balance, streak_count')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setCoinBalance(profile.coin_balance);
+        setStreak(profile.streak_count || 0);
       }
 
       // Fetch History
@@ -123,10 +125,68 @@ function App() {
     setError(null);
   };
 
-  const handleAnalyze = async () => {
+  const [guestUsageCount, setGuestUsageCount] = useState(0);
+  const [userIP, setUserIP] = useState(null);
+
+  // Fetch IP and Guest Usage
+  useEffect(() => {
+    const fetchGuestInfo = async () => {
+      try {
+        // 1. Get IP
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipRes.json();
+        const ip = ipData.ip;
+        setUserIP(ip);
+
+        // 2. Check Supabase
+        const today = new Date().toISOString().split('T')[0];
+        const { data, error } = await supabase
+          .from('guest_usage')
+          .select('count')
+          .eq('ip_address', ip)
+          .eq('usage_date', today)
+          .maybeSingle();
+
+        if (data) {
+          setGuestUsageCount(data.count);
+        } else {
+          setGuestUsageCount(0);
+        }
+      } catch (error) {
+        console.error("Error fetching guest info:", error);
+      }
+    };
+
     if (!user) {
-      setShowAuthModal(true);
-      return;
+      fetchGuestInfo();
+    }
+  }, [user]);
+
+  const handleAnalyze = async () => {
+    // Guest Limit Check
+    if (!user) {
+      if (!userIP) {
+        setError("Unable to verify guest status. Please disable adblockers or try again.");
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Re-check limit from DB to prevent race conditions/manipulation
+      const { data: currentUsage } = await supabase
+        .from('guest_usage')
+        .select('count')
+        .eq('ip_address', userIP)
+        .eq('usage_date', today)
+        .maybeSingle();
+
+      const currentCount = currentUsage ? currentUsage.count : 0;
+
+      if (currentCount >= 3) {
+        setShowAuthModal(true);
+        alert("You have reached your daily limit of 3 free generations. Please login to continue.");
+        return;
+      }
     }
 
     if (!image) return;
@@ -138,8 +198,8 @@ function App() {
     }
     setShowMoodError(false);
 
-    // Check Coin Balance (Cost: 50 coins)
-    if (coinBalance < 50) {
+    // Check Coin Balance (Cost: 50 coins) - Only for logged in users
+    if (user && coinBalance < 50) {
       setShowAdModal(true); // Show ad modal instead of confirm
       return;
     }
@@ -184,39 +244,68 @@ function App() {
 
       setResults(data);
 
-      // Update Coins in DB
-      const newBalance = coinBalance - 50;
-      setCoinBalance(newBalance);
-      setTotalCoinsSpent(prev => prev + 50);
+      if (user) {
+        // Update Coins in DB
+        const newBalance = coinBalance - 50;
+        setCoinBalance(newBalance);
+        setTotalCoinsSpent(prev => prev + 50);
 
-      await supabase
-        .from('profiles')
-        .update({ coin_balance: newBalance })
-        .eq('id', user.id);
+        await supabase
+          .from('profiles')
+          .update({ coin_balance: newBalance })
+          .eq('id', user.id);
 
-      // Add to history in DB
-      const newHistoryItem = {
-        user_id: user.id,
-        captions: data.captions,
-        hashtags: data.hashtags,
-        best_time: data.bestTime,
-        viral_potential: data.viralPotential,
-        platform: settings.platform,
-        mood: settings.mood,
-        music_recommendations: data.musicRecommendations,
-        roast: data.roast,
-        scores: data.scores,
-        improvements: data.improvements
-      };
+        // Add to history in DB
+        const newHistoryItem = {
+          user_id: user.id,
+          captions: data.captions,
+          hashtags: data.hashtags,
+          best_time: data.bestTime,
+          viral_potential: data.viralPotential,
+          platform: settings.platform,
+          mood: settings.mood,
+          music_recommendations: data.musicRecommendations,
+          roast: data.roast,
+          scores: data.scores,
+          improvements: data.improvements
+        };
 
-      const { data: savedItem, error: historyError } = await supabase
-        .from('history')
-        .insert([newHistoryItem])
-        .select()
-        .single();
+        const { data: savedItem, error: historyError } = await supabase
+          .from('history')
+          .insert([newHistoryItem])
+          .select()
+          .single();
 
-      if (!historyError && savedItem) {
-        setHistory(prev => [savedItem, ...prev]);
+        if (!historyError && savedItem) {
+          setHistory(prev => [savedItem, ...prev]);
+        }
+      } else {
+        // Increment Guest Usage in DB
+        const today = new Date().toISOString().split('T')[0];
+
+        // Upsert logic: Try to insert, if conflict (already exists), update count
+        const { data: existingRow } = await supabase
+          .from('guest_usage')
+          .select('*')
+          .eq('ip_address', userIP)
+          .eq('usage_date', today)
+          .maybeSingle();
+
+        let newCount = 1;
+        if (existingRow) {
+          newCount = existingRow.count + 1;
+          await supabase
+            .from('guest_usage')
+            .update({ count: newCount })
+            .eq('ip_address', userIP)
+            .eq('usage_date', today);
+        } else {
+          await supabase
+            .from('guest_usage')
+            .insert([{ ip_address: userIP, usage_date: today, count: 1 }]);
+        }
+
+        setGuestUsageCount(newCount);
       }
 
     } catch (err) {
@@ -286,6 +375,10 @@ function App() {
   };
 
   const handlePurchase = (coins, price) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
     initializePayment(
       price,
       async (response) => {
@@ -376,23 +469,31 @@ function App() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Zap className="text-white" size={20} fill="currentColor" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-primary">GoVyral</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-primary hidden md:block">GoVyral</h1>
           </div>
 
           <Navbar
             onHistoryClick={() => setIsHistoryOpen(true)}
             coinBalance={coinBalance}
-            onCoinsClick={() => setCurrentView('dashboard')}
+            onCoinsClick={() => {
+              if (!user) {
+                setShowAuthModal(true);
+              } else {
+                setCurrentView('dashboard');
+              }
+            }}
             theme={theme}
             toggleTheme={toggleTheme}
             onLoginClick={() => setShowAuthModal(true)}
             onProfileClick={() => setShowProfileModal(true)}
+            guestUsageCount={guestUsageCount}
           />
         </header>
 
         {currentView === 'dashboard' ? (
           <Dashboard
             balance={coinBalance}
+            streak={streak}
             history={history}
             totalCoinsSpent={totalCoinsSpent}
             onBack={() => setCurrentView('home')}
@@ -463,7 +564,13 @@ function App() {
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
                   <ResultsSection
                     results={results}
-                    onOpenPremium={() => setShowPremiumHub(true)}
+                    onOpenPremium={() => {
+                      if (!user) {
+                        setShowAuthModal(true);
+                      } else {
+                        setShowPremiumHub(true);
+                      }
+                    }}
                   />
                 </div>
               ) : (

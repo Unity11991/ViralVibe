@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket } from 'lucide-react';
+import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame } from 'lucide-react';
+import CollabFinder from './CollabFinder';
 
 const PACKAGES = [
     { id: 1, price: 49, coins: 5000, label: 'Starter' },
@@ -81,7 +82,7 @@ const PurchaseTab = ({ onWatchAd, onPurchase }) => (
 const ReferralTab = () => {
     const [copied, setCopied] = useState(false);
     const referralCode = "REF487873";
-    const referralLink = `https://govyral.ai/referral/${referralCode}`;
+    const referralLink = `https://govyral.online/referral/${referralCode}`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(referralLink);
@@ -177,7 +178,7 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     today.setHours(0, 0, 0, 0);
 
     history.forEach(item => {
-        const ts = item.timestamp || item.id; // Fallback to ID if timestamp is missing
+        const ts = item.created_at || item.timestamp; // Use created_at from Supabase
         if (!ts) return;
 
         const date = new Date(ts);
@@ -203,7 +204,9 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     };
 
     history.forEach(item => {
-        const hour = new Date(item.timestamp).getHours();
+        const ts = item.created_at || item.timestamp;
+        if (!ts) return;
+        const hour = new Date(ts).getHours();
         if (hour >= 6 && hour < 12) timeSlots.morning.count++;
         else if (hour >= 12 && hour < 18) timeSlots.afternoon.count++;
         else if (hour >= 18 && hour < 24) timeSlots.evening.count++;
@@ -296,8 +299,8 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-xs text-slate-400">{new Date(item.timestamp).toLocaleDateString()}</p>
-                                    <p className="text-xs text-slate-500">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p className="text-xs text-slate-400">{new Date(item.created_at || item.timestamp).toLocaleDateString()}</p>
+                                    <p className="text-xs text-slate-500">{new Date(item.created_at || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                 </div>
                             </div>
                         ))
@@ -312,11 +315,11 @@ const AnalyticsTab = ({ history, totalCoinsSpent }) => {
     );
 };
 
-const SupportTab = () => {
+const SupportTab = ({ onPurchase }) => {
     const handleSupport = (amount) => {
-        if (confirm(`Would you like to support us with ₹${amount}?`)) {
-            alert("Thank you for your support! ❤️");
-        }
+        // Treat support as a purchase of 0 coins (or just a payment)
+        // Since onPurchase takes (coins, price), we can pass 0 coins and the amount as price
+        onPurchase(0, amount);
     };
 
     return (
@@ -385,11 +388,12 @@ const SupportTab = () => {
     );
 };
 
-const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPurchase }) => {
+const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase }) => {
     const [activeTab, setActiveTab] = useState('purchase');
 
     const tabs = [
         { id: 'purchase', label: 'Purchase', icon: CreditCard },
+        { id: 'collab', label: 'Collab Finder', icon: Users },
         { id: 'referral', label: 'Referral', icon: Share2 },
         { id: 'analytics', label: 'Analytics', icon: BarChart3 },
         { id: 'support', label: 'Support', icon: Heart },
@@ -429,6 +433,18 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
                             <span className="text-xl font-bold opacity-80">coins</span>
                         </div>
                     </div>
+
+                    {/* Streak Badge */}
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 flex items-center gap-3 border border-white/10">
+                        <div className="p-3 bg-orange-500/20 rounded-full text-orange-500">
+                            <Flame size={24} fill="currentColor" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold opacity-60 uppercase">Daily Streak</p>
+                            <p className="text-2xl font-black text-white">{streak} <span className="text-sm font-medium opacity-60">days</span></p>
+                        </div>
+                    </div>
+
                     <div className="flex gap-4">
                         <div className="text-right hidden md:block">
                             <p className="text-xs font-bold opacity-60">Images: {Math.floor(balance / 50)} gens</p>
@@ -462,9 +478,10 @@ const Dashboard = ({ balance, history, totalCoinsSpent, onBack, onWatchAd, onPur
                 {/* Content */}
                 <div className="min-h-[400px]">
                     {activeTab === 'purchase' && <PurchaseTab onWatchAd={onWatchAd} onPurchase={onPurchase} />}
+                    {activeTab === 'collab' && <CollabFinder />}
                     {activeTab === 'referral' && <ReferralTab />}
                     {activeTab === 'analytics' && <AnalyticsTab history={history} totalCoinsSpent={totalCoinsSpent} />}
-                    {activeTab === 'support' && <SupportTab />}
+                    {activeTab === 'support' && <SupportTab onPurchase={onPurchase} />}
                 </div>
 
             </div>
