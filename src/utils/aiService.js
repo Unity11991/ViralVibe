@@ -1,6 +1,6 @@
 import Groq from "groq-sdk";
 
-export const analyzeImage = async (file, settings) => {
+export const analyzeImage = async (fileOrBase64, settings) => {
     const { apiKey, platform, tone, model: modelName } = settings;
 
     if (!apiKey) {
@@ -10,8 +10,13 @@ export const analyzeImage = async (file, settings) => {
     const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
     const model = modelName || "llama-3.2-11b-vision-preview";
 
-    // Convert file to base64 data URL
-    const base64DataUrl = await fileToBase64(file);
+    // Handle File object or Base64 string
+    let base64DataUrl;
+    if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
+        base64DataUrl = fileOrBase64;
+    } else {
+        base64DataUrl = await fileToBase64(fileOrBase64);
+    }
 
     const prompt = `
     You are a social media expert. Analyze this image and generate content for ${platform} with a ${tone} tone.
@@ -64,6 +69,74 @@ export const analyzeImage = async (file, settings) => {
         console.error("Groq API Error:", error);
         throw new Error(`Failed to analyze image. Error: ${error.message}`);
     }
+};
+
+export const aggregateVideoInsights = (results) => {
+    if (!results || results.length === 0) return null;
+
+    // 1. Average Viral Potential
+    const totalPotential = results.reduce((sum, r) => sum + (r.viralPotential || 0), 0);
+    const avgPotential = Math.round(totalPotential / results.length);
+
+    // 2. Combine Captions (Take top 2 from each)
+    const allCaptions = results.flatMap(r => r.captions ? r.captions.slice(0, 2) : []);
+    const uniqueCaptions = [...new Set(allCaptions)].slice(0, 5);
+
+    // 3. Combine Hashtags (Take top 5 from each, unique)
+    const allHashtags = results.flatMap(r => r.hashtags || []);
+    const uniqueHashtags = [...new Set(allHashtags)].slice(0, 30);
+
+    // 4. Best Time (Take the first one or most common)
+    const bestTime = results[0]?.bestTime || "Best time depends on your audience.";
+
+    // 5. Music (Combine unique songs)
+    const allMusic = results.flatMap(r => r.musicRecommendations || []);
+    const uniqueMusic = [];
+    const seenSongs = new Set();
+    for (const m of allMusic) {
+        if (!seenSongs.has(m.song)) {
+            seenSongs.add(m.song);
+            uniqueMusic.push(m);
+        }
+    }
+    const finalMusic = uniqueMusic.slice(0, 5);
+
+    // 6. Roast (Combine or pick random)
+    const roasts = results.map(r => r.roast).filter(Boolean);
+    const combinedRoast = roasts.join(" Also: ");
+
+    // 7. Scores (Average)
+    const avgScores = {
+        lighting: 0,
+        composition: 0,
+        creativity: 0
+    };
+    results.forEach(r => {
+        if (r.scores) {
+            avgScores.lighting += r.scores.lighting || 0;
+            avgScores.composition += r.scores.composition || 0;
+            avgScores.creativity += r.scores.creativity || 0;
+        }
+    });
+    avgScores.lighting = Math.round(avgScores.lighting / results.length);
+    avgScores.composition = Math.round(avgScores.composition / results.length);
+    avgScores.creativity = Math.round(avgScores.creativity / results.length);
+
+    // 8. Improvements (Combine unique)
+    const allImprovements = results.flatMap(r => r.improvements || []);
+    const uniqueImprovements = [...new Set(allImprovements)].slice(0, 5);
+
+    return {
+        viralPotential: avgPotential,
+        captions: uniqueCaptions,
+        hashtags: uniqueHashtags,
+        bestTime: bestTime,
+        musicRecommendations: finalMusic,
+        roast: combinedRoast,
+        scores: avgScores,
+        improvements: uniqueImprovements,
+        isVideoAnalysis: true // Flag to indicate this is a video result
+    };
 };
 
 export const generatePremiumContent = async (type, data, settings) => {

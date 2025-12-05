@@ -83,7 +83,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results, onOpenPremium }) => {
+export const ResultsSection = ({ results, onOpenPremium, onOpenEditor }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
@@ -142,6 +142,14 @@ export const ResultsSection = ({ results, onOpenPremium }) => {
                                 </li>
                             ))}
                         </ul>
+                        {onOpenEditor && (
+                            <button
+                                onClick={onOpenEditor}
+                                className="mt-4 w-full py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Wrench size={14} /> Open Editor
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
