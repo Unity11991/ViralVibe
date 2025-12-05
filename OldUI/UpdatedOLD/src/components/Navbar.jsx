@@ -2,25 +2,15 @@ import React from 'react';
 import { History, Coins, Sun, Moon, LogOut, User, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount }) => {
     const { user, signOut } = useAuth();
 
     return (
         <div className="flex items-center gap-3">
-            {/* Tools Button */}
-            <button
-                onClick={onToolsClick}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/10 hover:border-white/20 group"
-            >
-                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Sparkles size={12} className="text-white" fill="currentColor" />
-                </div>
-                <span className="font-medium text-sm hidden sm:inline">Tools</span>
-            </button>
-
             {/* Guest Usage Counter */}
             {!user && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-medium">
+                    <Sparkles size={16} className="text-purple-400" />
                     <span className="whitespace-nowrap">Free: {Math.max(0, 3 - (guestUsageCount || 0))}/3</span>
                 </div>
             )}
