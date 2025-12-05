@@ -60,6 +60,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
     const fileInputRef = useRef(null);
 
     const isExportingRef = useRef(false);
+    const mediaRecorderRef = useRef(null);
 
     // --- Initialization ---
     useEffect(() => {
@@ -318,6 +319,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 mimeType: 'video/webm;codecs=vp9',
                 videoBitsPerSecond: exportSettings.resolution === '4K' ? 25000000 : 8000000
             });
+            mediaRecorderRef.current = mediaRecorder;
 
             const chunks = [];
             mediaRecorder.ondataavailable = (e) => {
@@ -325,6 +327,8 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             };
 
             mediaRecorder.onstop = () => {
+                if (!isExportingRef.current) return; // Cancelled
+
                 const blob = new Blob(chunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -366,6 +370,15 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             alert("Export failed. Please try a lower resolution.");
             setIsExporting(false);
             isExportingRef.current = false;
+        }
+    };
+
+    const handleCancelExport = () => {
+        isExportingRef.current = false;
+        setIsExporting(false);
+        if (videoRef.current) videoRef.current.pause();
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
         }
     };
 
@@ -411,7 +424,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
 
     // --- Render Editor ---
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-4 md:p-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-0 md:p-8">
 
             {/* SVG Filters Definition */}
             <svg className="hidden">
@@ -523,21 +536,29 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     <div className="w-20 h-20 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-6"></div>
                     <h3 className="text-2xl font-bold text-white mb-2">Exporting Video...</h3>
                     <p className="text-white/50 mb-6">Please wait while we render your masterpiece.</p>
-                    <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden mb-8">
                         <div
                             className="h-full bg-blue-500 transition-all duration-300"
                             style={{ width: `${exportProgress}%` }}
                         ></div>
                     </div>
-                    <p className="text-blue-400 font-mono mt-2">{Math.round(exportProgress)}%</p>
+                    <p className="text-blue-400 font-mono mb-8">{Math.round(exportProgress)}%</p>
+
+                    <button
+                        onClick={handleCancelExport}
+                        className="px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center gap-2"
+                    >
+                        <X size={16} />
+                        Cancel
+                    </button>
                 </div>
             )}
 
 
-            <div className="w-full max-w-6xl h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
+            <div className="w-full max-w-6xl h-[100dvh] md:h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-none md:rounded-3xl overflow-hidden border-0 md:border border-white/10 shadow-2xl">
 
                 {/* Left: Preview Area */}
-                <div className="flex-1 relative flex items-center justify-center bg-black/50 p-8 overflow-hidden group">
+                <div className="flex-none h-[40vh] md:h-auto md:flex-1 relative flex items-center justify-center bg-black/50 p-4 md:p-8 overflow-hidden group border-b border-white/10 md:border-b-0">
                     <button
                         onClick={onClose}
                         className="absolute top-6 left-6 p-3 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-10"
@@ -631,7 +652,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 </div>
 
                 {/* Right: Tools Panel */}
-                <div className="w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col">
+                <div className="flex-1 md:flex-none w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col overflow-hidden">
 
                     {/* Header */}
                     <div className="p-6 border-b border-white/5">
