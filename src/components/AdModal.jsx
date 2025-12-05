@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, Loader } from 'lucide-react';
+import { loadAdSenseScript } from '../utils/adService';
 
 const AdModal = ({ isOpen, onAdComplete }) => {
     const [timeLeft, setTimeLeft] = useState(5);
@@ -7,6 +8,7 @@ const AdModal = ({ isOpen, onAdComplete }) => {
 
     useEffect(() => {
         if (isOpen && !isCompleted) {
+            loadAdSenseScript();
             try {
                 (window.adsbygoogle = window.adsbygoogle || []).push({});
             } catch (e) {
