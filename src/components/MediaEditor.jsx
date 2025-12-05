@@ -1,160 +1,630 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Play, Pause, Check, RotateCcw, Scissors, Crop, Sliders, Download, Image as ImageIcon, Video } from 'lucide-react';
+import { X, Play, Pause, RotateCcw, Check, Sliders, Scissors, Crop, Download, Upload, Video, ChevronDown, ChevronRight, Wand2, Settings, Monitor, Film, Palette } from 'lucide-react';
+import { FILTER_PRESETS } from '../utils/filterPresets';
 
 const MediaEditor = ({ mediaFile, onClose }) => {
+    const [activeTab, setActiveTab] = useState('adjust'); // 'adjust', 'filters', 'trim', 'crop'
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [activeTab, setActiveTab] = useState('filters'); // filters, trim, crop
 
-    // Edit States
-    const [filters, setFilters] = useState({
-        brightness: 100,
-        contrast: 100,
-        saturation: 100,
-        sepia: 0,
-        grayscale: 0
+    // --- Export State ---
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState(0);
+    const [exportSettings, setExportSettings] = useState({
+        resolution: 'HD', // HD, 2K, 4K
+        fps: 30,          // 24, 30, 60
+        color: 'SDR'      // SDR, HDR
     });
-    const [trimRange, setTrimRange] = useState([0, 100]); // Percentage
-    const [cropRatio, setCropRatio] = useState('original'); // original, 9:16, 16:9, 1:1
+
+    // --- Adjustment State ---
+    const initialAdjustments = {
+        // Light
+        exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0, brightness: 0,
+        // Color
+        saturation: 0, vibrance: 0, temp: 0, tint: 0,
+        // HSL
+        hue: 0, hslSaturation: 0, hslLightness: 0,
+        // Effects
+        clarity: 0, sepia: 0, grayscale: 0,
+        // Style
+        sharpen: 0, blur: 0, vignette: 0, grain: 0, fade: 0
+    };
+
+    const [adjustments, setAdjustments] = useState(initialAdjustments);
+    const [activeFilterId, setActiveFilterId] = useState('normal');
+
+    const [expandedSections, setExpandedSections] = useState({
+        light: true,
+        color: true,
+        hsl: false,
+        effects: false,
+        style: false
+    });
+
+    const toggleSection = (section) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    // --- Trim State ---
+    const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
+    const [isDraggingTrim, setIsDraggingTrim] = useState(null); // 'start' | 'end' | null
+    const trimTrackRef = useRef(null);
+
+    // --- Crop State ---
+    const [crop, setCrop] = useState('original');
 
     const videoRef = useRef(null);
-    const imageRef = useRef(null);
-    const [mediaUrl, setMediaUrl] = useState(null);
+    const [localMediaFile, setLocalMediaFile] = useState(mediaFile);
+    const fileInputRef = useRef(null);
 
-    const isVideo = mediaFile?.type?.startsWith('video/');
+    const isExportingRef = useRef(false);
 
+    // --- Initialization ---
     useEffect(() => {
         if (mediaFile) {
-            const url = URL.createObjectURL(mediaFile);
-            setMediaUrl(url);
-            return () => URL.revokeObjectURL(url);
+            setLocalMediaFile(mediaFile);
         }
     }, [mediaFile]);
 
-    const handlePlayPause = () => {
-        if (!videoRef.current) return;
-        if (isPlaying) {
-            videoRef.current.pause();
-        } else {
-            videoRef.current.play();
+    const [mediaUrl, setMediaUrl] = useState(null);
+    const isVideo = localMediaFile?.type?.startsWith('video/');
+
+    useEffect(() => {
+        if (localMediaFile) {
+            const url = URL.createObjectURL(localMediaFile);
+            setMediaUrl(url);
+            return () => URL.revokeObjectURL(url);
         }
-        setIsPlaying(!isPlaying);
+    }, [localMediaFile]);
+
+    // --- File Upload Handler ---
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setLocalMediaFile(file);
+        }
+    };
+
+    // --- Filter Application ---
+    const applyFilter = (filter) => {
+        setActiveFilterId(filter.id);
+        setAdjustments(prev => ({
+            ...initialAdjustments, // Reset base adjustments
+            ...filter.values // Apply preset values
+        }));
+    };
+
+    // --- Video Handlers ---
+    const handleLoadedMetadata = () => {
+        if (videoRef.current) {
+            setDuration(videoRef.current.duration);
+            setTrimRange({ start: 0, end: videoRef.current.duration });
+        }
     };
 
     const handleTimeUpdate = () => {
         if (videoRef.current) {
             setCurrentTime(videoRef.current.currentTime);
-
-            // Loop logic for trim
-            const end = (trimRange[1] / 100) * duration;
-            if (videoRef.current.currentTime >= end) {
-                videoRef.current.currentTime = (trimRange[0] / 100) * duration;
-                if (!isPlaying) videoRef.current.play(); // Keep playing loop
+            // Loop trim range
+            if (!isExportingRef.current && videoRef.current.currentTime >= trimRange.end) {
+                videoRef.current.currentTime = trimRange.start;
+                videoRef.current.play();
             }
         }
     };
 
-    const handleLoadedMetadata = () => {
+    const togglePlay = () => {
         if (videoRef.current) {
-            setDuration(videoRef.current.duration);
+            if (isPlaying) {
+                videoRef.current.pause();
+            } else {
+                videoRef.current.play();
+            }
+            setIsPlaying(!isPlaying);
         }
     };
 
+    // --- Filter Logic (CSS Approximation) ---
     const getFilterString = () => {
-        return `brightness(${filters.brightness}%) contrast(${filters.contrast}%) saturate(${filters.saturation}%) sepia(${filters.sepia}%) grayscale(${filters.grayscale}%)`;
+        // Base values (100% or 0deg)
+        let b = 100; // Brightness
+        let c = 100; // Contrast
+        let s = 100; // Saturation
+        let h = 0;   // Hue Rotate
+        let sep = 0; // Sepia
+        let g = 0;   // Grayscale
+        let blur = 0; // Blur (Noise Reduction)
+        let op = 100; // Opacity (Fade)
+
+        // Light
+        b += adjustments.brightness + adjustments.exposure + (adjustments.whites / 2) - (adjustments.blacks / 2);
+        c += adjustments.contrast + (adjustments.clarity / 2);
+        b += adjustments.highlights / 3;
+        b += adjustments.shadows / 3;
+
+        // Color
+        s += adjustments.saturation + adjustments.vibrance + adjustments.hslSaturation;
+
+        // Temp/Tint
+        if (adjustments.temp > 0) {
+            sep += adjustments.temp / 2;
+            h += adjustments.temp / 5;
+        } else {
+            h += adjustments.temp / 2;
+        }
+        h += adjustments.tint;
+        h += adjustments.hue;
+
+        // HSL Lightness
+        b += adjustments.hslLightness;
+
+        // Effects
+        sep += adjustments.sepia;
+        g += adjustments.grayscale;
+
+        // Style
+        blur += adjustments.blur / 10; // Scale down blur
+
+        // Fade logic: Reduce contrast and lift brightness slightly, or reduce opacity
+        if (adjustments.fade > 0) {
+            c -= adjustments.fade / 2;
+            b += adjustments.fade / 5;
+        }
+
+        let filterStr = `
+            brightness(${Math.max(0, b)}%) 
+            contrast(${Math.max(0, c)}%) 
+            saturate(${Math.max(0, s)}%) 
+            sepia(${Math.min(100, Math.max(0, sep))}%) 
+            grayscale(${Math.min(100, Math.max(0, g))}%)
+            hue-rotate(${h}deg)
+            blur(${blur}px)
+        `;
+
+        // Append SVG filters if active
+        if (adjustments.sharpen > 0) {
+            filterStr += ` url(#sharpen)`;
+        }
+
+        return filterStr;
     };
 
     const getCropStyle = () => {
-        switch (cropRatio) {
-            case '9:16': return { aspectRatio: '9/16', objectFit: 'cover' };
-            case '16:9': return { aspectRatio: '16/9', objectFit: 'cover' };
-            case '1:1': return { aspectRatio: '1/1', objectFit: 'cover' };
-            default: return { width: '100%', height: '100%', objectFit: 'contain' };
+        switch (crop) {
+            case '16:9': return { aspectRatio: '16/9' };
+            case '9:16': return { aspectRatio: '9/16' };
+            case '1:1': return { aspectRatio: '1/1' };
+            case '4:5': return { aspectRatio: '4/5' };
+            default: return { width: '100%', height: '100%' };
         }
     };
 
-    const resetFilters = () => {
-        setFilters({
-            brightness: 100,
-            contrast: 100,
-            saturation: 100,
-            sepia: 0,
-            grayscale: 0
-        });
-        setCropRatio('original');
-        setTrimRange([0, 100]);
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // --- Trimmer Interaction ---
+    const handleTrimPointerDown = (e, type) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingTrim(type);
+
+        // Pause video while trimming
+        if (isPlaying && videoRef.current) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+        }
+    };
+
+    useEffect(() => {
+        const handlePointerMove = (e) => {
+            if (!isDraggingTrim || !trimTrackRef.current) return;
+
+            const rect = trimTrackRef.current.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percentage = x / rect.width;
+            const time = percentage * duration;
+
+            setTrimRange(prev => {
+                if (isDraggingTrim === 'start') {
+                    const newStart = Math.min(time, prev.end - 0.5); // Min 0.5s duration
+                    if (videoRef.current) videoRef.current.currentTime = newStart;
+                    setCurrentTime(newStart);
+                    return { ...prev, start: newStart };
+                } else {
+                    const newEnd = Math.max(time, prev.start + 0.5);
+                    if (videoRef.current) videoRef.current.currentTime = newEnd;
+                    setCurrentTime(newEnd);
+                    return { ...prev, end: newEnd };
+                }
+            });
+        };
+
+        const handlePointerUp = () => {
+            setIsDraggingTrim(null);
+        };
+
+        if (isDraggingTrim) {
+            window.addEventListener('pointermove', handlePointerMove);
+            window.addEventListener('pointerup', handlePointerUp);
+        }
+
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+        };
+    }, [isDraggingTrim, duration]);
+
+    // --- Export Logic ---
+    const handleExport = async () => {
+        setShowExportModal(false);
+        setIsExporting(true);
+        isExportingRef.current = true;
+        setExportProgress(0);
+
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const video = videoRef.current;
+
+            // Set Resolution
+            let width = video.videoWidth;
+            let height = video.videoHeight;
+
+            if (exportSettings.resolution === 'HD') {
+                width = 1920; height = 1080;
+            } else if (exportSettings.resolution === '2K') {
+                width = 2560; height = 1440;
+            } else if (exportSettings.resolution === '4K') {
+                width = 3840; height = 2160;
+            }
+
+            // Maintain aspect ratio
+            const aspect = video.videoWidth / video.videoHeight;
+            if (width / height > aspect) {
+                width = height * aspect;
+            } else {
+                height = width / aspect;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+
+            // Setup MediaRecorder
+            const stream = canvas.captureStream(exportSettings.fps);
+
+            // Add Audio Track if available
+            // Note: Capturing audio from video element to canvas stream is complex without WebAudio API
+            // For this implementation, we'll try to capture the video stream. 
+            // A robust solution would use AudioContext to mix audio.
+            // Simplified: We will mute audio in export for now or try to add track if possible.
+            // Let's try to get audio track from video capture if possible, but cross-origin might block.
+            // Assuming local file, we might be able to use captureStream on video element but we need to draw to canvas for filters.
+
+            // We'll proceed with video-only export for stability in this prototype phase, 
+            // or try to add the audio track from the video element to the stream.
+            // const audioCtx = new AudioContext();
+            // const source = audioCtx.createMediaElementSource(video);
+            // const dest = audioCtx.createMediaStreamDestination();
+            // source.connect(dest);
+            // const audioTrack = dest.stream.getAudioTracks()[0];
+            // if (audioTrack) stream.addTrack(audioTrack);
+
+            const mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: exportSettings.resolution === '4K' ? 25000000 : 8000000
+            });
+
+            const chunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `govyral_export_${Date.now()}.webm`;
+                a.click();
+                setIsExporting(false);
+                isExportingRef.current = false;
+            };
+
+            mediaRecorder.start();
+
+            // Playback and Record
+            video.currentTime = trimRange.start;
+            video.play();
+
+            const processFrame = () => {
+                if (video.currentTime >= trimRange.end || video.paused) {
+                    mediaRecorder.stop();
+                    video.pause();
+                    return;
+                }
+
+                // Apply Filters to Context
+                ctx.filter = getFilterString();
+                ctx.drawImage(video, 0, 0, width, height);
+
+                // Update Progress
+                const progress = ((video.currentTime - trimRange.start) / (trimRange.end - trimRange.start)) * 100;
+                setExportProgress(Math.min(100, progress));
+
+                requestAnimationFrame(processFrame);
+            };
+
+            processFrame();
+
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Export failed. Please try a lower resolution.");
+            setIsExporting(false);
+            isExportingRef.current = false;
+        }
+    };
+
+
+    // --- Render Upload Screen ---
+    if (!localMediaFile) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-4">
+                <div className="w-full max-w-md bg-[#1a1a1f] rounded-3xl border border-white/10 p-8 text-center relative">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+
+                    <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto mb-6">
+                        <Video size={32} className="text-blue-400" />
+                    </div>
+
+                    <h2 className="text-2xl font-bold text-white mb-2">Media Editor</h2>
+                    <p className="text-white/50 mb-8">Upload a video or image to start editing.</p>
+
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileSelect}
+                        accept="image/*,video/*"
+                        className="hidden"
+                    />
+
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Upload size={20} />
+                        Select File
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // --- Render Editor ---
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-4 md:p-8">
+
+            {/* SVG Filters Definition */}
+            <svg className="hidden">
+                <defs>
+                    <filter id="sharpen">
+                        <feConvolveMatrix
+                            order="3"
+                            preserveAlpha="true"
+                            kernelMatrix={`
+                                0 -${adjustments.sharpen / 100} 0
+                                -${adjustments.sharpen / 100} ${1 + (4 * (adjustments.sharpen / 100))} -${adjustments.sharpen / 100}
+                                0 -${adjustments.sharpen / 100} 0
+                            `}
+                        />
+                    </filter>
+                </defs>
+            </svg>
+
+            {/* Export Modal */}
+            {showExportModal && (
+                <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="w-full max-w-md bg-[#1a1a1f] rounded-3xl border border-white/10 p-6 shadow-2xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-white">Export Settings</h3>
+                            <button onClick={() => setShowExportModal(false)} className="text-white/50 hover:text-white">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* Resolution */}
+                            <div className="space-y-3">
+                                <label className="flex items-center gap-2 text-sm font-medium text-white/70">
+                                    <Monitor size={16} /> Resolution
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {['HD', '2K', '4K'].map(res => (
+                                        <button
+                                            key={res}
+                                            onClick={() => setExportSettings(s => ({ ...s, resolution: res }))}
+                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.resolution === res
+                                                ? 'bg-blue-500 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
+                                                }`}
+                                        >
+                                            {res}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Frame Rate */}
+                            <div className="space-y-3">
+                                <label className="flex items-center gap-2 text-sm font-medium text-white/70">
+                                    <Film size={16} /> Frame Rate
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[24, 30, 60].map(fps => (
+                                        <button
+                                            key={fps}
+                                            onClick={() => setExportSettings(s => ({ ...s, fps }))}
+                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.fps === fps
+                                                ? 'bg-blue-500 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
+                                                }`}
+                                        >
+                                            {fps} FPS
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Color */}
+                            <div className="space-y-3">
+                                <label className="flex items-center gap-2 text-sm font-medium text-white/70">
+                                    <Palette size={16} /> Color Profile
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {['SDR', 'HDR'].map(color => (
+                                        <button
+                                            key={color}
+                                            onClick={() => setExportSettings(s => ({ ...s, color }))}
+                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.color === color
+                                                ? 'bg-blue-500 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
+                                                }`}
+                                        >
+                                            {color}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleExport}
+                                className="w-full py-4 bg-white text-black rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl mt-4"
+                            >
+                                <Download size={20} />
+                                Start Export
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Export Progress Overlay */}
+            {isExporting && (
+                <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
+                    <div className="w-20 h-20 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-6"></div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Exporting Video...</h3>
+                    <p className="text-white/50 mb-6">Please wait while we render your masterpiece.</p>
+                    <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${exportProgress}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-blue-400 font-mono mt-2">{Math.round(exportProgress)}%</p>
+                </div>
+            )}
+
+
             <div className="w-full max-w-6xl h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-3xl overflow-hidden border border-white/10 shadow-2xl">
 
                 {/* Left: Preview Area */}
-                <div className="flex-1 relative flex items-center justify-center bg-black/50 p-8">
+                <div className="flex-1 relative flex items-center justify-center bg-black/50 p-8 overflow-hidden group">
                     <button
                         onClick={onClose}
-                        className="absolute top-4 left-4 p-2 bg-black/40 hover:bg-white/10 rounded-full text-white/70 hover:text-white transition-colors z-10"
+                        className="absolute top-6 left-6 p-3 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-10"
                     >
                         <X size={24} />
                     </button>
 
                     <div
-                        className="relative overflow-hidden shadow-2xl transition-all duration-500"
+                        className="relative overflow-hidden shadow-2xl transition-all duration-300 ease-in-out"
                         style={{
                             ...getCropStyle(),
+                            maxHeight: '100%',
                             maxWidth: '100%',
-                            maxHeight: '100%'
+                            objectFit: 'contain'
                         }}
                     >
+                        {/* Grain Overlay */}
+                        {adjustments.grain > 0 && (
+                            <div
+                                className="absolute inset-0 pointer-events-none z-10 mix-blend-overlay"
+                                style={{
+                                    opacity: adjustments.grain / 100,
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
+                                }}
+                            ></div>
+                        )}
+
+                        {/* Vignette Overlay */}
+                        {adjustments.vignette > 0 && (
+                            <div
+                                className="absolute inset-0 pointer-events-none z-10"
+                                style={{
+                                    background: `radial-gradient(circle, transparent ${100 - adjustments.vignette}%, black 150%)`
+                                }}
+                            ></div>
+                        )}
+
                         {isVideo ? (
                             <video
                                 ref={videoRef}
                                 src={mediaUrl}
-                                className="w-full h-full"
-                                style={{ filter: getFilterString(), objectFit: 'inherit' }}
+                                className="w-full h-full object-contain"
+                                style={{ filter: getFilterString() }}
                                 onTimeUpdate={handleTimeUpdate}
                                 onLoadedMetadata={handleLoadedMetadata}
-                                loop
+                                onClick={togglePlay}
                                 playsInline
+                                loop
                             />
                         ) : (
                             <img
-                                ref={imageRef}
                                 src={mediaUrl}
-                                className="w-full h-full"
-                                style={{ filter: getFilterString(), objectFit: 'inherit' }}
+                                className="w-full h-full object-contain"
+                                style={{ filter: getFilterString() }}
                                 alt="Preview"
                             />
                         )}
 
-                        {/* Play Overlay (Video Only) */}
-                        {isVideo && (
+                        {/* Play Button Overlay */}
+                        {isVideo && !isPlaying && (
                             <div
-                                className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                                onClick={handlePlayPause}
+                                className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer"
+                                onClick={togglePlay}
                             >
-                                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shadow-xl border border-white/30">
-                                    {isPlaying ? <Pause size={32} className="text-white" fill="currentColor" /> : <Play size={32} className="text-white ml-1" fill="currentColor" />}
+                                <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shadow-xl border border-white/30 transition-transform hover:scale-105">
+                                    <Play size={40} className="text-white ml-2" fill="currentColor" />
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Bottom Controls (Video Only) */}
+                    {/* Video Controls (Bottom of Preview) */}
                     {isVideo && (
-                        <div className="absolute bottom-8 left-8 right-8 flex items-center gap-4 bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                            <button onClick={handlePlayPause} className="text-white hover:text-blue-400 transition-colors">
+                        <div className="absolute bottom-8 left-8 right-8 flex items-center gap-4 bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                            <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
                                 {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
                             </button>
-                            <span className="text-xs font-mono text-white/70">
-                                {new Date(currentTime * 1000).toISOString().substr(14, 5)} / {new Date(duration * 1000).toISOString().substr(14, 5)}
+                            <span className="text-xs font-mono text-white/70 min-w-[80px]">
+                                {formatTime(currentTime)} / {formatTime(duration)}
                             </span>
                             <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-blue-500"
+                                    className="h-full bg-blue-500 rounded-full relative"
                                     style={{ width: `${(currentTime / duration) * 100}%` }}
-                                />
+                                >
+                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-lg"></div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -164,140 +634,389 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 <div className="w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col">
 
                     {/* Header */}
-                    <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                        <div>
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                {isVideo ? <Video size={18} className="text-blue-400" /> : <ImageIcon size={18} className="text-purple-400" />}
+                    <div className="p-6 border-b border-white/5">
+                        <div className="flex items-center justify-between mb-1">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Video size={20} className="text-blue-500" />
                                 Media Editor
-                            </h3>
-                            <p className="text-xs text-white/40 mt-1">Adjust and enhance your content</p>
+                            </h2>
+                            <button
+                                onClick={() => {
+                                    setAdjustments(initialAdjustments);
+                                    setActiveFilterId('normal');
+                                    setCrop('original');
+                                }}
+                                className="p-2 hover:bg-white/5 rounded-full text-white/50 hover:text-white transition-colors"
+                                title="Reset All"
+                            >
+                                <RotateCcw size={16} />
+                            </button>
                         </div>
-                        <button
-                            onClick={resetFilters}
-                            className="p-2 hover:bg-white/5 rounded-lg text-white/50 hover:text-white transition-colors"
-                            title="Reset All"
-                        >
-                            <RotateCcw size={18} />
-                        </button>
+                        <p className="text-sm text-white/40">Adjust and enhance your content</p>
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex p-2 gap-2 border-b border-white/5">
-                        <button
-                            onClick={() => setActiveTab('filters')}
-                            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === 'filters' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-                        >
-                            <Sliders size={16} /> Filters
-                        </button>
-                        {isVideo && (
+                    <div className="flex p-2 gap-2 border-b border-white/5 overflow-x-auto custom-scrollbar">
+                        {[
+                            { id: 'adjust', icon: Sliders, label: 'Adjust' },
+                            { id: 'filters', icon: Wand2, label: 'Filters' },
+                            { id: 'trim', icon: Scissors, label: 'Trim', disabled: !isVideo },
+                            { id: 'crop', icon: Crop, label: 'Crop' }
+                        ].map(tab => (
                             <button
-                                onClick={() => setActiveTab('trim')}
-                                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === 'trim' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                                key={tab.id}
+                                onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                                disabled={tab.disabled}
+                                className={`
+                                    flex-1 min-w-[80px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap
+                                    ${activeTab === tab.id
+                                        ? 'bg-white/10 text-white shadow-lg'
+                                        : 'text-white/40 hover:text-white hover:bg-white/5'
+                                    }
+                                    ${tab.disabled ? 'opacity-30 cursor-not-allowed' : ''}
+                                `}
                             >
-                                <Scissors size={16} /> Trim
+                                <tab.icon size={16} />
+                                {tab.label}
                             </button>
-                        )}
-                        <button
-                            onClick={() => setActiveTab('crop')}
-                            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeTab === 'crop' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-                        >
-                            <Crop size={16} /> Crop
-                        </button>
+                        ))}
                     </div>
 
-                    {/* Content */}
-                    <div className="flex-1 p-6 overflow-y-auto custom-scrollbar">
+                    {/* Content Area */}
+                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
 
-                        {activeTab === 'filters' && (
-                            <div className="space-y-6">
-                                {[
-                                    { label: 'Brightness', key: 'brightness', min: 0, max: 200 },
-                                    { label: 'Contrast', key: 'contrast', min: 0, max: 200 },
-                                    { label: 'Saturation', key: 'saturation', min: 0, max: 200 },
-                                    { label: 'Sepia', key: 'sepia', min: 0, max: 100 },
-                                    { label: 'Grayscale', key: 'grayscale', min: 0, max: 100 },
-                                ].map((filter) => (
-                                    <div key={filter.key}>
-                                        <div className="flex justify-between mb-2">
-                                            <label className="text-xs font-medium text-white/70">{filter.label}</label>
-                                            <span className="text-xs text-blue-400 font-mono">{filters[filter.key]}%</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min={filter.min}
-                                            max={filter.max}
-                                            value={filters[filter.key]}
-                                            onChange={(e) => setFilters({ ...filters, [filter.key]: Number(e.target.value) })}
-                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-lg hover:[&::-webkit-slider-thumb]:scale-110 transition-all"
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        {/* Adjust Tab */}
+                        {activeTab === 'adjust' && (
+                            <div className="space-y-4 animate-slide-up">
 
-                        {activeTab === 'trim' && isVideo && (
-                            <div className="space-y-6">
-                                <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                                    <p className="text-sm text-white/60 mb-4">Adjust the start and end time of your video loop.</p>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-xs text-white/50 block mb-1">Start Point</label>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={trimRange[0]}
-                                                onChange={(e) => setTrimRange([Math.min(Number(e.target.value), trimRange[1] - 5), trimRange[1]])}
-                                                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-green-500 [&::-webkit-slider-thumb]:rounded-full"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-white/50 block mb-1">End Point</label>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="100"
-                                                value={trimRange[1]}
-                                                onChange={(e) => setTrimRange([trimRange[0], Math.max(Number(e.target.value), trimRange[0] + 5)])}
-                                                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-red-500 [&::-webkit-slider-thumb]:rounded-full"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'crop' && (
-                            <div className="grid grid-cols-2 gap-4">
-                                {[
-                                    { label: 'Original', value: 'original', icon: <ImageIcon size={16} /> },
-                                    { label: 'Story (9:16)', value: '9:16', icon: <div className="w-3 h-5 border border-current rounded-sm" /> },
-                                    { label: 'Post (16:9)', value: '16:9', icon: <div className="w-5 h-3 border border-current rounded-sm" /> },
-                                    { label: 'Square (1:1)', value: '1:1', icon: <div className="w-4 h-4 border border-current rounded-sm" /> },
-                                ].map((ratio) => (
+                                {/* Light Section */}
+                                <div className="space-y-4">
                                     <button
-                                        key={ratio.value}
-                                        onClick={() => setCropRatio(ratio.value)}
-                                        className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${cropRatio === ratio.value ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-white/5 border-white/5 text-white/60 hover:bg-white/10 hover:text-white'}`}
+                                        onClick={() => toggleSection('light')}
+                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
                                     >
-                                        {ratio.icon}
-                                        <span className="text-xs font-medium">{ratio.label}</span>
+                                        <span>Light</span>
+                                        {expandedSections.light ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+
+                                    {expandedSections.light && (
+                                        <div className="space-y-4 pl-2 border-l border-white/5">
+                                            {[
+                                                { label: 'Exposure', key: 'exposure', min: -100, max: 100 },
+                                                { label: 'Contrast', key: 'contrast', min: -100, max: 100 },
+                                                { label: 'Brightness', key: 'brightness', min: -100, max: 100 },
+                                                { label: 'Highlights', key: 'highlights', min: -100, max: 100 },
+                                                { label: 'Shadows', key: 'shadows', min: -100, max: 100 },
+                                                { label: 'Whites', key: 'whites', min: -100, max: 100 },
+                                                { label: 'Blacks', key: 'blacks', min: -100, max: 100 },
+                                            ].map((adj) => (
+                                                <div key={adj.key} className="space-y-2">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-white/60">{adj.label}</span>
+                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={adj.min}
+                                                        max={adj.max}
+                                                        value={adjustments[adj.key]}
+                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
+                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Color Section */}
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <button
+                                        onClick={() => toggleSection('color')}
+                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
+                                    >
+                                        <span>Color</span>
+                                        {expandedSections.color ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+
+                                    {expandedSections.color && (
+                                        <div className="space-y-4 pl-2 border-l border-white/5">
+                                            {[
+                                                { label: 'Saturation', key: 'saturation', min: -100, max: 100 },
+                                                { label: 'Vibrance', key: 'vibrance', min: -100, max: 100 },
+                                                { label: 'Temp', key: 'temp', min: -100, max: 100 },
+                                                { label: 'Tint', key: 'tint', min: -100, max: 100 },
+                                            ].map((adj) => (
+                                                <div key={adj.key} className="space-y-2">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-white/60">{adj.label}</span>
+                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={adj.min}
+                                                        max={adj.max}
+                                                        value={adjustments[adj.key]}
+                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
+                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* HSL Section */}
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <button
+                                        onClick={() => toggleSection('hsl')}
+                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
+                                    >
+                                        <span>HSL</span>
+                                        {expandedSections.hsl ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+
+                                    {expandedSections.hsl && (
+                                        <div className="space-y-4 pl-2 border-l border-white/5">
+                                            {[
+                                                { label: 'Hue', key: 'hue', min: -180, max: 180 },
+                                                { label: 'Saturation', key: 'hslSaturation', min: -100, max: 100 },
+                                                { label: 'Lightness', key: 'hslLightness', min: -100, max: 100 },
+                                            ].map((adj) => (
+                                                <div key={adj.key} className="space-y-2">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-white/60">{adj.label}</span>
+                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={adj.min}
+                                                        max={adj.max}
+                                                        value={adjustments[adj.key]}
+                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
+                                                        className={`w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full ${adj.key === 'hue' ? '[&::-webkit-slider-thumb]:bg-white bg-gradient-to-r from-red-500 via-green-500 to-blue-500' : '[&::-webkit-slider-thumb]:bg-blue-500'}`}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Style Section */}
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <button
+                                        onClick={() => toggleSection('style')}
+                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
+                                    >
+                                        <span>Style</span>
+                                        {expandedSections.style ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+
+                                    {expandedSections.style && (
+                                        <div className="space-y-4 pl-2 border-l border-white/5">
+                                            {[
+                                                { label: 'Sharpen', key: 'sharpen', min: 0, max: 100 },
+                                                { label: 'Noise Reduction', key: 'blur', min: 0, max: 100 },
+                                                { label: 'Fade', key: 'fade', min: 0, max: 100 },
+                                                { label: 'Vignette', key: 'vignette', min: 0, max: 100 },
+                                                { label: 'Grain', key: 'grain', min: 0, max: 100 },
+                                            ].map((adj) => (
+                                                <div key={adj.key} className="space-y-2">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-white/60">{adj.label}</span>
+                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={adj.min}
+                                                        max={adj.max}
+                                                        value={adjustments[adj.key]}
+                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
+                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Effects Section */}
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <button
+                                        onClick={() => toggleSection('effects')}
+                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
+                                    >
+                                        <span>Effects</span>
+                                        {expandedSections.effects ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+
+                                    {expandedSections.effects && (
+                                        <div className="space-y-4 pl-2 border-l border-white/5">
+                                            {[
+                                                { label: 'Clarity', key: 'clarity', min: 0, max: 100 },
+                                                { label: 'Sepia', key: 'sepia', min: 0, max: 100 },
+                                                { label: 'Grayscale', key: 'grayscale', min: 0, max: 100 },
+                                            ].map((adj) => (
+                                                <div key={adj.key} className="space-y-2">
+                                                    <div className="flex justify-between text-xs">
+                                                        <span className="text-white/60">{adj.label}</span>
+                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={adj.min}
+                                                        max={adj.max}
+                                                        value={adjustments[adj.key]}
+                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
+                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                            </div>
+                        )}
+
+                        {/* Filters Tab */}
+                        {activeTab === 'filters' && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-slide-up">
+                                {FILTER_PRESETS.map((filter) => (
+                                    <button
+                                        key={filter.id}
+                                        onClick={() => applyFilter(filter)}
+                                        className={`
+                                            p-3 rounded-xl border transition-all flex flex-col items-center gap-2 text-center
+                                            ${activeFilterId === filter.id
+                                                ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
+                                            }
+                                        `}
+                                    >
+                                        <div className="w-full aspect-square rounded-lg overflow-hidden bg-black/50 relative">
+                                            {/* Preview of filter effect (simplified) */}
+                                            <div
+                                                className="absolute inset-0 bg-gradient-to-br from-purple-500 to-blue-500"
+                                                style={{
+                                                    filter: `
+                                                        brightness(${100 + (filter.values.brightness || 0)}%)
+                                                        contrast(${100 + (filter.values.contrast || 0)}%)
+                                                        saturate(${100 + (filter.values.saturation || 0)}%)
+                                                        sepia(${(filter.values.sepia || 0)}%)
+                                                        grayscale(${(filter.values.grayscale || 0)}%)
+                                                        hue-rotate(${(filter.values.hue || 0) + (filter.values.tint || 0)}deg)
+                                                    `
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="text-xs font-medium">{filter.name}</span>
                                     </button>
                                 ))}
                             </div>
                         )}
 
+                        {/* Trim Tab */}
+                        {activeTab === 'trim' && isVideo && (
+                            <div className="space-y-6 animate-slide-up">
+                                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                    <div className="flex justify-between mb-4">
+                                        <div className="text-center">
+                                            <div className="text-xs text-white/40 mb-1">Start Time</div>
+                                            <div className="font-mono text-xl text-white">{formatTime(trimRange.start)}</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-xs text-white/40 mb-1">End Time</div>
+                                            <div className="font-mono text-xl text-white">{formatTime(trimRange.end)}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Custom Drag Trimmer */}
+                                    <div
+                                        ref={trimTrackRef}
+                                        className="relative h-12 bg-black/40 rounded-lg mb-2 flex items-center px-2 select-none touch-none"
+                                    >
+                                        <div className="absolute left-0 right-0 h-1 bg-white/20 rounded-full mx-2"></div>
+
+                                        {/* Active Range Bar */}
+                                        <div
+                                            className="absolute h-1 bg-blue-500 rounded-full mx-2"
+                                            style={{
+                                                left: `${(trimRange.start / duration) * 100}%`,
+                                                right: `${100 - (trimRange.end / duration) * 100}%`
+                                            }}
+                                        ></div>
+
+                                        {/* Start Handle */}
+                                        <div
+                                            onPointerDown={(e) => handleTrimPointerDown(e, 'start')}
+                                            className="absolute w-6 h-8 bg-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center hover:scale-110 transition-transform"
+                                            style={{ left: `calc(${(trimRange.start / duration) * 100}% + 8px - 12px)` }} // Center handle
+                                        >
+                                            <div className="w-1 h-4 bg-black/20 rounded-full"></div>
+                                        </div>
+
+                                        {/* End Handle */}
+                                        <div
+                                            onPointerDown={(e) => handleTrimPointerDown(e, 'end')}
+                                            className="absolute w-6 h-8 bg-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center hover:scale-110 transition-transform"
+                                            style={{ left: `calc(${(trimRange.end / duration) * 100}% + 8px - 12px)` }} // Center handle
+                                        >
+                                            <div className="w-1 h-4 bg-black/20 rounded-full"></div>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-center text-white/30">Drag handles to trim video</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Crop Tab */}
+                        {activeTab === 'crop' && (
+                            <div className="grid grid-cols-2 gap-4 animate-slide-up">
+                                {[
+                                    { id: 'original', label: 'Original', ratio: 'Auto' },
+                                    { id: '16:9', label: 'Landscape', ratio: '16:9' },
+                                    { id: '9:16', label: 'Portrait', ratio: '9:16' },
+                                    { id: '1:1', label: 'Square', ratio: '1:1' },
+                                    { id: '4:5', label: 'Social', ratio: '4:5' },
+                                ].map((option) => (
+                                    <button
+                                        key={option.id}
+                                        onClick={() => setCrop(option.id)}
+                                        className={`
+                                            p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
+                                            ${crop === option.id
+                                                ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
+                                            }
+                                        `}
+                                    >
+                                        <div className={`
+                                            border-2 rounded-sm mb-1
+                                            ${crop === option.id ? 'border-blue-400' : 'border-current'}
+                                        `} style={{
+                                                width: '24px',
+                                                height: option.id === '16:9' ? '14px' : option.id === '9:16' ? '32px' : option.id === '1:1' ? '24px' : '24px',
+                                                aspectRatio: option.id === 'original' ? 'auto' : option.id.replace(':', '/')
+                                            }}></div>
+                                        <span className="text-sm font-medium">{option.label}</span>
+                                        <span className="text-xs opacity-50">{option.ratio}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Footer */}
-                    <div className="p-6 border-t border-white/5 bg-black/20">
-                        <button className="w-full py-3 bg-white text-black rounded-xl font-bold hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 shadow-xl shadow-white/5">
-                            <Download size={18} /> Export {isVideo ? 'Video' : 'Image'}
-                            <span className="text-xs font-normal bg-black/10 px-2 py-0.5 rounded-full text-black/60">Concept</span>
+                    <div className="p-6 border-t border-white/5 bg-[#0f0f12]">
+                        <button
+                            onClick={() => setShowExportModal(true)}
+                            className="w-full py-4 bg-white text-black rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl"
+                        >
+                            <Download size={20} />
+                            Export Video
                         </button>
                     </div>
-
                 </div>
             </div>
         </div>
