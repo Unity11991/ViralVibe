@@ -19,6 +19,8 @@ import ProfileModal from './components/ProfileModal';
 import MediaEditor from './components/MediaEditor';
 import { supabase } from './lib/supabase';
 
+import ToolsModal from './components/ToolsModal';
+
 function App() {
   const [image, setImage] = useState(null);
   const [results, setResults] = useState(null);
@@ -28,6 +30,20 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showToolsModal, setShowToolsModal] = useState(false);
+
+  const handleToolSelect = (toolId) => {
+    setShowToolsModal(false);
+    if (toolId === 'video-editor') {
+      setShowMediaEditor(true);
+      // If we want to clear the current image when opening from tools, we can:
+      // setImage(null); 
+      // But keeping it might be useful if they just generated something.
+      // However, the requirement implies standalone usage.
+      // If we don't clear it, MediaEditor will use `image` prop.
+      // Let's modify MediaEditor usage below to handle this.
+    }
+  };
 
   // ... (rest of the component)
 
@@ -474,7 +490,13 @@ function App() {
         onClose={() => setShowProfileModal(false)}
       />
 
-      {showMediaEditor && image && (
+      <ToolsModal
+        isOpen={showToolsModal}
+        onClose={() => setShowToolsModal(false)}
+        onSelectTool={handleToolSelect}
+      />
+
+      {showMediaEditor && (
         <MediaEditor
           mediaFile={image}
           onClose={() => setShowMediaEditor(false)}
@@ -533,6 +555,7 @@ function App() {
             onLoginClick={() => setShowAuthModal(true)}
             onProfileClick={() => setShowProfileModal(true)}
             guestUsageCount={guestUsageCount}
+            onToolsClick={() => setShowToolsModal(true)}
           />
         </header>
 
