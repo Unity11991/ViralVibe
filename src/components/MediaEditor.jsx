@@ -56,6 +56,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
     const [crop, setCrop] = useState('original');
 
     const videoRef = useRef(null);
+    const imgRef = useRef(null);
     const [localMediaFile, setLocalMediaFile] = useState(mediaFile);
     const fileInputRef = useRef(null);
 
@@ -270,6 +271,59 @@ const MediaEditor = ({ mediaFile, onClose }) => {
         try {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
+
+            if (!isVideo) {
+                try {
+                    const img = new Image();
+                    img.src = mediaUrl;
+                    await new Promise((resolve, reject) => {
+                        if (img.complete) resolve();
+                        else {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                        }
+                    });
+
+                    // Limit max dimension to avoid canvas size limits on mobile (e.g. 4096)
+                    let width = img.naturalWidth;
+                    let height = img.naturalHeight;
+                    const maxDim = 4096;
+
+                    if (width > maxDim || height > maxDim) {
+                        const ratio = width / height;
+                        if (width > height) {
+                            width = maxDim;
+                            height = maxDim / ratio;
+                        } else {
+                            height = maxDim;
+                            width = maxDim * ratio;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    // Apply filters
+                    ctx.filter = getFilterString();
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const url = canvas.toDataURL('image/png', 0.9); // Use 0.9 quality
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `govyral_export_${Date.now()}.png`;
+                    a.click();
+                    setIsExporting(false);
+                    isExportingRef.current = false;
+                    return;
+                } catch (imgError) {
+                    console.error("Image export error:", imgError);
+                    alert(`Image Export Failed: ${imgError.message || "Unknown error"}`);
+                    setIsExporting(false);
+                    isExportingRef.current = false;
+                    return;
+                }
+            }
+
             const video = videoRef.current;
 
             // Set Resolution
@@ -558,7 +612,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             <div className="w-full max-w-6xl h-[100dvh] md:h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-none md:rounded-3xl overflow-hidden border-0 md:border border-white/10 shadow-2xl">
 
                 {/* Left: Preview Area */}
-                <div className="flex-none h-[40vh] md:h-auto md:flex-1 relative flex items-center justify-center bg-black/50 p-4 md:p-8 overflow-hidden group border-b border-white/10 md:border-b-0">
+                <div className="flex-none h-[50vh] md:h-auto md:flex-1 relative flex items-center justify-center bg-black/50 p-4 md:p-8 overflow-hidden group border-b border-white/10 md:border-b-0">
                     <button
                         onClick={onClose}
                         className="absolute top-6 left-6 p-3 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-10"
@@ -610,6 +664,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                             />
                         ) : (
                             <img
+                                ref={imgRef}
                                 src={mediaUrl}
                                 className="w-full h-full object-contain"
                                 style={{ filter: getFilterString() }}
@@ -1029,13 +1084,13 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     </div>
 
                     {/* Footer */}
-                    <div className="p-6 border-t border-white/5 bg-[#0f0f12]">
+                    <div className="p-4 border-t border-white/5 bg-[#0f0f12]">
                         <button
                             onClick={() => setShowExportModal(true)}
-                            className="w-full py-4 bg-white text-black rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl"
+                            className="w-full py-3 bg-white text-black rounded-xl font-bold text-base hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl"
                         >
-                            <Download size={20} />
-                            Export Video
+                            <Download size={18} />
+                            Export
                         </button>
                     </div>
                 </div>
