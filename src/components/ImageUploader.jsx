@@ -2,18 +2,34 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, X, Image as ImageIcon, Sparkles, Video } from 'lucide-react';
 
-const ImageUploader = ({ onImageSelect, isAnalyzing }) => {
+const ImageUploader = ({ onImageSelect, isAnalyzing, onEdit, selectedFile }) => {
     const [preview, setPreview] = useState(null);
     const [fileType, setFileType] = useState(null); // 'image' or 'video'
     const [isDragging, setIsDragging] = useState(false);
 
+    // Sync state with selectedFile prop
+    useEffect(() => {
+        if (selectedFile) {
+            const objectUrl = URL.createObjectURL(selectedFile);
+            setPreview(objectUrl);
+            setFileType(selectedFile.type.startsWith('video/') ? 'video' : 'image');
+
+            // Cleanup when file changes
+            return () => URL.revokeObjectURL(objectUrl);
+        } else {
+            setPreview(null);
+            setFileType(null);
+        }
+    }, [selectedFile]);
+
     const onDrop = useCallback((acceptedFiles) => {
         const file = acceptedFiles[0];
         if (file) {
-            const objectUrl = URL.createObjectURL(file);
-            setPreview(objectUrl);
-            setFileType(file.type.startsWith('video/') ? 'video' : 'image');
-            onImageSelect(file, objectUrl);
+            // We don't set preview here directly anymore if we rely on the prop,
+            // but for immediate feedback we might want to, or just let the parent update propagate.
+            // Better to let parent update propagate if we are fully controlled, 
+            // but onImageSelect updates parent state, which updates selectedFile prop.
+            onImageSelect(file, URL.createObjectURL(file));
         }
     }, [onImageSelect]);
 
@@ -83,15 +99,26 @@ const ImageUploader = ({ onImageSelect, isAnalyzing }) => {
                         </div>
 
                         {/* Overlay Actions */}
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
-                            <button
-                                onClick={clearImage}
-                                className="flex items-center gap-2 px-6 py-3 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 backdrop-blur-md transition-all hover:scale-105"
-                            >
-                                <X size={18} />
-                                <span className="font-medium">Remove {fileType === 'video' ? 'Video' : 'Image'}</span>
-                            </button>
-                            <p className="mt-4 text-white/60 text-sm">Click or drop to replace</p>
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0 gap-3">
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onEdit && onEdit();
+                                    }}
+                                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/30 transition-all hover:scale-105"
+                                >
+                                    <Sparkles size={18} />
+                                    <span className="font-bold">Edit</span>
+                                </button>
+                                <button
+                                    onClick={clearImage}
+                                    className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 backdrop-blur-md transition-all hover:scale-105"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <p className="mt-2 text-white/60 text-sm">Click or drop to replace</p>
                         </div>
 
                         {/* Status Badge */}

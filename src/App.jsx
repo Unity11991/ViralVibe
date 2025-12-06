@@ -102,6 +102,7 @@ function App() {
     if (!user) {
       setCoinBalance(100);
       setHistory([]);
+      setCurrentView('home');
       return;
     }
 
@@ -524,6 +525,8 @@ function App() {
                 <ImageUploader
                   onImageSelect={handleImageSelect}
                   isAnalyzing={isAnalyzing}
+                  onEdit={() => setShowMediaEditor(true)}
+                  selectedFile={image}
                 />
 
                 <OptionsPanel
