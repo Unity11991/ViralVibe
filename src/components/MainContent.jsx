@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Sparkles, AlertCircle, Zap } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import { ResultsSection } from './ResultCard';
@@ -35,6 +35,18 @@ const MainContent = ({
     guestUsageCount,
     setShowToolsModal
 }) => {
+    const resultsRef = useRef(null);
+
+    // Auto-scroll to results on mobile when results are generated
+    useEffect(() => {
+        if (results && resultsRef.current && window.innerWidth < 1024) { // 1024px is the lg breakpoint
+            // Small delay to ensure rendering is complete
+            setTimeout(() => {
+                resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+    }, [results]);
+
     return (
         <div className="flex flex-col min-h-screen">
             <div className="flex-1 max-w-[1600px] mx-auto p-4 lg:p-8 w-full flex flex-col">
@@ -139,7 +151,10 @@ const MainContent = ({
                         </div>
 
                         {/* Right Column: Results (Scrollable) */}
-                        <div className={`lg:col-span-7 h-full glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
+                        <div
+                            ref={resultsRef}
+                            className={`lg:col-span-7 h-full glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}
+                        >
                             {results ? (
                                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
                                     <ResultsSection
