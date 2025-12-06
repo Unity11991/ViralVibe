@@ -439,8 +439,15 @@ function App() {
       setShowAuthModal(true);
       return;
     }
+    const userDetails = {
+      name: user.user_metadata?.full_name || user.email?.split('@')[0] || "GoVyral User",
+      email: user.email,
+      contact: user.phone || "" // Assuming phone might be available
+    };
+
     initializePayment(
       price,
+      userDetails,
       async (response) => {
         const newBalance = coinBalance + coins;
         setCoinBalance(newBalance);
