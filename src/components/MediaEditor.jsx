@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
+import Cropper from 'react-cropper';
+import 'cropperjs/dist/cropper.css';
 import { X, Play, Pause, RotateCcw, Check, Sliders, Scissors, Crop, Download, Upload, Video, ChevronDown, ChevronRight, Wand2, Settings, Monitor, Film, Palette } from 'lucide-react';
 import { FILTER_PRESETS } from '../utils/filterPresets';
 
@@ -55,12 +55,12 @@ const MediaEditor = ({ mediaFile, onClose }) => {
     const trimTrackRef = useRef(null);
 
     // --- Crop State ---
-    const [crop, setCrop] = useState({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
-    const [completedCrop, setCompletedCrop] = useState(null);
-    const [aspect, setAspect] = useState(undefined); // undefined for Free
+    const cropperRef = useRef(null);
     const [cropPreset, setCropPreset] = useState('original'); // 'original', '16:9', etc.
+    const [videoPoster, setVideoPoster] = useState(null); // For video cropping
+    const [rotation, setRotation] = useState(0);
+    const [zoom, setZoom] = useState(1);
 
-    const imgRef = useRef(null);
     const videoRef = useRef(null);
     const [localMediaFile, setLocalMediaFile] = useState(mediaFile);
     const fileInputRef = useRef(null);
@@ -82,6 +82,23 @@ const MediaEditor = ({ mediaFile, onClose }) => {
         if (localMediaFile) {
             const url = URL.createObjectURL(localMediaFile);
             setMediaUrl(url);
+
+            // Generate poster for video cropping
+            if (localMediaFile.type.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.src = url;
+                video.currentTime = 0.1; // Capture first frame
+                video.onloadeddata = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    setVideoPoster(canvas.toDataURL());
+                };
+            } else {
+                setVideoPoster(null);
+            }
+
             return () => URL.revokeObjectURL(url);
         }
     }, [localMediaFile]);
@@ -209,35 +226,12 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             case '9:16': newAspect = 9 / 16; break;
             case '1:1': newAspect = 1; break;
             case '4:5': newAspect = 4 / 5; break;
-            case 'original': newAspect = undefined; break;
-            default: newAspect = undefined;
+            case 'original': newAspect = NaN; break; // NaN for Free/Original in cropperjs
+            default: newAspect = NaN;
         }
-        setAspect(newAspect);
 
-        if (newAspect && (imgRef.current || videoRef.current)) {
-            const media = imgRef.current || videoRef.current;
-            const { width, height } = media.getBoundingClientRect(); // Or natural dimensions if available
-            // Use natural dimensions for calculation if possible, but ReactCrop works with displayed dimensions usually?
-            // Actually ReactCrop works with % or px.
-            // Let's just reset to center crop.
-            const c = centerCrop(
-                makeAspectCrop(
-                    {
-                        unit: '%',
-                        width: 90,
-                    },
-                    newAspect,
-                    width,
-                    height
-                ),
-                width,
-                height
-            );
-            setCrop(c);
-            setCompletedCrop(c);
-        } else {
-            setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
-            setCompletedCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+        if (cropperRef.current && cropperRef.current.cropper) {
+            cropperRef.current.cropper.setAspectRatio(newAspect);
         }
     };
 
@@ -311,71 +305,58 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             const ctx = canvas.getContext('2d');
 
             if (!isVideo) {
-                try {
-                    const img = new Image();
-                    img.src = mediaUrl;
-                    await new Promise((resolve, reject) => {
-                        if (img.complete) resolve();
-                        else {
-                            img.onload = resolve;
-                            img.onerror = reject;
-                        }
+                // Image Export using Cropper's built-in method
+                if (cropperRef.current && cropperRef.current.cropper) {
+                    const croppedCanvas = cropperRef.current.cropper.getCroppedCanvas({
+                        maxWidth: 4096,
+                        maxHeight: 4096,
+                        fillColor: '#000000', // Fill transparent areas if any
+                        imageSmoothingEnabled: true,
+                        imageSmoothingQuality: 'high',
                     });
 
-                    // Limit max dimension to avoid canvas size limits on mobile (e.g. 4096)
-                    let width = img.naturalWidth;
-                    let height = img.naturalHeight;
-                    const maxDim = 4096;
-
-                    if (width > maxDim || height > maxDim) {
-                        const ratio = width / height;
-                        if (width > height) {
-                            width = maxDim;
-                            height = maxDim / ratio;
-                        } else {
-                            height = maxDim;
-                            width = maxDim * ratio;
-                        }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    // Apply Crop
-                    let srcX = 0, srcY = 0, srcW = width, srcH = height;
-                    if (completedCrop) {
-                        // completedCrop is in pixels if we used px unit, or % if %.
-                        // ReactCrop returns both usually? No, it returns what you use.
-                        // But we can convert.
-                        // Actually, let's use the helper to get pixel crop.
-                        // Wait, completedCrop from ReactCrop contains x, y, width, height.
-                        // If unit is %, we need to convert to pixels based on NATURAL dimensions.
-
-                        const scaleX = img.naturalWidth / imgRef.current.width;
-                        const scaleY = img.naturalHeight / imgRef.current.height;
-
-                        // If using %
-                        if (completedCrop.unit === '%') {
-                            srcX = (completedCrop.x / 100) * img.naturalWidth;
-                            srcY = (completedCrop.y / 100) * img.naturalHeight;
-                            srcW = (completedCrop.width / 100) * img.naturalWidth;
-                            srcH = (completedCrop.height / 100) * img.naturalHeight;
-                        } else {
-                            srcX = completedCrop.x * scaleX;
-                            srcY = completedCrop.y * scaleY;
-                            srcW = completedCrop.width * scaleX;
-                            srcH = completedCrop.height * scaleY;
-                        }
-                    }
-
-                    canvas.width = srcW;
-                    canvas.height = srcH;
+                    canvas.width = croppedCanvas.width;
+                    canvas.height = croppedCanvas.height;
 
                     // Apply filters
                     ctx.filter = getFilterString();
-                    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+                    ctx.drawImage(croppedCanvas, 0, 0);
 
-                    const url = canvas.toDataURL('image/png', 0.9); // Use 0.9 quality
+                    // Apply Vignette
+                    if (adjustments.vignette > 0) {
+                        const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.2, canvas.width / 2, canvas.height / 2, canvas.width * 0.8);
+                        gradient.addColorStop(0, 'rgba(0,0,0,0)');
+                        gradient.addColorStop(1, `rgba(0,0,0,${adjustments.vignette / 100})`);
+                        ctx.fillStyle = gradient;
+                        ctx.globalCompositeOperation = 'multiply';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.globalCompositeOperation = 'source-over';
+                    }
+
+                    // Apply Grain
+                    if (adjustments.grain > 0) {
+                        const noiseCanvas = document.createElement('canvas');
+                        noiseCanvas.width = 200;
+                        noiseCanvas.height = 200;
+                        const noiseCtx = noiseCanvas.getContext('2d');
+
+                        const idata = noiseCtx.createImageData(200, 200);
+                        const buffer32 = new Uint32Array(idata.data.buffer);
+                        for (let i = 0; i < buffer32.length; i++) {
+                            if (Math.random() < 0.5) buffer32[i] = 0xff000000;
+                        }
+                        noiseCtx.putImageData(idata, 0, 0);
+
+                        const pattern = ctx.createPattern(noiseCanvas, 'repeat');
+                        ctx.fillStyle = pattern;
+                        ctx.globalAlpha = adjustments.grain / 100 * 0.5;
+                        ctx.globalCompositeOperation = 'overlay';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.globalAlpha = 1.0;
+                        ctx.globalCompositeOperation = 'source-over';
+                    }
+
+                    const url = canvas.toDataURL('image/png', 0.9);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = `govyral_export_${Date.now()}.png`;
@@ -383,16 +364,17 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     setIsExporting(false);
                     isExportingRef.current = false;
                     return;
-                } catch (imgError) {
-                    console.error("Image export error:", imgError);
-                    alert(`Image Export Failed: ${imgError.message || "Unknown error"}`);
-                    setIsExporting(false);
-                    isExportingRef.current = false;
-                    return;
                 }
             }
 
+            // Video Export
             const video = videoRef.current;
+
+            // Get crop data from cropper (applied to the poster)
+            let cropData = null;
+            if (cropperRef.current && cropperRef.current.cropper) {
+                cropData = cropperRef.current.cropper.getData();
+            }
 
             // Set Resolution
             let width = video.videoWidth;
@@ -406,69 +388,37 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 width = 3840; height = 2160;
             }
 
-            // Apply Crop
-            let srcX = 0, srcY = 0, srcW = width, srcH = height;
-            if (completedCrop && videoRef.current) {
-                const scaleX = video.videoWidth / videoRef.current.offsetWidth;
-                const scaleY = video.videoHeight / videoRef.current.offsetHeight;
+            // Determine Source Rect (Crop)
+            let srcX = 0, srcY = 0, srcW = video.videoWidth, srcH = video.videoHeight;
 
-                if (completedCrop.unit === '%') {
-                    srcX = (completedCrop.x / 100) * video.videoWidth;
-                    srcY = (completedCrop.y / 100) * video.videoHeight;
-                    srcW = (completedCrop.width / 100) * video.videoWidth;
-                    srcH = (completedCrop.height / 100) * video.videoHeight;
-                } else {
-                    srcX = completedCrop.x * scaleX;
-                    srcY = completedCrop.y * scaleY;
-                    srcW = completedCrop.width * scaleX;
-                    srcH = completedCrop.height * scaleY;
-                }
+            if (cropData) {
+                srcX = cropData.x;
+                srcY = cropData.y;
+                srcW = cropData.width;
+                srcH = cropData.height;
             }
 
-            // Adjust resolution based on crop
-            // If user selected a specific resolution (e.g. 4K), we might want to scale the crop to that?
-            // For now, let's just use the crop size or scale to fit the target resolution while maintaining aspect.
-
-            // Simplified: Set canvas to target resolution, draw cropped video scaled to fit.
-            // But we need to respect the aspect ratio of the crop.
-
+            // Determine Destination Size (Fit to Resolution while maintaining aspect)
             const cropAspect = srcW / srcH;
+            let targetW = width;
+            let targetH = height;
 
-            if (exportSettings.resolution === 'HD') {
-                width = 1920; height = 1920 / cropAspect;
-            } else if (exportSettings.resolution === '2K') {
-                width = 2560; height = 2560 / cropAspect;
-            } else if (exportSettings.resolution === '4K') {
-                width = 3840; height = 3840 / cropAspect;
+            if (exportSettings.resolution !== 'Original') {
+                if (cropAspect > (width / height)) {
+                    targetH = width / cropAspect;
+                } else {
+                    targetW = height * cropAspect;
+                }
             } else {
-                // Native crop size
-                width = srcW;
-                height = srcH;
+                targetW = srcW;
+                targetH = srcH;
             }
 
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = targetW;
+            canvas.height = targetH;
 
             // Setup MediaRecorder
             const stream = canvas.captureStream(exportSettings.fps);
-
-            // Add Audio Track if available
-            // Note: Capturing audio from video element to canvas stream is complex without WebAudio API
-            // For this implementation, we'll try to capture the video stream. 
-            // A robust solution would use AudioContext to mix audio.
-            // Simplified: We will mute audio in export for now or try to add track if possible.
-            // Let's try to get audio track from video capture if possible, but cross-origin might block.
-            // Assuming local file, we might be able to use captureStream on video element but we need to draw to canvas for filters.
-
-            // We'll proceed with video-only export for stability in this prototype phase, 
-            // or try to add the audio track from the video element to the stream.
-            // const audioCtx = new AudioContext();
-            // const source = audioCtx.createMediaElementSource(video);
-            // const dest = audioCtx.createMediaStreamDestination();
-            // source.connect(dest);
-            // const audioTrack = dest.stream.getAudioTracks()[0];
-            // if (audioTrack) stream.addTrack(audioTrack);
-
             const mediaRecorder = new MediaRecorder(stream, {
                 mimeType: 'video/webm;codecs=vp9',
                 videoBitsPerSecond: exportSettings.resolution === '4K' ? 25000000 : 8000000
@@ -499,6 +449,22 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             video.currentTime = trimRange.start;
             video.play();
 
+            // Pre-generate noise canvas for video
+            let noisePattern = null;
+            if (adjustments.grain > 0) {
+                const noiseCanvas = document.createElement('canvas');
+                noiseCanvas.width = 200;
+                noiseCanvas.height = 200;
+                const noiseCtx = noiseCanvas.getContext('2d');
+                const idata = noiseCtx.createImageData(200, 200);
+                const buffer32 = new Uint32Array(idata.data.buffer);
+                for (let i = 0; i < buffer32.length; i++) {
+                    if (Math.random() < 0.5) buffer32[i] = 0xff000000;
+                }
+                noiseCtx.putImageData(idata, 0, 0);
+                noisePattern = ctx.createPattern(noiseCanvas, 'repeat');
+            }
+
             const processFrame = () => {
                 if (video.currentTime >= trimRange.end || video.paused) {
                     mediaRecorder.stop();
@@ -506,11 +472,32 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     return;
                 }
 
-                // Apply Filters to Context
+                // Apply Filters
                 ctx.filter = getFilterString();
-                // Apply Filters to Context
-                ctx.filter = getFilterString();
-                ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, width, height);
+
+                // Draw cropped video frame
+                ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
+
+                // Apply Vignette
+                if (adjustments.vignette > 0) {
+                    const gradient = ctx.createRadialGradient(targetW / 2, targetH / 2, targetW * 0.2, targetW / 2, targetH / 2, targetW * 0.8);
+                    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+                    gradient.addColorStop(1, `rgba(0,0,0,${adjustments.vignette / 100})`);
+                    ctx.fillStyle = gradient;
+                    ctx.globalCompositeOperation = 'multiply';
+                    ctx.fillRect(0, 0, targetW, targetH);
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+
+                // Apply Grain
+                if (adjustments.grain > 0 && noisePattern) {
+                    ctx.fillStyle = noisePattern;
+                    ctx.globalAlpha = adjustments.grain / 100 * 0.5;
+                    ctx.globalCompositeOperation = 'overlay';
+                    ctx.fillRect(0, 0, targetW, targetH);
+                    ctx.globalAlpha = 1.0;
+                    ctx.globalCompositeOperation = 'source-over';
+                }
 
                 // Update Progress
                 const progress = ((video.currentTime - trimRange.start) / (trimRange.end - trimRange.start)) * 100;
@@ -720,60 +707,85 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             )}
 
 
-            <div className="w-full max-w-6xl h-[100dvh] md:h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-none md:rounded-3xl overflow-hidden border-0 md:border border-white/10 shadow-2xl">
+            <div className="w-full max-w-6xl h-[100dvh] md:h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-none md:rounded-3xl overflow-hidden border-0 md:border border-white/10 shadow-2xl relative">
+
+                {/* Close Button (Moved to top-right of container) */}
+
 
                 {/* Left: Preview Area */}
                 <div className="flex-none h-[50vh] md:h-auto md:flex-1 relative flex items-center justify-center bg-black/50 p-4 md:p-8 overflow-hidden group border-b border-white/10 md:border-b-0">
-                    <button
-                        onClick={onClose}
-                        className="absolute top-6 left-6 p-3 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-10"
-                    >
-                        <X size={24} />
-                    </button>
 
-                    <div className="relative w-full h-full flex items-center justify-center p-4">
-                        <ReactCrop
-                            crop={crop}
-                            onChange={(_, percentCrop) => setCrop(percentCrop)}
-                            onComplete={(c) => setCompletedCrop(c)}
-                            aspect={aspect}
-                            style={{ maxWidth: '100%', maxHeight: '100%' }}
+
+                    <div className="relative w-full h-full flex items-center justify-center bg-black/50">
+
+                        {/* Close Button (Moved to top-right of Preview Area) */}
+                        <button
+                            onClick={onClose}
+                            className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-50 border border-white/10 shadow-xl"
                         >
-                            {isVideo ? (
+                            <X size={20} />
+                        </button>
+
+                        {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center z-0">
                                 <video
                                     ref={videoRef}
                                     src={mediaUrl}
                                     style={{
-                                        display: 'block',
                                         maxWidth: '100%',
-                                        maxHeight: '80vh',
-                                        filter: getFilterString()
+                                        maxHeight: '100%',
+                                        objectFit: 'contain'
                                     }}
-                                    onTimeUpdate={handleTimeUpdate}
-                                    onLoadedMetadata={handleLoadedMetadata}
-                                    onClick={togglePlay}
-                                    playsInline
-                                    loop
+                                    className="pointer-events-none"
                                 />
-                            ) : (
-                                <img
-                                    ref={imgRef}
-                                    src={mediaUrl}
-                                    alt="Preview"
-                                    style={{
-                                        display: 'block',
-                                        maxWidth: '100%',
-                                        maxHeight: '80vh',
-                                        filter: getFilterString()
-                                    }}
-                                    onLoad={(e) => {
-                                        const { width, height } = e.currentTarget;
-                                        // Ensure crop is valid on load
-                                        setCrop(prev => ({ ...prev, width: 100, height: 100 }));
-                                    }}
-                                />
-                            )}
-                        </ReactCrop>
+                            </div>
+                        )}
+
+                        <div className={`relative w-full h-full z-10 ${isVideo ? 'opacity-80' : ''}`}>
+                            <Cropper
+                                src={isVideo ? videoPoster : mediaUrl}
+                                style={{ height: '100%', width: '100%' }}
+                                initialAspectRatio={NaN}
+                                guides={true}
+                                ref={cropperRef}
+                                viewMode={1}
+                                dragMode="move"
+                                scalable={true}
+                                cropBoxMovable={true}
+                                cropBoxResizable={true}
+                                background={!isVideo}
+                                autoCropArea={1}
+                                checkCrossOrigin={false}
+                            />
+
+                            {/* Vignette Overlay */}
+                            <div
+                                className="absolute inset-0 pointer-events-none z-20"
+                                style={{
+                                    background: 'radial-gradient(circle, transparent 50%, black 140%)',
+                                    opacity: adjustments.vignette / 100,
+                                    mixBlendMode: 'multiply'
+                                }}
+                            />
+
+                            {/* Grain Overlay */}
+                            <div
+                                className="absolute inset-0 pointer-events-none z-20"
+                                style={{
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.5'/%3E%3C/svg%3E")`,
+                                    opacity: adjustments.grain / 100,
+                                    mixBlendMode: 'overlay'
+                                }}
+                            />
+
+                            {/* Dynamic Style for Filters */}
+                            <style>{`
+                                .cropper-view-box img, .cropper-canvas img {
+                                    filter: ${getFilterString()} !important;
+                                    transition: filter 0.2s ease;
+                                }
+                            `}</style>
+                        </div>
                     </div>
 
                     {/* Video Controls (Bottom of Preview) */}
@@ -1152,37 +1164,107 @@ const MediaEditor = ({ mediaFile, onClose }) => {
 
                         {/* Crop Tab */}
                         {activeTab === 'crop' && (
-                            <div className="grid grid-cols-2 gap-4 animate-slide-up">
-                                {[
-                                    { id: 'original', label: 'Free', ratio: 'Free' },
-                                    { id: '16:9', label: 'Landscape', ratio: '16:9' },
-                                    { id: '9:16', label: 'Portrait', ratio: '9:16' },
-                                    { id: '1:1', label: 'Square', ratio: '1:1' },
-                                    { id: '4:5', label: 'Social', ratio: '4:5' },
-                                ].map((option) => (
-                                    <button
-                                        key={option.id}
-                                        onClick={() => handleCropPresetChange(option.id)}
-                                        className={`
-                                            p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
-                                            ${cropPreset === option.id
-                                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
-                                            }
-                                        `}
-                                    >
-                                        <div className={`
-                                            border-2 rounded-sm mb-1
-                                            ${cropPreset === option.id ? 'border-blue-400' : 'border-current'}
-                                        `} style={{
-                                                width: '24px',
-                                                height: option.id === '16:9' ? '14px' : option.id === '9:16' ? '32px' : option.id === '1:1' ? '24px' : '24px',
-                                                aspectRatio: option.id === 'original' ? 'auto' : option.id.replace(':', '/')
-                                            }}></div>
-                                        <span className="text-sm font-medium">{option.label}</span>
-                                        <span className="text-xs opacity-50">{option.ratio}</span>
-                                    </button>
-                                ))}
+                            <div className="space-y-6 animate-slide-up">
+                                {/* Aspect Ratio Grid */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    {[
+                                        { id: 'original', label: 'Free', ratio: 'Free' },
+                                        { id: '16:9', label: 'Landscape', ratio: '16:9' },
+                                        { id: '9:16', label: 'Portrait', ratio: '9:16' },
+                                        { id: '1:1', label: 'Square', ratio: '1:1' },
+                                        { id: '4:5', label: 'Social', ratio: '4:5' },
+                                    ].map((option) => (
+                                        <button
+                                            key={option.id}
+                                            onClick={() => handleCropPresetChange(option.id)}
+                                            className={`
+                                                p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
+                                                ${cropPreset === option.id
+                                                    ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                    : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
+                                                }
+                                            `}
+                                        >
+                                            <div className={`
+                                                border-2 rounded-sm mb-1
+                                                ${cropPreset === option.id ? 'border-blue-400' : 'border-current'}
+                                            `} style={{
+                                                    width: '24px',
+                                                    height: option.id === '16:9' ? '14px' : option.id === '9:16' ? '32px' : option.id === '1:1' ? '24px' : '24px',
+                                                    aspectRatio: option.id === 'original' ? 'auto' : option.id.replace(':', '/')
+                                                }}></div>
+                                            <span className="text-sm font-medium">{option.label}</span>
+                                            <span className="text-xs opacity-50">{option.ratio}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Rotation & Zoom Controls */}
+                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-white/60">Rotation</span>
+                                            <span className="text-blue-400 font-mono">{rotation}°</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="-180"
+                                            max="180"
+                                            value={rotation}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setRotation(val);
+                                                if (cropperRef.current) cropperRef.current.cropper.rotateTo(val);
+                                            }}
+                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-white/60">Zoom</span>
+                                            <span className="text-blue-400 font-mono">{zoom.toFixed(1)}x</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0.1"
+                                            max="3"
+                                            step="0.1"
+                                            value={zoom}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setZoom(val);
+                                                if (cropperRef.current) cropperRef.current.cropper.zoomTo(val);
+                                            }}
+                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                        />
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setRotation(rotation - 90);
+                                                if (cropperRef.current) cropperRef.current.cropper.rotate(-90);
+                                            }}
+                                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white text-xs flex items-center justify-center gap-2"
+                                        >
+                                            <RotateCcw size={14} /> -90°
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setRotation(0);
+                                                setZoom(1);
+                                                if (cropperRef.current) {
+                                                    cropperRef.current.cropper.reset();
+                                                    setCropPreset('original');
+                                                }
+                                            }}
+                                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white text-xs"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
