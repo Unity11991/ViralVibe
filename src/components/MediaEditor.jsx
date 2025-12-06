@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { X, Play, Pause, RotateCcw, Check, Sliders, Scissors, Crop, Download, Upload, Video, ChevronDown, ChevronRight, Wand2, Settings, Monitor, Film, Palette } from 'lucide-react';
 import { FILTER_PRESETS } from '../utils/filterPresets';
 
@@ -53,10 +55,13 @@ const MediaEditor = ({ mediaFile, onClose }) => {
     const trimTrackRef = useRef(null);
 
     // --- Crop State ---
-    const [crop, setCrop] = useState('original');
+    const [crop, setCrop] = useState({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+    const [completedCrop, setCompletedCrop] = useState(null);
+    const [aspect, setAspect] = useState(undefined); // undefined for Free
+    const [cropPreset, setCropPreset] = useState('original'); // 'original', '16:9', etc.
 
-    const videoRef = useRef(null);
     const imgRef = useRef(null);
+    const videoRef = useRef(null);
     const [localMediaFile, setLocalMediaFile] = useState(mediaFile);
     const fileInputRef = useRef(null);
 
@@ -82,10 +87,13 @@ const MediaEditor = ({ mediaFile, onClose }) => {
     }, [localMediaFile]);
 
     // --- File Upload Handler ---
+    // --- File Upload Handler ---
     const handleFileSelect = (e) => {
-        const file = e.target.files[0];
-        if (file) {
+        if (e.target.files && e.target.files.length > 0) {
+            const file = e.target.files[0];
             setLocalMediaFile(file);
+            // Reset value to allow selecting the same file again
+            e.target.value = '';
         }
     };
 
@@ -193,13 +201,43 @@ const MediaEditor = ({ mediaFile, onClose }) => {
         return filterStr;
     };
 
-    const getCropStyle = () => {
-        switch (crop) {
-            case '16:9': return { aspectRatio: '16/9' };
-            case '9:16': return { aspectRatio: '9/16' };
-            case '1:1': return { aspectRatio: '1/1' };
-            case '4:5': return { aspectRatio: '4/5' };
-            default: return { width: '100%', height: '100%' };
+    const handleCropPresetChange = (preset) => {
+        setCropPreset(preset);
+        let newAspect;
+        switch (preset) {
+            case '16:9': newAspect = 16 / 9; break;
+            case '9:16': newAspect = 9 / 16; break;
+            case '1:1': newAspect = 1; break;
+            case '4:5': newAspect = 4 / 5; break;
+            case 'original': newAspect = undefined; break;
+            default: newAspect = undefined;
+        }
+        setAspect(newAspect);
+
+        if (newAspect && (imgRef.current || videoRef.current)) {
+            const media = imgRef.current || videoRef.current;
+            const { width, height } = media.getBoundingClientRect(); // Or natural dimensions if available
+            // Use natural dimensions for calculation if possible, but ReactCrop works with displayed dimensions usually?
+            // Actually ReactCrop works with % or px.
+            // Let's just reset to center crop.
+            const c = centerCrop(
+                makeAspectCrop(
+                    {
+                        unit: '%',
+                        width: 90,
+                    },
+                    newAspect,
+                    width,
+                    height
+                ),
+                width,
+                height
+            );
+            setCrop(c);
+            setCompletedCrop(c);
+        } else {
+            setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+            setCompletedCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
         }
     };
 
@@ -303,9 +341,39 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     canvas.width = width;
                     canvas.height = height;
 
+                    // Apply Crop
+                    let srcX = 0, srcY = 0, srcW = width, srcH = height;
+                    if (completedCrop) {
+                        // completedCrop is in pixels if we used px unit, or % if %.
+                        // ReactCrop returns both usually? No, it returns what you use.
+                        // But we can convert.
+                        // Actually, let's use the helper to get pixel crop.
+                        // Wait, completedCrop from ReactCrop contains x, y, width, height.
+                        // If unit is %, we need to convert to pixels based on NATURAL dimensions.
+
+                        const scaleX = img.naturalWidth / imgRef.current.width;
+                        const scaleY = img.naturalHeight / imgRef.current.height;
+
+                        // If using %
+                        if (completedCrop.unit === '%') {
+                            srcX = (completedCrop.x / 100) * img.naturalWidth;
+                            srcY = (completedCrop.y / 100) * img.naturalHeight;
+                            srcW = (completedCrop.width / 100) * img.naturalWidth;
+                            srcH = (completedCrop.height / 100) * img.naturalHeight;
+                        } else {
+                            srcX = completedCrop.x * scaleX;
+                            srcY = completedCrop.y * scaleY;
+                            srcW = completedCrop.width * scaleX;
+                            srcH = completedCrop.height * scaleY;
+                        }
+                    }
+
+                    canvas.width = srcW;
+                    canvas.height = srcH;
+
                     // Apply filters
                     ctx.filter = getFilterString();
-                    ctx.drawImage(img, 0, 0, width, height);
+                    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
 
                     const url = canvas.toDataURL('image/png', 0.9); // Use 0.9 quality
                     const a = document.createElement('a');
@@ -338,12 +406,44 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 width = 3840; height = 2160;
             }
 
-            // Maintain aspect ratio
-            const aspect = video.videoWidth / video.videoHeight;
-            if (width / height > aspect) {
-                width = height * aspect;
+            // Apply Crop
+            let srcX = 0, srcY = 0, srcW = width, srcH = height;
+            if (completedCrop && videoRef.current) {
+                const scaleX = video.videoWidth / videoRef.current.offsetWidth;
+                const scaleY = video.videoHeight / videoRef.current.offsetHeight;
+
+                if (completedCrop.unit === '%') {
+                    srcX = (completedCrop.x / 100) * video.videoWidth;
+                    srcY = (completedCrop.y / 100) * video.videoHeight;
+                    srcW = (completedCrop.width / 100) * video.videoWidth;
+                    srcH = (completedCrop.height / 100) * video.videoHeight;
+                } else {
+                    srcX = completedCrop.x * scaleX;
+                    srcY = completedCrop.y * scaleY;
+                    srcW = completedCrop.width * scaleX;
+                    srcH = completedCrop.height * scaleY;
+                }
+            }
+
+            // Adjust resolution based on crop
+            // If user selected a specific resolution (e.g. 4K), we might want to scale the crop to that?
+            // For now, let's just use the crop size or scale to fit the target resolution while maintaining aspect.
+
+            // Simplified: Set canvas to target resolution, draw cropped video scaled to fit.
+            // But we need to respect the aspect ratio of the crop.
+
+            const cropAspect = srcW / srcH;
+
+            if (exportSettings.resolution === 'HD') {
+                width = 1920; height = 1920 / cropAspect;
+            } else if (exportSettings.resolution === '2K') {
+                width = 2560; height = 2560 / cropAspect;
+            } else if (exportSettings.resolution === '4K') {
+                width = 3840; height = 3840 / cropAspect;
             } else {
-                height = width / aspect;
+                // Native crop size
+                width = srcW;
+                height = srcH;
             }
 
             canvas.width = width;
@@ -408,7 +508,9 @@ const MediaEditor = ({ mediaFile, onClose }) => {
 
                 // Apply Filters to Context
                 ctx.filter = getFilterString();
-                ctx.drawImage(video, 0, 0, width, height);
+                // Apply Filters to Context
+                ctx.filter = getFilterString();
+                ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, width, height);
 
                 // Update Progress
                 const progress = ((video.currentTime - trimRange.start) / (trimRange.end - trimRange.start)) * 100;
@@ -472,6 +574,15 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                         Select File
                     </button>
                 </div>
+            </div>
+        );
+    }
+
+    // Show loader if mediaUrl is not ready yet
+    if (!mediaUrl) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl">
+                <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -620,69 +731,49 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                         <X size={24} />
                     </button>
 
-                    <div
-                        className="relative overflow-hidden shadow-2xl transition-all duration-300 ease-in-out"
-                        style={{
-                            ...getCropStyle(),
-                            maxHeight: '100%',
-                            maxWidth: '100%',
-                            objectFit: 'contain'
-                        }}
-                    >
-                        {/* Grain Overlay */}
-                        {adjustments.grain > 0 && (
-                            <div
-                                className="absolute inset-0 pointer-events-none z-10 mix-blend-overlay"
-                                style={{
-                                    opacity: adjustments.grain / 100,
-                                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
-                                }}
-                            ></div>
-                        )}
-
-                        {/* Vignette Overlay */}
-                        {adjustments.vignette > 0 && (
-                            <div
-                                className="absolute inset-0 pointer-events-none z-10"
-                                style={{
-                                    background: `radial-gradient(circle, transparent ${100 - adjustments.vignette}%, black 150%)`
-                                }}
-                            ></div>
-                        )}
-
-                        {isVideo ? (
-                            <video
-                                ref={videoRef}
-                                src={mediaUrl}
-                                className="w-full h-full object-contain"
-                                style={{ filter: getFilterString() }}
-                                onTimeUpdate={handleTimeUpdate}
-                                onLoadedMetadata={handleLoadedMetadata}
-                                onClick={togglePlay}
-                                playsInline
-                                loop
-                            />
-                        ) : (
-                            <img
-                                ref={imgRef}
-                                src={mediaUrl}
-                                className="w-full h-full object-contain"
-                                style={{ filter: getFilterString() }}
-                                alt="Preview"
-                            />
-                        )}
-
-                        {/* Play Button Overlay */}
-                        {isVideo && !isPlaying && (
-                            <div
-                                className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer"
-                                onClick={togglePlay}
-                            >
-                                <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shadow-xl border border-white/30 transition-transform hover:scale-105">
-                                    <Play size={40} className="text-white ml-2" fill="currentColor" />
-                                </div>
-                            </div>
-                        )}
+                    <div className="relative w-full h-full flex items-center justify-center p-4">
+                        <ReactCrop
+                            crop={crop}
+                            onChange={(_, percentCrop) => setCrop(percentCrop)}
+                            onComplete={(c) => setCompletedCrop(c)}
+                            aspect={aspect}
+                            style={{ maxWidth: '100%', maxHeight: '100%' }}
+                        >
+                            {isVideo ? (
+                                <video
+                                    ref={videoRef}
+                                    src={mediaUrl}
+                                    style={{
+                                        display: 'block',
+                                        maxWidth: '100%',
+                                        maxHeight: '80vh',
+                                        filter: getFilterString()
+                                    }}
+                                    onTimeUpdate={handleTimeUpdate}
+                                    onLoadedMetadata={handleLoadedMetadata}
+                                    onClick={togglePlay}
+                                    playsInline
+                                    loop
+                                />
+                            ) : (
+                                <img
+                                    ref={imgRef}
+                                    src={mediaUrl}
+                                    alt="Preview"
+                                    style={{
+                                        display: 'block',
+                                        maxWidth: '100%',
+                                        maxHeight: '80vh',
+                                        filter: getFilterString()
+                                    }}
+                                    onLoad={(e) => {
+                                        const { width, height } = e.currentTarget;
+                                        // Ensure crop is valid on load
+                                        setCrop(prev => ({ ...prev, width: 100, height: 100 }));
+                                    }}
+                                />
+                            )}
+                        </ReactCrop>
                     </div>
 
                     {/* Video Controls (Bottom of Preview) */}
@@ -710,17 +801,31 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                 <div className="flex-1 md:flex-none w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col overflow-hidden">
 
                     {/* Header */}
-                    <div className="p-6 border-b border-white/5">
-                        <div className="flex items-center justify-between mb-1">
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <div className="p-4 md:p-6 border-b border-white/5 flex items-center justify-between">
+                        <div>
+                            <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2 mb-0.5">
                                 <Video size={20} className="text-blue-500" />
                                 Media Editor
                             </h2>
+                            <p className="text-xs md:text-sm text-white/40">Adjust and enhance</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            {/* Mobile Export Button */}
+                            <button
+                                onClick={() => setShowExportModal(true)}
+                                className="md:hidden px-3 py-1.5 bg-white text-black rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform"
+                            >
+                                <Download size={14} />
+                                Export
+                            </button>
+
                             <button
                                 onClick={() => {
                                     setAdjustments(initialAdjustments);
                                     setActiveFilterId('normal');
-                                    setCrop('original');
+                                    handleCropPresetChange('original');
+                                    setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
                                 }}
                                 className="p-2 hover:bg-white/5 rounded-full text-white/50 hover:text-white transition-colors"
                                 title="Reset All"
@@ -728,7 +833,6 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                                 <RotateCcw size={16} />
                             </button>
                         </div>
-                        <p className="text-sm text-white/40">Adjust and enhance your content</p>
                     </div>
 
                     {/* Tabs */}
@@ -1050,7 +1154,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                         {activeTab === 'crop' && (
                             <div className="grid grid-cols-2 gap-4 animate-slide-up">
                                 {[
-                                    { id: 'original', label: 'Original', ratio: 'Auto' },
+                                    { id: 'original', label: 'Free', ratio: 'Free' },
                                     { id: '16:9', label: 'Landscape', ratio: '16:9' },
                                     { id: '9:16', label: 'Portrait', ratio: '9:16' },
                                     { id: '1:1', label: 'Square', ratio: '1:1' },
@@ -1058,10 +1162,10 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                                 ].map((option) => (
                                     <button
                                         key={option.id}
-                                        onClick={() => setCrop(option.id)}
+                                        onClick={() => handleCropPresetChange(option.id)}
                                         className={`
                                             p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
-                                            ${crop === option.id
+                                            ${cropPreset === option.id
                                                 ? 'bg-blue-500/20 border-blue-500 text-white'
                                                 : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
                                             }
@@ -1069,7 +1173,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                                     >
                                         <div className={`
                                             border-2 rounded-sm mb-1
-                                            ${crop === option.id ? 'border-blue-400' : 'border-current'}
+                                            ${cropPreset === option.id ? 'border-blue-400' : 'border-current'}
                                         `} style={{
                                                 width: '24px',
                                                 height: option.id === '16:9' ? '14px' : option.id === '9:16' ? '32px' : option.id === '1:1' ? '24px' : '24px',
@@ -1084,7 +1188,7 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                     </div>
 
                     {/* Footer */}
-                    <div className="p-4 border-t border-white/5 bg-[#0f0f12]">
+                    <div className="hidden md:block p-4 border-t border-white/5 bg-[#0f0f12]">
                         <button
                             onClick={() => setShowExportModal(true)}
                             className="w-full py-3 bg-white text-black rounded-xl font-bold text-base hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl"
