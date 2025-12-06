@@ -1,6 +1,6 @@
-export const initializePayment = (amount, onSuccess, onError) => {
+export const initializePayment = (amount, userDetails, onSuccess, onError) => {
     const options = {
-        key: "rzp_test_Rn4uvcKe2ZeyhB", // Replace with your actual Razorpay Key ID
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID, // Replace with your actual Razorpay Key ID
         amount: Math.round(amount * 100), // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
         currency: "INR",
         name: "GoVyral",
@@ -14,9 +14,9 @@ export const initializePayment = (amount, onSuccess, onError) => {
             onSuccess(response);
         },
         prefill: {
-            name: "GoVyral User",
-            email: "user@govyral.ai",
-            contact: "+919304273185"
+            name: userDetails?.name || "GoVyral User",
+            email: userDetails?.email || "user@govyral.ai",
+            contact: userDetails?.contact || ""
         },
         notes: {
             address: "GoVyral Corporate Office"
