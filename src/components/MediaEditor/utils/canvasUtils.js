@@ -9,9 +9,11 @@
  * @param {HTMLImageElement|HTMLVideoElement} media - Media element
  * @param {Object} filters - Filter settings
  * @param {Object} transform - Transform settings (crop, rotation, zoom)
+ * @param {Object} canvasDimensions - Logical canvas dimensions
  */
-export const drawMediaToCanvas = (ctx, media, filters, transform = {}) => {
+export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null) => {
     const canvas = ctx.canvas;
+    const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
     const { crop = null, rotation = 0, zoom = 1 } = transform;
 
     ctx.save();
@@ -23,26 +25,34 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}) => {
     // Handle crop and transform
     if (crop) {
         const { x, y, width, height } = crop;
+        const mediaWidth = media.videoWidth || media.width;
+        const mediaHeight = media.videoHeight || media.height;
+
+        const sourceX = (x / 100) * mediaWidth;
+        const sourceY = (y / 100) * mediaHeight;
+        const sourceW = (width / 100) * mediaWidth;
+        const sourceH = (height / 100) * mediaHeight;
+
         ctx.drawImage(
             media,
-            x, y, width, height,
+            sourceX, sourceY, sourceW, sourceH,
             0, 0, canvas.width, canvas.height
         );
     } else {
         // Center and fit media
         const mediaAspect = media.videoWidth ? media.videoWidth / media.videoHeight : media.width / media.height;
-        const canvasAspect = canvas.width / canvas.height;
+        const canvasAspect = logicalWidth / logicalHeight;
 
         let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
 
         if (mediaAspect > canvasAspect) {
-            drawWidth = canvas.width * zoom;
-            drawHeight = (canvas.width / mediaAspect) * zoom;
-            offsetY = (canvas.height - drawHeight) / 2;
+            drawWidth = logicalWidth * zoom;
+            drawHeight = (logicalWidth / mediaAspect) * zoom;
+            offsetY = (logicalHeight - drawHeight) / 2;
         } else {
-            drawHeight = canvas.height * zoom;
-            drawWidth = (canvas.height * mediaAspect) * zoom;
-            offsetX = (canvas.width - drawWidth) / 2;
+            drawHeight = logicalHeight * zoom;
+            drawWidth = (logicalHeight * mediaAspect) * zoom;
+            offsetX = (logicalWidth - drawWidth) / 2;
         }
 
         ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
@@ -130,13 +140,15 @@ export const buildFilterString = (adjustments = {}) => {
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {number} intensity - Vignette intensity (0-100)
  */
-export const drawVignette = (ctx, intensity) => {
+export const drawVignette = (ctx, intensity, canvasDimensions = null) => {
     if (intensity <= 0) return;
 
     const canvas = ctx.canvas;
+    const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
+
     const gradient = ctx.createRadialGradient(
-        canvas.width / 2, canvas.height / 2, canvas.width * 0.2,
-        canvas.width / 2, canvas.height / 2, canvas.width * 0.8
+        logicalWidth / 2, logicalHeight / 2, logicalWidth * 0.2,
+        logicalWidth / 2, logicalHeight / 2, logicalWidth * 0.8
     );
 
     gradient.addColorStop(0, 'rgba(0,0,0,0)');
@@ -145,7 +157,7 @@ export const drawVignette = (ctx, intensity) => {
     ctx.save();
     ctx.fillStyle = gradient;
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
     ctx.restore();
 };
 
@@ -249,14 +261,17 @@ export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canv
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
 export const renderFrame = (ctx, media, state) => {
-    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform } = state;
+    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions } = state;
+
+    // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
+    const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
     // Draw base media with filters
-    drawMediaToCanvas(ctx, media, adjustments, transform);
+    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions);
 
     // Apply vignette
     if (vignette > 0) {
-        drawVignette(ctx, vignette);
+        drawVignette(ctx, vignette, dimensions);
     }
 
     // Apply grain
@@ -266,13 +281,45 @@ export const renderFrame = (ctx, media, state) => {
 
     // Draw text overlays
     textOverlays.forEach(textOverlay => {
-        drawTextOverlay(ctx, textOverlay, ctx.canvas.width, ctx.canvas.height);
+        let overlayToDraw = { ...textOverlay };
+
+        // Adjust for crop if active
+        if (transform.crop) {
+            const { x, y, width, height } = transform.crop;
+
+            // Calculate scale factors relative to the crop area
+            const scaleX = 100 / width;
+            const scaleY = 100 / height;
+
+            // Transform position: relative to crop origin, then scaled up
+            overlayToDraw.x = (textOverlay.x - x) * scaleX;
+            overlayToDraw.y = (textOverlay.y - y) * scaleY;
+
+            // Scale font size
+            overlayToDraw.fontSize = textOverlay.fontSize * scaleY; // Use Y scale for uniform scaling
+        }
+
+        drawTextOverlay(ctx, overlayToDraw, dimensions.width, dimensions.height);
     });
 
     // Draw stickers
     stickers.forEach((sticker, index) => {
         if (stickerImages[index]) {
-            drawStickerOverlay(ctx, sticker, stickerImages[index], ctx.canvas.width, ctx.canvas.height);
+            let stickerToDraw = { ...sticker };
+
+            // Adjust for crop if active
+            if (transform.crop) {
+                const { x, y, width, height } = transform.crop;
+
+                const scaleX = 100 / width;
+                const scaleY = 100 / height;
+
+                stickerToDraw.x = (sticker.x - x) * scaleX;
+                stickerToDraw.y = (sticker.y - y) * scaleY;
+                stickerToDraw.scale = sticker.scale * scaleY;
+            }
+
+            drawStickerOverlay(ctx, stickerToDraw, stickerImages[index], dimensions.width, dimensions.height);
         }
     });
 };

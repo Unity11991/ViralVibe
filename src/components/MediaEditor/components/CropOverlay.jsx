@@ -111,12 +111,14 @@ export const CropOverlay = ({
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
 
+        e.target.setPointerCapture(e.pointerId);
         setIsDragging(true);
         setDragStart({ x, y });
     };
 
     const handleResizeStart = (e, position) => {
         e.stopPropagation();
+        e.target.setPointerCapture(e.pointerId);
         setIsResizing(position);
     };
 
@@ -162,7 +164,8 @@ export const CropOverlay = ({
                     left: `${x}%`,
                     top: `${y}%`,
                     width: `${width}%`,
-                    height: `${height}%`
+                    height: `${height}%`,
+                    touchAction: 'none'
                 }}
             >
                 {/* Grid lines */}
@@ -195,7 +198,8 @@ export const CropOverlay = ({
                                 ...positionStyles[position],
                                 width: isCorner ? '14px' : '10px',
                                 height: isCorner ? '14px' : '10px',
-                                borderRadius: isCorner ? '4px' : '3px'
+                                borderRadius: isCorner ? '4px' : '3px',
+                                touchAction: 'none'
                             }}
                         />
                     );

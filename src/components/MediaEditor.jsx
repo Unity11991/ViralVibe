@@ -34,6 +34,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
 
     const {
         canvasRef,
+        canvasDimensions,
         initializeCanvas,
         render
     } = useCanvasRenderer(mediaElementRef, mediaType);
@@ -81,6 +82,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
 
     const fileInputRef = useRef(null);
     const containerRef = useRef(null);
+    const previewContainerRef = useRef(null);
 
     // Load initial media
     useEffect(() => {
@@ -89,24 +91,58 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
         }
     }, [initialMediaFile, loadMedia]);
 
-    // Initialize canvas when media loads
+    // Load Google Fonts
     useEffect(() => {
-        if (mediaUrl && mediaElementRef.current && containerRef.current) {
-            const container = containerRef.current;
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Arimo&family=Cabin&family=Concert+One&family=Dosis&family=Fira+Sans&family=Inconsolata&family=Karla&family=Lato&family=Lora&family=Merriweather&family=Montserrat&family=Mulish&family=Noto+Sans&family=Nunito&family=Open+Sans&family=Oswald&family=Oxygen&family=PT+Sans&family=Pacifico&family=Playfair+Display&family=Poppins&family=Quicksand&family=Raleway&family=Roboto&family=Rubik&family=Slabo+27px&family=Source+Sans+Pro&family=Titillium+Web&family=Ubuntu&family=Work+Sans&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+
+        return () => {
+            document.head.removeChild(link);
+        };
+    }, []);
+
+    // Initialize canvas when media loads and handle resizing
+    useEffect(() => {
+        if (!mediaUrl || !mediaElementRef.current || !previewContainerRef.current) return;
+
+        const updateCanvasSize = () => {
+            const container = previewContainerRef.current;
+            if (!container) return;
+
             const mediaAspect = mediaElementRef.current.videoWidth
                 ? mediaElementRef.current.videoWidth / mediaElementRef.current.videoHeight
                 : mediaElementRef.current.width / mediaElementRef.current.height;
 
+            // Use 90% of container width/height to leave some padding
+            const maxWidth = container.clientWidth * 0.9;
+            const maxHeight = container.clientHeight * 0.9;
+
             initializeCanvas(
-                container.clientWidth * 0.6,
-                container.clientHeight - 100,
+                maxWidth,
+                maxHeight,
                 mediaAspect
             );
+        };
 
-            if (isVideo) {
-                setTrimRange({ start: 0, end: videoDuration });
-            }
+        // Initial sizing
+        updateCanvasSize();
+
+        // Handle resize
+        const resizeObserver = new ResizeObserver(() => {
+            updateCanvasSize();
+        });
+
+        resizeObserver.observe(previewContainerRef.current);
+
+        if (isVideo) {
+            setTrimRange({ start: 0, end: videoDuration });
         }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
     }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration]);
 
     // Render loop
@@ -120,7 +156,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
             textOverlays,
             stickers,
             stickerImages,
-            transform: { rotation, zoom }
+            transform: { rotation, zoom },
+            canvasDimensions
         };
 
         const interval = setInterval(() => {
@@ -128,7 +165,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
         }, 16); // ~60fps
 
         return () => clearInterval(interval);
-    }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef]);
+    }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef, canvasDimensions]);
 
     // Video playback handling
     useEffect(() => {
@@ -431,8 +468,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
                     </div>
 
                     {/* Canvas */}
-                    <div className="flex-1 p-4 overflow-hidden relative">
-                        <div className="relative w-full h-full flex items-center justify-center">
+                    <div className="flex-1 p-4 overflow-hidden relative flex items-center justify-center" ref={previewContainerRef}>
+                        <div className="relative flex items-center justify-center">
                             <EditorCanvas
                                 canvasRef={canvasRef}
                                 overlayRef={overlayRef}
@@ -475,7 +512,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
                 </div>
 
                 {/* Right: Tools */}
-                <div className="w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col overflow-hidden">
+                <div className="w-full h-[45vh] md:h-full md:w-[400px] bg-[#1a1a1f] border-t md:border-t-0 md:border-l border-white/5 flex flex-col overflow-hidden">
                     {/* Tabs */}
                     <div className="flex p-2 gap-2 border-b border-white/5 overflow-x-auto">
                         {[
