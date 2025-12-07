@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }) => {
         signUp: (data) => supabase.auth.signUp({
             ...data,
             options: {
-                emailRedirectTo: 'https://govyral.online/'
+                emailRedirectTo: window.location.origin
             }
         }),
         signIn: (data) => supabase.auth.signInWithPassword(data),
@@ -106,7 +106,22 @@ export const AuthProvider = ({ children }) => {
                 redirectTo: window.location.origin
             }
         }),
-        signOut: () => supabase.auth.signOut(),
+        signOut: async () => {
+            try {
+                await supabase.auth.signOut();
+            } catch (error) {
+                console.error("Error signing out:", error);
+            } finally {
+                setUser(null);
+                // Clear all Supabase related items from localStorage
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('sb-') || key.includes('supabase')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+                window.location.href = '/';
+            }
+        },
         user,
         loading
     };
