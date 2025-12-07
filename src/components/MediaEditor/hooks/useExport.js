@@ -37,9 +37,22 @@ export const useExport = (mediaElementRef, mediaType) => {
             const ctx = exportCanvas.getContext('2d');
 
             // Set export dimensions (high quality)
+            // Set export dimensions based on crop
             const media = mediaElementRef.current;
-            exportCanvas.width = media.width || media.videoWidth;
-            exportCanvas.height = media.height || media.videoHeight;
+            const originalWidth = media.width || media.videoWidth;
+            const originalHeight = media.height || media.videoHeight;
+
+            let exportWidth = originalWidth;
+            let exportHeight = originalHeight;
+
+            if (state.transform?.crop) {
+                const { width, height } = state.transform.crop;
+                exportWidth = (width / 100) * originalWidth;
+                exportHeight = (height / 100) * originalHeight;
+            }
+
+            exportCanvas.width = exportWidth;
+            exportCanvas.height = exportHeight;
 
             setExportProgress(30);
 
@@ -82,8 +95,40 @@ export const useExport = (mediaElementRef, mediaType) => {
             const video = mediaElementRef.current;
 
             // Set dimensions
-            exportCanvas.width = 1920; // HD by default
-            exportCanvas.height = 1080;
+            // Calculate dimensions based on crop and resolution
+            const originalWidth = video.videoWidth;
+            const originalHeight = video.videoHeight;
+
+            let cropWidth = originalWidth;
+            let cropHeight = originalHeight;
+
+            if (state.transform?.crop) {
+                const { width, height } = state.transform.crop;
+                cropWidth = (width / 100) * originalWidth;
+                cropHeight = (height / 100) * originalHeight;
+            }
+
+            const aspectRatio = cropWidth / cropHeight;
+
+            // Determine base size based on resolution setting
+            let baseSize = 1080; // HD
+            if (exportSettings.resolution === '2K') baseSize = 1440;
+            if (exportSettings.resolution === '4K') baseSize = 2160;
+
+            let exportWidth, exportHeight;
+
+            if (aspectRatio >= 1) {
+                // Landscape or Square
+                exportHeight = baseSize;
+                exportWidth = baseSize * aspectRatio;
+            } else {
+                // Portrait
+                exportWidth = baseSize;
+                exportHeight = baseSize / aspectRatio;
+            }
+
+            exportCanvas.width = Math.round(exportWidth);
+            exportCanvas.height = Math.round(exportHeight);
 
             // Setup MediaRecorder
             const mediaRecorder = setupMediaRecorder(

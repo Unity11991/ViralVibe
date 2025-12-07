@@ -4,6 +4,15 @@ import { Button, ColorPicker, Slider } from './UI';
 
 const COLOR_PRESETS = ['#ffffff', '#000000', '#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#ec4899'];
 
+const FONT_OPTIONS = [
+    'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
+    'Source Sans Pro', 'Slabo 27px', 'Raleway', 'PT Sans', 'Merriweather',
+    'Noto Sans', 'Nunito', 'Concert One', 'Ubuntu', 'Playfair Display',
+    'Rubik', 'Poppins', 'Lora', 'Karla', 'Mulish',
+    'Inconsolata', 'Fira Sans', 'Pacifico', 'Quicksand', 'Work Sans',
+    'Arimo', 'Titillium Web', 'Dosis', 'Oxygen', 'Cabin'
+];
+
 /**
  * Text Panel Component
  */
@@ -46,6 +55,24 @@ export const TextPanel = ({
                         presets={COLOR_PRESETS}
                     />
 
+                    {/* Font Family */}
+                    <div className="space-y-2">
+                        <label className="text-xs text-white/60">Font</label>
+                        <select
+                            value={activeText.fontFamily || 'Arial'}
+                            onChange={(e) => onUpdateText(activeText.id, { fontFamily: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                            style={{ fontFamily: activeText.fontFamily }}
+                        >
+                            <option value="Arial">Default (Arial)</option>
+                            {FONT_OPTIONS.map(font => (
+                                <option key={font} value={font} style={{ fontFamily: font }}>
+                                    {font}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* Font Size */}
                     <Slider
                         label="Size"
@@ -75,8 +102,8 @@ export const TextPanel = ({
                                     key={weight}
                                     onClick={() => onUpdateText(activeText.id, { fontWeight: weight })}
                                     className={`py-2 rounded-lg text-xs font-bold transition-all ${activeText.fontWeight === weight
-                                            ? 'bg-blue-500 text-white'
-                                            : 'bg-white/5 text-white/50 hover:bg-white/10'
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-white/5 text-white/50 hover:bg-white/10'
                                         }`}
                                 >
                                     {weight === 'normal' ? 'Regular' : weight === 'bold' ? 'Bold' : 'Black'}
