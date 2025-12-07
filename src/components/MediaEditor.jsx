@@ -1,288 +1,165 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import Cropper from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
-import { X, Play, Pause, RotateCcw, Check, Sliders, Scissors, Crop, Download, Upload, Video, ChevronDown, ChevronRight, Wand2, Settings, Monitor, Film, Palette } from 'lucide-react';
-import { FILTER_PRESETS } from '../utils/filterPresets';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Download, RotateCcw, Video, Sliders, Wand2, Type, Sticker, Crop, Scissors, Upload, Monitor, Film, Palette } from 'lucide-react';
+import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
+import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
+import { useOverlays } from './MediaEditor/hooks/useOverlays';
+import { useExport } from './MediaEditor/hooks/useExport';
+import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
+import { EditorCanvas } from './MediaEditor/components/EditorCanvas';
+import { VideoTimeline } from './MediaEditor/components/VideoTimeline';
+import { CropOverlay } from './MediaEditor/components/CropOverlay';
+import { AdjustPanel } from './MediaEditor/components/AdjustPanel';
+import { FilterPanel } from './MediaEditor/components/FilterPanel';
+import { TextPanel } from './MediaEditor/components/TextPanel';
+import { StickerPanel } from './MediaEditor/components/StickerPanel';
+import { CropPanel } from './MediaEditor/components/CropPanel';
+import { Button } from './MediaEditor/components/UI';
 
-const MediaEditor = ({ mediaFile, onClose }) => {
-    const [activeTab, setActiveTab] = useState('adjust'); // 'adjust', 'filters', 'trim', 'crop'
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
+/**
+ * MediaEditor - Professional Video & Image Editor
+ * Rebuilt from scratch with optimized performance and responsive design
+ */
+const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
+    // Hooks
+    const {
+        mediaFile,
+        mediaUrl,
+        mediaType,
+        videoDuration,
+        isLoading,
+        mediaElementRef,
+        loadMedia,
+        isVideo
+    } = useMediaProcessor();
 
-    // --- Export State ---
-    const [showExportModal, setShowExportModal] = useState(false);
-    const [isExporting, setIsExporting] = useState(false);
-    const [exportProgress, setExportProgress] = useState(0);
-    const [exportSettings, setExportSettings] = useState({
-        resolution: 'HD', // HD, 2K, 4K
-        fps: 30,          // 24, 30, 60
-        color: 'SDR'      // SDR, HDR
-    });
+    const {
+        canvasRef,
+        initializeCanvas,
+        render
+    } = useCanvasRenderer(mediaElementRef, mediaType);
 
-    // --- Adjustment State ---
-    const initialAdjustments = {
-        // Light
-        exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0, brightness: 0,
-        // Color
-        saturation: 0, vibrance: 0, temp: 0, tint: 0,
-        // HSL
-        hue: 0, hslSaturation: 0, hslLightness: 0,
-        // Effects
-        clarity: 0, sepia: 0, grayscale: 0,
-        // Style
-        sharpen: 0, blur: 0, vignette: 0, grain: 0, fade: 0
-    };
+    const {
+        textOverlays,
+        stickers,
+        stickerImages,
+        activeOverlayId,
+        isDraggingOverlay,
+        overlayRef,
+        addTextOverlay,
+        updateTextOverlay,
+        deleteOverlay,
+        addSticker,
+        updateSticker,
+        setActiveOverlayId,
+        startDragging,
+        updateOverlayPosition,
+        stopDragging
+    } = useOverlays();
 
-    const [adjustments, setAdjustments] = useState(initialAdjustments);
+    const {
+        isExporting,
+        exportProgress,
+        showExportModal,
+        exportSettings,
+        setShowExportModal,
+        setExportSettings,
+        handleExport,
+        cancelExport
+    } = useExport(mediaElementRef, mediaType);
+
+    // Editor State
+    const [activeTab, setActiveTab] = useState('adjust');
+    const [adjustments, setAdjustments] = useState(getInitialAdjustments());
     const [activeFilterId, setActiveFilterId] = useState('normal');
-
-    const [expandedSections, setExpandedSections] = useState({
-        light: true,
-        color: true,
-        hsl: false,
-        effects: false,
-        style: false
-    });
-
-    const toggleSection = (section) => {
-        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-    };
-
-    // --- Trim State ---
-    const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
-    const [isDraggingTrim, setIsDraggingTrim] = useState(null); // 'start' | 'end' | null
-    const trimTrackRef = useRef(null);
-
-    // --- Crop State ---
-    const cropperRef = useRef(null);
-    const [cropPreset, setCropPreset] = useState('original'); // 'original', '16:9', etc.
-    const [videoPoster, setVideoPoster] = useState(null); // For video cropping
+    const [cropPreset, setCropPreset] = useState('free');
+    const [cropData, setCropData] = useState({ x: 0, y: 0, width: 100, height: 100 });
     const [rotation, setRotation] = useState(0);
     const [zoom, setZoom] = useState(1);
+    const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
+    const [currentTime, setCurrentTime] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(false);
 
-    const videoRef = useRef(null);
-    const [localMediaFile, setLocalMediaFile] = useState(mediaFile);
     const fileInputRef = useRef(null);
+    const containerRef = useRef(null);
 
-    const isExportingRef = useRef(false);
-    const mediaRecorderRef = useRef(null);
-
-    // --- Initialization ---
+    // Load initial media
     useEffect(() => {
-        if (mediaFile) {
-            setLocalMediaFile(mediaFile);
+        if (initialMediaFile) {
+            loadMedia(initialMediaFile);
         }
-    }, [mediaFile]);
+    }, [initialMediaFile, loadMedia]);
 
-    const [mediaUrl, setMediaUrl] = useState(null);
-    const isVideo = localMediaFile?.type?.startsWith('video/');
-
+    // Initialize canvas when media loads
     useEffect(() => {
-        if (localMediaFile) {
-            const url = URL.createObjectURL(localMediaFile);
-            setMediaUrl(url);
+        if (mediaUrl && mediaElementRef.current && containerRef.current) {
+            const container = containerRef.current;
+            const mediaAspect = mediaElementRef.current.videoWidth
+                ? mediaElementRef.current.videoWidth / mediaElementRef.current.videoHeight
+                : mediaElementRef.current.width / mediaElementRef.current.height;
 
-            // Generate poster for video cropping
-            if (localMediaFile.type.startsWith('video/')) {
-                const video = document.createElement('video');
-                video.src = url;
-                video.currentTime = 0.1; // Capture first frame
-                video.onloadeddata = () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    canvas.getContext('2d').drawImage(video, 0, 0);
-                    setVideoPoster(canvas.toDataURL());
-                };
-            } else {
-                setVideoPoster(null);
-            }
+            initializeCanvas(
+                container.clientWidth * 0.6,
+                container.clientHeight - 100,
+                mediaAspect
+            );
 
-            return () => URL.revokeObjectURL(url);
-        }
-    }, [localMediaFile]);
-
-    // --- File Upload Handler ---
-    // --- File Upload Handler ---
-    const handleFileSelect = (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const file = e.target.files[0];
-            setLocalMediaFile(file);
-            // Reset value to allow selecting the same file again
-            e.target.value = '';
-        }
-    };
-
-    // --- Filter Application ---
-    const applyFilter = (filter) => {
-        setActiveFilterId(filter.id);
-        setAdjustments(prev => ({
-            ...initialAdjustments, // Reset base adjustments
-            ...filter.values // Apply preset values
-        }));
-    };
-
-    // --- Video Handlers ---
-    const handleLoadedMetadata = () => {
-        if (videoRef.current) {
-            setDuration(videoRef.current.duration);
-            setTrimRange({ start: 0, end: videoRef.current.duration });
-        }
-    };
-
-    const handleTimeUpdate = () => {
-        if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
-            // Loop trim range
-            if (!isExportingRef.current && videoRef.current.currentTime >= trimRange.end) {
-                videoRef.current.currentTime = trimRange.start;
-                videoRef.current.play();
+            if (isVideo) {
+                setTrimRange({ start: 0, end: videoDuration });
             }
         }
-    };
+    }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration]);
 
-    const togglePlay = () => {
-        if (videoRef.current) {
-            if (isPlaying) {
-                videoRef.current.pause();
-            } else {
-                videoRef.current.play();
+    // Render loop
+    useEffect(() => {
+        if (!mediaUrl || !canvasRef.current) return;
+
+        const renderState = {
+            adjustments,
+            vignette: adjustments.vignette,
+            grain: adjustments.grain,
+            textOverlays,
+            stickers,
+            stickerImages,
+            transform: { rotation, zoom }
+        };
+
+        const interval = setInterval(() => {
+            render(renderState);
+        }, 16); // ~60fps
+
+        return () => clearInterval(interval);
+    }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef]);
+
+    // Video playback handling
+    useEffect(() => {
+        const video = mediaElementRef.current;
+        if (!video || !isVideo) return;
+
+        const handleTimeUpdate = () => {
+            setCurrentTime(video.currentTime);
+            if (video.currentTime >= trimRange.end) {
+                video.pause();
+                setIsPlaying(false);
             }
-            setIsPlaying(!isPlaying);
-        }
-    };
+        };
 
-    // --- Filter Logic (CSS Approximation) ---
-    const getFilterString = () => {
-        // Base values (100% or 0deg)
-        let b = 100; // Brightness
-        let c = 100; // Contrast
-        let s = 100; // Saturation
-        let h = 0;   // Hue Rotate
-        let sep = 0; // Sepia
-        let g = 0;   // Grayscale
-        let blur = 0; // Blur (Noise Reduction)
-        let op = 100; // Opacity (Fade)
+        video.addEventListener('timeupdate', handleTimeUpdate);
+        return () => video.removeEventListener('timeupdate', handleTimeUpdate);
+    }, [mediaElementRef, isVideo, trimRange]);
 
-        // Light
-        b += adjustments.brightness + adjustments.exposure + (adjustments.whites / 2) - (adjustments.blacks / 2);
-        c += adjustments.contrast + (adjustments.clarity / 2);
-        b += adjustments.highlights / 3;
-        b += adjustments.shadows / 3;
-
-        // Color
-        s += adjustments.saturation + adjustments.vibrance + adjustments.hslSaturation;
-
-        // Temp/Tint
-        if (adjustments.temp > 0) {
-            sep += adjustments.temp / 2;
-            h += adjustments.temp / 5;
-        } else {
-            h += adjustments.temp / 2;
-        }
-        h += adjustments.tint;
-        h += adjustments.hue;
-
-        // HSL Lightness
-        b += adjustments.hslLightness;
-
-        // Effects
-        sep += adjustments.sepia;
-        g += adjustments.grayscale;
-
-        // Style
-        blur += adjustments.blur / 10; // Scale down blur
-
-        // Fade logic: Reduce contrast and lift brightness slightly, or reduce opacity
-        if (adjustments.fade > 0) {
-            c -= adjustments.fade / 2;
-            b += adjustments.fade / 5;
-        }
-
-        let filterStr = `
-            brightness(${Math.max(0, b)}%) 
-            contrast(${Math.max(0, c)}%) 
-            saturate(${Math.max(0, s)}%) 
-            sepia(${Math.min(100, Math.max(0, sep))}%) 
-            grayscale(${Math.min(100, Math.max(0, g))}%)
-            hue-rotate(${h}deg)
-            blur(${blur}px)
-        `;
-
-        // Append SVG filters if active
-        if (adjustments.sharpen > 0) {
-            filterStr += ` url(#sharpen)`;
-        }
-
-        return filterStr;
-    };
-
-    const handleCropPresetChange = (preset) => {
-        setCropPreset(preset);
-        let newAspect;
-        switch (preset) {
-            case '16:9': newAspect = 16 / 9; break;
-            case '9:16': newAspect = 9 / 16; break;
-            case '1:1': newAspect = 1; break;
-            case '4:5': newAspect = 4 / 5; break;
-            case 'original': newAspect = NaN; break; // NaN for Free/Original in cropperjs
-            default: newAspect = NaN;
-        }
-
-        if (cropperRef.current && cropperRef.current.cropper) {
-            cropperRef.current.cropper.setAspectRatio(newAspect);
-        }
-    };
-
-    const formatTime = (seconds) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    // --- Trimmer Interaction ---
-    const handleTrimPointerDown = (e, type) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDraggingTrim(type);
-
-        // Pause video while trimming
-        if (isPlaying && videoRef.current) {
-            videoRef.current.pause();
-            setIsPlaying(false);
-        }
-    };
-
+    // Overlay dragging
     useEffect(() => {
         const handlePointerMove = (e) => {
-            if (!isDraggingTrim || !trimTrackRef.current) return;
-
-            const rect = trimTrackRef.current.getBoundingClientRect();
-            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-            const percentage = x / rect.width;
-            const time = percentage * duration;
-
-            setTrimRange(prev => {
-                if (isDraggingTrim === 'start') {
-                    const newStart = Math.min(time, prev.end - 0.5); // Min 0.5s duration
-                    if (videoRef.current) videoRef.current.currentTime = newStart;
-                    setCurrentTime(newStart);
-                    return { ...prev, start: newStart };
-                } else {
-                    const newEnd = Math.max(time, prev.start + 0.5);
-                    if (videoRef.current) videoRef.current.currentTime = newEnd;
-                    setCurrentTime(newEnd);
-                    return { ...prev, end: newEnd };
-                }
-            });
+            if (isDraggingOverlay) {
+                updateOverlayPosition(isDraggingOverlay, e.clientX, e.clientY);
+            }
         };
 
         const handlePointerUp = () => {
-            setIsDraggingTrim(null);
+            stopDragging();
         };
 
-        if (isDraggingTrim) {
+        if (isDraggingOverlay) {
             window.addEventListener('pointermove', handlePointerMove);
             window.addEventListener('pointerup', handlePointerUp);
         }
@@ -291,253 +168,118 @@ const MediaEditor = ({ mediaFile, onClose }) => {
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
         };
-    }, [isDraggingTrim, duration]);
+    }, [isDraggingOverlay, updateOverlayPosition, stopDragging]);
 
-    // --- Export Logic ---
-    const handleExport = async () => {
-        setShowExportModal(false);
-        setIsExporting(true);
-        isExportingRef.current = true;
-        setExportProgress(0);
+    // Handlers
+    const handleFileSelect = (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            loadMedia(file);
+        }
+    };
 
-        try {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+    const handleFilterSelect = (filterId) => {
+        setActiveFilterId(filterId);
+        setAdjustments(applyFilterPreset(filterId));
+    };
 
-            if (!isVideo) {
-                // Image Export using Cropper's built-in method
-                if (cropperRef.current && cropperRef.current.cropper) {
-                    const croppedCanvas = cropperRef.current.cropper.getCroppedCanvas({
-                        maxWidth: 4096,
-                        maxHeight: 4096,
-                        fillColor: '#000000', // Fill transparent areas if any
-                        imageSmoothingEnabled: true,
-                        imageSmoothingQuality: 'high',
-                    });
+    const handlePlay = () => {
+        if (mediaElementRef.current) {
+            mediaElementRef.current.play();
+            setIsPlaying(true);
+        }
+    };
 
-                    canvas.width = croppedCanvas.width;
-                    canvas.height = croppedCanvas.height;
+    const handlePause = () => {
+        if (mediaElementRef.current) {
+            mediaElementRef.current.pause();
+            setIsPlaying(false);
+        }
+    };
 
-                    // Apply filters
-                    ctx.filter = getFilterString();
-                    ctx.drawImage(croppedCanvas, 0, 0);
+    const handleSeek = (time) => {
+        if (mediaElementRef.current) {
+            mediaElementRef.current.currentTime = time;
+            setCurrentTime(time);
+        }
+    };
 
-                    // Apply Vignette
-                    if (adjustments.vignette > 0) {
-                        const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.width * 0.2, canvas.width / 2, canvas.height / 2, canvas.width * 0.8);
-                        gradient.addColorStop(0, 'rgba(0,0,0,0)');
-                        gradient.addColorStop(1, `rgba(0,0,0,${adjustments.vignette / 100})`);
-                        ctx.fillStyle = gradient;
-                        ctx.globalCompositeOperation = 'multiply';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        ctx.globalCompositeOperation = 'source-over';
-                    }
+    const handleReset = () => {
+        setAdjustments(getInitialAdjustments());
+        setActiveFilterId('normal');
+        setRotation(0);
+        setZoom(1);
+        setCropPreset('free');
+        setCropData({ x: 0, y: 0, width: 100, height: 100 });
+    };
 
-                    // Apply Grain
-                    if (adjustments.grain > 0) {
-                        const noiseCanvas = document.createElement('canvas');
-                        noiseCanvas.width = 200;
-                        noiseCanvas.height = 200;
-                        const noiseCtx = noiseCanvas.getContext('2d');
+    const handleCropPresetChange = (presetId) => {
+        setCropPreset(presetId);
 
-                        const idata = noiseCtx.createImageData(200, 200);
-                        const buffer32 = new Uint32Array(idata.data.buffer);
-                        for (let i = 0; i < buffer32.length; i++) {
-                            if (Math.random() < 0.5) buffer32[i] = 0xff000000;
-                        }
-                        noiseCtx.putImageData(idata, 0, 0);
+        // Define aspect ratios for presets
+        const aspectRatios = {
+            'free': null,
+            '16:9': 16 / 9,
+            '9:16': 9 / 16,
+            '1:1': 1,
+            '4:5': 4 / 5
+        };
 
-                        const pattern = ctx.createPattern(noiseCanvas, 'repeat');
-                        ctx.fillStyle = pattern;
-                        ctx.globalAlpha = adjustments.grain / 100 * 0.5;
-                        ctx.globalCompositeOperation = 'overlay';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        ctx.globalAlpha = 1.0;
-                        ctx.globalCompositeOperation = 'source-over';
-                    }
+        const ratio = aspectRatios[presetId];
 
-                    const url = canvas.toDataURL('image/png', 0.9);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `govyral_export_${Date.now()}.png`;
-                    a.click();
-                    setIsExporting(false);
-                    isExportingRef.current = false;
-                    return;
-                }
-            }
+        if (ratio) {
+            // Calculate crop dimensions to fit aspect ratio
+            const currentAspect = cropData.width / cropData.height;
 
-            // Video Export
-            const video = videoRef.current;
-
-            // Get crop data from cropper (applied to the poster)
-            let cropData = null;
-            if (cropperRef.current && cropperRef.current.cropper) {
-                cropData = cropperRef.current.cropper.getData();
-            }
-
-            // Set Resolution
-            let width = video.videoWidth;
-            let height = video.videoHeight;
-
-            if (exportSettings.resolution === 'HD') {
-                width = 1920; height = 1080;
-            } else if (exportSettings.resolution === '2K') {
-                width = 2560; height = 1440;
-            } else if (exportSettings.resolution === '4K') {
-                width = 3840; height = 2160;
-            }
-
-            // Determine Source Rect (Crop)
-            let srcX = 0, srcY = 0, srcW = video.videoWidth, srcH = video.videoHeight;
-
-            if (cropData) {
-                srcX = cropData.x;
-                srcY = cropData.y;
-                srcW = cropData.width;
-                srcH = cropData.height;
-            }
-
-            // Determine Destination Size (Fit to Resolution while maintaining aspect)
-            const cropAspect = srcW / srcH;
-            let targetW = width;
-            let targetH = height;
-
-            if (exportSettings.resolution !== 'Original') {
-                if (cropAspect > (width / height)) {
-                    targetH = width / cropAspect;
-                } else {
-                    targetW = height * cropAspect;
-                }
+            if (ratio > currentAspect) {
+                // Wider - adjust height
+                const newHeight = cropData.width / ratio;
+                const newY = cropData.y + (cropData.height - newHeight) / 2;
+                setCropData({
+                    ...cropData,
+                    y: Math.max(0, newY),
+                    height: Math.min(newHeight, 100 - cropData.y)
+                });
             } else {
-                targetW = srcW;
-                targetH = srcH;
+                // Taller - adjust width
+                const newWidth = cropData.height * ratio;
+                const newX = cropData.x + (cropData.width - newWidth) / 2;
+                setCropData({
+                    ...cropData,
+                    x: Math.max(0, newX),
+                    width: Math.min(newWidth, 100 - cropData.x)
+                });
             }
+        }
+    };
 
-            canvas.width = targetW;
-            canvas.height = targetH;
-
-            // Setup MediaRecorder
-            const stream = canvas.captureStream(exportSettings.fps);
-            const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'video/webm;codecs=vp9',
-                videoBitsPerSecond: exportSettings.resolution === '4K' ? 25000000 : 8000000
-            });
-            mediaRecorderRef.current = mediaRecorder;
-
-            const chunks = [];
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                if (!isExportingRef.current) return; // Cancelled
-
-                const blob = new Blob(chunks, { type: 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `govyral_export_${Date.now()}.webm`;
-                a.click();
-                setIsExporting(false);
-                isExportingRef.current = false;
-            };
-
-            mediaRecorder.start();
-
-            // Playback and Record
-            video.currentTime = trimRange.start;
-            video.play();
-
-            // Pre-generate noise canvas for video
-            let noisePattern = null;
-            if (adjustments.grain > 0) {
-                const noiseCanvas = document.createElement('canvas');
-                noiseCanvas.width = 200;
-                noiseCanvas.height = 200;
-                const noiseCtx = noiseCanvas.getContext('2d');
-                const idata = noiseCtx.createImageData(200, 200);
-                const buffer32 = new Uint32Array(idata.data.buffer);
-                for (let i = 0; i < buffer32.length; i++) {
-                    if (Math.random() < 0.5) buffer32[i] = 0xff000000;
-                }
-                noiseCtx.putImageData(idata, 0, 0);
-                noisePattern = ctx.createPattern(noiseCanvas, 'repeat');
-            }
-
-            const processFrame = () => {
-                if (video.currentTime >= trimRange.end || video.paused) {
-                    mediaRecorder.stop();
-                    video.pause();
-                    return;
-                }
-
-                // Apply Filters
-                ctx.filter = getFilterString();
-
-                // Draw cropped video frame
-                ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
-
-                // Apply Vignette
-                if (adjustments.vignette > 0) {
-                    const gradient = ctx.createRadialGradient(targetW / 2, targetH / 2, targetW * 0.2, targetW / 2, targetH / 2, targetW * 0.8);
-                    gradient.addColorStop(0, 'rgba(0,0,0,0)');
-                    gradient.addColorStop(1, `rgba(0,0,0,${adjustments.vignette / 100})`);
-                    ctx.fillStyle = gradient;
-                    ctx.globalCompositeOperation = 'multiply';
-                    ctx.fillRect(0, 0, targetW, targetH);
-                    ctx.globalCompositeOperation = 'source-over';
-                }
-
-                // Apply Grain
-                if (adjustments.grain > 0 && noisePattern) {
-                    ctx.fillStyle = noisePattern;
-                    ctx.globalAlpha = adjustments.grain / 100 * 0.5;
-                    ctx.globalCompositeOperation = 'overlay';
-                    ctx.fillRect(0, 0, targetW, targetH);
-                    ctx.globalAlpha = 1.0;
-                    ctx.globalCompositeOperation = 'source-over';
-                }
-
-                // Update Progress
-                const progress = ((video.currentTime - trimRange.start) / (trimRange.end - trimRange.start)) * 100;
-                setExportProgress(Math.min(100, progress));
-
-                requestAnimationFrame(processFrame);
-            };
-
-            processFrame();
-
+    const handleStickerUpload = async (file) => {
+        try {
+            await addSticker(file);
         } catch (error) {
-            console.error("Export failed:", error);
-            alert("Export failed. Please try a lower resolution.");
-            setIsExporting(false);
-            isExportingRef.current = false;
+            alert('Failed to upload sticker');
         }
     };
 
-    const handleCancelExport = () => {
-        isExportingRef.current = false;
-        setIsExporting(false);
-        if (videoRef.current) videoRef.current.pause();
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.stop();
-        }
+    const handleExportClick = () => {
+        const renderState = {
+            adjustments,
+            vignette: adjustments.vignette,
+            grain: adjustments.grain,
+            textOverlays,
+            stickers,
+            stickerImages,
+            transform: { crop: cropData, rotation, zoom }
+        };
+
+        handleExport(canvasRef, renderState, trimRange);
     };
 
-
-    // --- Render Upload Screen ---
-    if (!localMediaFile) {
+    // Render upload screen if no media
+    if (!mediaUrl) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-4">
-                <div className="w-full max-w-md bg-[#1a1a1f] rounded-3xl border border-white/10 p-8 text-center relative">
-                    <button
-                        onClick={onClose}
-                        className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl">
+                <div className="max-w-md w-full p-8 bg-[#1a1a1f] rounded-3xl border border-white/10 shadow-2xl text-center">
                     <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto mb-6">
                         <Video size={32} className="text-blue-400" />
                     </div>
@@ -553,48 +295,31 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                         className="hidden"
                     />
 
-                    <button
+                    <Button
                         onClick={() => fileInputRef.current?.click()}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                        variant="primary"
+                        className="w-full"
+                        icon={Upload}
                     >
-                        <Upload size={20} />
                         Select File
-                    </button>
+                    </Button>
+
+                    <Button
+                        onClick={onClose}
+                        variant="ghost"
+                        className="w-full mt-4"
+                        icon={X}
+                    >
+                        Close
+                    </Button>
                 </div>
             </div>
         );
     }
 
-    // Show loader if mediaUrl is not ready yet
-    if (!mediaUrl) {
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl">
-                <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-            </div>
-        );
-    }
-
-    // --- Render Editor ---
+    // Main editor interface
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl animate-fade-in p-0 md:p-8">
-
-            {/* SVG Filters Definition */}
-            <svg className="hidden">
-                <defs>
-                    <filter id="sharpen">
-                        <feConvolveMatrix
-                            order="3"
-                            preserveAlpha="true"
-                            kernelMatrix={`
-                                0 -${adjustments.sharpen / 100} 0
-                                -${adjustments.sharpen / 100} ${1 + (4 * (adjustments.sharpen / 100))} -${adjustments.sharpen / 100}
-                                0 -${adjustments.sharpen / 100} 0
-                            `}
-                        />
-                    </filter>
-                </defs>
-            </svg>
-
+        <div className="fixed inset-0 z-50 flex bg-black/95 backdrop-blur-xl" ref={containerRef}>
             {/* Export Modal */}
             {showExportModal && (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -628,245 +353,145 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                                 </div>
                             </div>
 
-                            {/* Frame Rate */}
-                            <div className="space-y-3">
-                                <label className="flex items-center gap-2 text-sm font-medium text-white/70">
-                                    <Film size={16} /> Frame Rate
-                                </label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {[24, 30, 60].map(fps => (
-                                        <button
-                                            key={fps}
-                                            onClick={() => setExportSettings(s => ({ ...s, fps }))}
-                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.fps === fps
-                                                ? 'bg-blue-500 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
-                                                }`}
-                                        >
-                                            {fps} FPS
-                                        </button>
-                                    ))}
+                            {isVideo && (
+                                <div className="space-y-3">
+                                    <label className="flex items-center gap-2 text-sm font-medium text-white/70">
+                                        <Film size={16} /> Frame Rate
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[24, 30, 60].map(fps => (
+                                            <button
+                                                key={fps}
+                                                onClick={() => setExportSettings(s => ({ ...s, fps }))}
+                                                className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.fps === fps
+                                                    ? 'bg-blue-500 border-blue-500 text-white'
+                                                    : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
+                                                    }`}
+                                            >
+                                                {fps} FPS
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Color */}
-                            <div className="space-y-3">
-                                <label className="flex items-center gap-2 text-sm font-medium text-white/70">
-                                    <Palette size={16} /> Color Profile
-                                </label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {['SDR', 'HDR'].map(color => (
-                                        <button
-                                            key={color}
-                                            onClick={() => setExportSettings(s => ({ ...s, color }))}
-                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.color === color
-                                                ? 'bg-blue-500 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
-                                                }`}
-                                        >
-                                            {color}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={handleExport}
-                                className="w-full py-4 bg-white text-black rounded-xl font-bold text-lg hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl mt-4"
+                            <Button
+                                onClick={handleExportClick}
+                                variant="primary"
+                                className="w-full"
+                                icon={Download}
                             >
-                                <Download size={20} />
                                 Start Export
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Export Progress Overlay */}
+            {/* Export Progress */}
             {isExporting && (
                 <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
-                    <div className="w-20 h-20 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-6"></div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Exporting Video...</h3>
-                    <p className="text-white/50 mb-6">Please wait while we render your masterpiece.</p>
+                    <div className="w-20 h-20 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-6" />
+                    <h3 className="text-2xl font-bold text-white mb-2">Exporting...</h3>
+                    <p className="text-white/50 mb-6">Please wait while we process your media.</p>
                     <div className="w-64 h-2 bg-white/10 rounded-full overflow-hidden mb-8">
                         <div
                             className="h-full bg-blue-500 transition-all duration-300"
                             style={{ width: `${exportProgress}%` }}
-                        ></div>
+                        />
                     </div>
                     <p className="text-blue-400 font-mono mb-8">{Math.round(exportProgress)}%</p>
-
-                    <button
-                        onClick={handleCancelExport}
-                        className="px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center gap-2"
-                    >
-                        <X size={16} />
+                    <Button onClick={cancelExport} variant="secondary" icon={X}>
                         Cancel
-                    </button>
+                    </Button>
                 </div>
             )}
 
-
-            <div className="w-full max-w-6xl h-[100dvh] md:h-[90vh] flex flex-col md:flex-row bg-[#0f0f12] rounded-none md:rounded-3xl overflow-hidden border-0 md:border border-white/10 shadow-2xl relative">
-
-                {/* Close Button (Moved to top-right of container) */}
-
-
-                {/* Left: Preview Area */}
-                <div className="flex-none h-[50vh] md:h-auto md:flex-1 relative flex items-center justify-center bg-black/50 p-4 md:p-8 overflow-hidden group border-b border-white/10 md:border-b-0">
-
-
-                    <div className="relative w-full h-full flex items-center justify-center bg-black/50">
-
-                        {/* Close Button (Moved to top-right of Preview Area) */}
-                        <button
-                            onClick={onClose}
-                            className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-white/10 rounded-full text-white transition-all z-50 border border-white/10 shadow-xl"
-                        >
-                            <X size={20} />
-                        </button>
-
-                        {isVideo && (
-                            <div className="absolute inset-0 flex items-center justify-center z-0">
-                                <video
-                                    ref={videoRef}
-                                    src={mediaUrl}
-                                    style={{
-                                        maxWidth: '100%',
-                                        maxHeight: '100%',
-                                        objectFit: 'contain'
-                                    }}
-                                    className="pointer-events-none"
-                                />
-                            </div>
-                        )}
-
-                        <div className={`relative w-full h-full z-10 ${isVideo ? 'opacity-80' : ''}`}>
-                            <Cropper
-                                src={isVideo ? videoPoster : mediaUrl}
-                                style={{ height: '100%', width: '100%' }}
-                                initialAspectRatio={NaN}
-                                guides={true}
-                                ref={cropperRef}
-                                viewMode={1}
-                                dragMode="move"
-                                scalable={true}
-                                cropBoxMovable={true}
-                                cropBoxResizable={true}
-                                background={!isVideo}
-                                autoCropArea={1}
-                                checkCrossOrigin={false}
-                            />
-
-                            {/* Vignette Overlay */}
-                            <div
-                                className="absolute inset-0 pointer-events-none z-20"
-                                style={{
-                                    background: 'radial-gradient(circle, transparent 50%, black 140%)',
-                                    opacity: adjustments.vignette / 100,
-                                    mixBlendMode: 'multiply'
-                                }}
-                            />
-
-                            {/* Grain Overlay */}
-                            <div
-                                className="absolute inset-0 pointer-events-none z-20"
-                                style={{
-                                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.5'/%3E%3C/svg%3E")`,
-                                    opacity: adjustments.grain / 100,
-                                    mixBlendMode: 'overlay'
-                                }}
-                            />
-
-                            {/* Dynamic Style for Filters */}
-                            <style>{`
-                                .cropper-view-box img, .cropper-canvas img {
-                                    filter: ${getFilterString()} !important;
-                                    transition: filter 0.2s ease;
-                                }
-                            `}</style>
+            {/* Main Layout */}
+            <div className="flex flex-col md:flex-row w-full h-full">
+                {/* Left: Preview */}
+                <div className="flex-1 flex flex-col bg-[#0f0f12] relative">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b border-white/5">
+                        <div className="flex items-center gap-3">
+                            <Video size={20} className="text-blue-500" />
+                            <h2 className="text-lg font-bold text-white">Media Editor</h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button onClick={handleReset} variant="ghost" size="sm" icon={RotateCcw}>
+                                Reset
+                            </Button>
+                            <Button onClick={() => setShowExportModal(true)} variant="primary" size="sm" icon={Download}>
+                                Export
+                            </Button>
+                            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
                         </div>
                     </div>
 
-                    {/* Video Controls (Bottom of Preview) */}
-                    {isVideo && (
-                        <div className="absolute bottom-8 left-8 right-8 flex items-center gap-4 bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                            <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
-                                {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                            </button>
-                            <span className="text-xs font-mono text-white/70 min-w-[80px]">
-                                {formatTime(currentTime)} / {formatTime(duration)}
-                            </span>
-                            <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-blue-500 rounded-full relative"
-                                    style={{ width: `${(currentTime / duration) * 100}%` }}
-                                >
-                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow-lg"></div>
-                                </div>
-                            </div>
+                    {/* Canvas */}
+                    <div className="flex-1 p-4 overflow-hidden relative">
+                        <div className="relative w-full h-full flex items-center justify-center">
+                            <EditorCanvas
+                                canvasRef={canvasRef}
+                                overlayRef={overlayRef}
+                                textOverlays={textOverlays}
+                                stickers={stickers}
+                                stickerImages={stickerImages}
+                                activeOverlayId={activeOverlayId}
+                                onOverlayPointerDown={(e, id) => {
+                                    e.stopPropagation();
+                                    startDragging(id);
+                                }}
+                                onUpdateText={updateTextOverlay}
+                                onDeleteOverlay={deleteOverlay}
+                                onBackgroundClick={() => setActiveOverlayId(null)}
+                            />
+                            <CropOverlay
+                                canvasRef={canvasRef}
+                                cropData={cropData}
+                                onCropChange={setCropData}
+                                aspectRatio={cropPreset === 'free' ? null : cropPreset === '16:9' ? 16 / 9 : cropPreset === '9:16' ? 9 / 16 : cropPreset === '1:1' ? 1 : cropPreset === '4:5' ? 4 / 5 : null}
+                                isActive={activeTab === 'crop'}
+                            />
                         </div>
+                    </div>
+
+                    {/* Video Timeline */}
+                    {isVideo && (
+                        <VideoTimeline
+                            videoRef={mediaElementRef}
+                            duration={videoDuration}
+                            currentTime={currentTime}
+                            isPlaying={isPlaying}
+                            trimRange={trimRange}
+                            onPlay={handlePlay}
+                            onPause={handlePause}
+                            onSeek={handleSeek}
+                            onTrimChange={setTrimRange}
+                        />
                     )}
                 </div>
 
-                {/* Right: Tools Panel */}
-                <div className="flex-1 md:flex-none w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col overflow-hidden">
-
-                    {/* Header */}
-                    <div className="p-4 md:p-6 border-b border-white/5 flex items-center justify-between">
-                        <div>
-                            <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2 mb-0.5">
-                                <Video size={20} className="text-blue-500" />
-                                Media Editor
-                            </h2>
-                            <p className="text-xs md:text-sm text-white/40">Adjust and enhance</p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            {/* Mobile Export Button */}
-                            <button
-                                onClick={() => setShowExportModal(true)}
-                                className="md:hidden px-3 py-1.5 bg-white text-black rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform"
-                            >
-                                <Download size={14} />
-                                Export
-                            </button>
-
-                            <button
-                                onClick={() => {
-                                    setAdjustments(initialAdjustments);
-                                    setActiveFilterId('normal');
-                                    handleCropPresetChange('original');
-                                    setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
-                                }}
-                                className="p-2 hover:bg-white/5 rounded-full text-white/50 hover:text-white transition-colors"
-                                title="Reset All"
-                            >
-                                <RotateCcw size={16} />
-                            </button>
-                        </div>
-                    </div>
-
+                {/* Right: Tools */}
+                <div className="w-full md:w-[400px] bg-[#1a1a1f] border-l border-white/5 flex flex-col overflow-hidden">
                     {/* Tabs */}
-                    <div className="flex p-2 gap-2 border-b border-white/5 overflow-x-auto custom-scrollbar">
+                    <div className="flex p-2 gap-2 border-b border-white/5 overflow-x-auto">
                         {[
                             { id: 'adjust', icon: Sliders, label: 'Adjust' },
                             { id: 'filters', icon: Wand2, label: 'Filters' },
-                            { id: 'trim', icon: Scissors, label: 'Trim', disabled: !isVideo },
-                            { id: 'crop', icon: Crop, label: 'Crop' }
+                            { id: 'text', icon: Type, label: 'Text' },
+                            { id: 'stickers', icon: Sticker, label: 'Stickers' },
+                            { id: 'crop', icon: Crop, label: 'Crop' },
                         ].map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => !tab.disabled && setActiveTab(tab.id)}
-                                disabled={tab.disabled}
-                                className={`
-                                    flex-1 min-w-[80px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap
-                                    ${activeTab === tab.id
-                                        ? 'bg-white/10 text-white shadow-lg'
-                                        : 'text-white/40 hover:text-white hover:bg-white/5'
-                                    }
-                                    ${tab.disabled ? 'opacity-30 cursor-not-allowed' : ''}
-                                `}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 min-w-[80px] flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id
+                                    ? 'bg-white/10 text-white shadow-lg'
+                                    : 'text-white/40 hover:text-white hover:bg-white/5'
+                                    }`}
                             >
                                 <tab.icon size={16} />
                                 {tab.label}
@@ -874,413 +499,83 @@ const MediaEditor = ({ mediaFile, onClose }) => {
                         ))}
                     </div>
 
-                    {/* Content Area */}
+                    {/* Content */}
                     <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-
-                        {/* Adjust Tab */}
                         {activeTab === 'adjust' && (
-                            <div className="space-y-4 animate-slide-up">
-
-                                {/* Light Section */}
-                                <div className="space-y-4">
-                                    <button
-                                        onClick={() => toggleSection('light')}
-                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
-                                    >
-                                        <span>Light</span>
-                                        {expandedSections.light ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    </button>
-
-                                    {expandedSections.light && (
-                                        <div className="space-y-4 pl-2 border-l border-white/5">
-                                            {[
-                                                { label: 'Exposure', key: 'exposure', min: -100, max: 100 },
-                                                { label: 'Contrast', key: 'contrast', min: -100, max: 100 },
-                                                { label: 'Brightness', key: 'brightness', min: -100, max: 100 },
-                                                { label: 'Highlights', key: 'highlights', min: -100, max: 100 },
-                                                { label: 'Shadows', key: 'shadows', min: -100, max: 100 },
-                                                { label: 'Whites', key: 'whites', min: -100, max: 100 },
-                                                { label: 'Blacks', key: 'blacks', min: -100, max: 100 },
-                                            ].map((adj) => (
-                                                <div key={adj.key} className="space-y-2">
-                                                    <div className="flex justify-between text-xs">
-                                                        <span className="text-white/60">{adj.label}</span>
-                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min={adj.min}
-                                                        max={adj.max}
-                                                        value={adjustments[adj.key]}
-                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
-                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Color Section */}
-                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                    <button
-                                        onClick={() => toggleSection('color')}
-                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
-                                    >
-                                        <span>Color</span>
-                                        {expandedSections.color ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    </button>
-
-                                    {expandedSections.color && (
-                                        <div className="space-y-4 pl-2 border-l border-white/5">
-                                            {[
-                                                { label: 'Saturation', key: 'saturation', min: -100, max: 100 },
-                                                { label: 'Vibrance', key: 'vibrance', min: -100, max: 100 },
-                                                { label: 'Temp', key: 'temp', min: -100, max: 100 },
-                                                { label: 'Tint', key: 'tint', min: -100, max: 100 },
-                                            ].map((adj) => (
-                                                <div key={adj.key} className="space-y-2">
-                                                    <div className="flex justify-between text-xs">
-                                                        <span className="text-white/60">{adj.label}</span>
-                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min={adj.min}
-                                                        max={adj.max}
-                                                        value={adjustments[adj.key]}
-                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
-                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* HSL Section */}
-                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                    <button
-                                        onClick={() => toggleSection('hsl')}
-                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
-                                    >
-                                        <span>HSL</span>
-                                        {expandedSections.hsl ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    </button>
-
-                                    {expandedSections.hsl && (
-                                        <div className="space-y-4 pl-2 border-l border-white/5">
-                                            {[
-                                                { label: 'Hue', key: 'hue', min: -180, max: 180 },
-                                                { label: 'Saturation', key: 'hslSaturation', min: -100, max: 100 },
-                                                { label: 'Lightness', key: 'hslLightness', min: -100, max: 100 },
-                                            ].map((adj) => (
-                                                <div key={adj.key} className="space-y-2">
-                                                    <div className="flex justify-between text-xs">
-                                                        <span className="text-white/60">{adj.label}</span>
-                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min={adj.min}
-                                                        max={adj.max}
-                                                        value={adjustments[adj.key]}
-                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
-                                                        className={`w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full ${adj.key === 'hue' ? '[&::-webkit-slider-thumb]:bg-white bg-gradient-to-r from-red-500 via-green-500 to-blue-500' : '[&::-webkit-slider-thumb]:bg-blue-500'}`}
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Style Section */}
-                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                    <button
-                                        onClick={() => toggleSection('style')}
-                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
-                                    >
-                                        <span>Style</span>
-                                        {expandedSections.style ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    </button>
-
-                                    {expandedSections.style && (
-                                        <div className="space-y-4 pl-2 border-l border-white/5">
-                                            {[
-                                                { label: 'Sharpen', key: 'sharpen', min: 0, max: 100 },
-                                                { label: 'Noise Reduction', key: 'blur', min: 0, max: 100 },
-                                                { label: 'Fade', key: 'fade', min: 0, max: 100 },
-                                                { label: 'Vignette', key: 'vignette', min: 0, max: 100 },
-                                                { label: 'Grain', key: 'grain', min: 0, max: 100 },
-                                            ].map((adj) => (
-                                                <div key={adj.key} className="space-y-2">
-                                                    <div className="flex justify-between text-xs">
-                                                        <span className="text-white/60">{adj.label}</span>
-                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min={adj.min}
-                                                        max={adj.max}
-                                                        value={adjustments[adj.key]}
-                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
-                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Effects Section */}
-                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                    <button
-                                        onClick={() => toggleSection('effects')}
-                                        className="w-full flex items-center justify-between text-sm font-bold text-white/80 hover:text-white"
-                                    >
-                                        <span>Effects</span>
-                                        {expandedSections.effects ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    </button>
-
-                                    {expandedSections.effects && (
-                                        <div className="space-y-4 pl-2 border-l border-white/5">
-                                            {[
-                                                { label: 'Clarity', key: 'clarity', min: 0, max: 100 },
-                                                { label: 'Sepia', key: 'sepia', min: 0, max: 100 },
-                                                { label: 'Grayscale', key: 'grayscale', min: 0, max: 100 },
-                                            ].map((adj) => (
-                                                <div key={adj.key} className="space-y-2">
-                                                    <div className="flex justify-between text-xs">
-                                                        <span className="text-white/60">{adj.label}</span>
-                                                        <span className="text-blue-400 font-mono">{adjustments[adj.key]}</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min={adj.min}
-                                                        max={adj.max}
-                                                        value={adjustments[adj.key]}
-                                                        onChange={(e) => setAdjustments({ ...adjustments, [adj.key]: Number(e.target.value) })}
-                                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                            </div>
+                            <AdjustPanel adjustments={adjustments} onUpdate={setAdjustments} />
                         )}
-
-                        {/* Filters Tab */}
                         {activeTab === 'filters' && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-slide-up">
-                                {FILTER_PRESETS.map((filter) => (
-                                    <button
-                                        key={filter.id}
-                                        onClick={() => applyFilter(filter)}
-                                        className={`
-                                            p-3 rounded-xl border transition-all flex flex-col items-center gap-2 text-center
-                                            ${activeFilterId === filter.id
-                                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
-                                            }
-                                        `}
-                                    >
-                                        <div className="w-full aspect-square rounded-lg overflow-hidden bg-black/50 relative">
-                                            {/* Preview of filter effect (simplified) */}
-                                            <div
-                                                className="absolute inset-0 bg-gradient-to-br from-purple-500 to-blue-500"
-                                                style={{
-                                                    filter: `
-                                                        brightness(${100 + (filter.values.brightness || 0)}%)
-                                                        contrast(${100 + (filter.values.contrast || 0)}%)
-                                                        saturate(${100 + (filter.values.saturation || 0)}%)
-                                                        sepia(${(filter.values.sepia || 0)}%)
-                                                        grayscale(${(filter.values.grayscale || 0)}%)
-                                                        hue-rotate(${(filter.values.hue || 0) + (filter.values.tint || 0)}deg)
-                                                    `
-                                                }}
-                                            />
-                                        </div>
-                                        <span className="text-xs font-medium">{filter.name}</span>
-                                    </button>
-                                ))}
-                            </div>
+                            <FilterPanel activeFilterId={activeFilterId} onFilterSelect={handleFilterSelect} />
                         )}
-
-                        {/* Trim Tab */}
-                        {activeTab === 'trim' && isVideo && (
-                            <div className="space-y-6 animate-slide-up">
-                                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                                    <div className="flex justify-between mb-4">
-                                        <div className="text-center">
-                                            <div className="text-xs text-white/40 mb-1">Start Time</div>
-                                            <div className="font-mono text-xl text-white">{formatTime(trimRange.start)}</div>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="text-xs text-white/40 mb-1">End Time</div>
-                                            <div className="font-mono text-xl text-white">{formatTime(trimRange.end)}</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Custom Drag Trimmer */}
-                                    <div
-                                        ref={trimTrackRef}
-                                        className="relative h-12 bg-black/40 rounded-lg mb-2 flex items-center px-2 select-none touch-none"
-                                    >
-                                        <div className="absolute left-0 right-0 h-1 bg-white/20 rounded-full mx-2"></div>
-
-                                        {/* Active Range Bar */}
-                                        <div
-                                            className="absolute h-1 bg-blue-500 rounded-full mx-2"
-                                            style={{
-                                                left: `${(trimRange.start / duration) * 100}%`,
-                                                right: `${100 - (trimRange.end / duration) * 100}%`
-                                            }}
-                                        ></div>
-
-                                        {/* Start Handle */}
-                                        <div
-                                            onPointerDown={(e) => handleTrimPointerDown(e, 'start')}
-                                            className="absolute w-6 h-8 bg-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center hover:scale-110 transition-transform"
-                                            style={{ left: `calc(${(trimRange.start / duration) * 100}% + 8px - 12px)` }} // Center handle
-                                        >
-                                            <div className="w-1 h-4 bg-black/20 rounded-full"></div>
-                                        </div>
-
-                                        {/* End Handle */}
-                                        <div
-                                            onPointerDown={(e) => handleTrimPointerDown(e, 'end')}
-                                            className="absolute w-6 h-8 bg-white rounded-md shadow-lg cursor-ew-resize z-20 flex items-center justify-center hover:scale-110 transition-transform"
-                                            style={{ left: `calc(${(trimRange.end / duration) * 100}% + 8px - 12px)` }} // Center handle
-                                        >
-                                            <div className="w-1 h-4 bg-black/20 rounded-full"></div>
-                                        </div>
-                                    </div>
-                                    <p className="text-xs text-center text-white/30">Drag handles to trim video</p>
-                                </div>
-                            </div>
+                        {activeTab === 'text' && (
+                            <TextPanel
+                                textOverlays={textOverlays}
+                                activeOverlayId={activeOverlayId}
+                                onAddText={addTextOverlay}
+                                onUpdateText={updateTextOverlay}
+                                onDeleteText={deleteOverlay}
+                            />
                         )}
-
-                        {/* Crop Tab */}
+                        {activeTab === 'stickers' && (
+                            <StickerPanel
+                                stickers={stickers}
+                                activeOverlayId={activeOverlayId}
+                                onUploadSticker={handleStickerUpload}
+                                onUpdateSticker={updateSticker}
+                                onDeleteSticker={deleteOverlay}
+                            />
+                        )}
                         {activeTab === 'crop' && (
-                            <div className="space-y-6 animate-slide-up">
-                                {/* Aspect Ratio Grid */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    {[
-                                        { id: 'original', label: 'Free', ratio: 'Free' },
-                                        { id: '16:9', label: 'Landscape', ratio: '16:9' },
-                                        { id: '9:16', label: 'Portrait', ratio: '9:16' },
-                                        { id: '1:1', label: 'Square', ratio: '1:1' },
-                                        { id: '4:5', label: 'Social', ratio: '4:5' },
-                                    ].map((option) => (
-                                        <button
-                                            key={option.id}
-                                            onClick={() => handleCropPresetChange(option.id)}
-                                            className={`
-                                                p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
-                                                ${cropPreset === option.id
-                                                    ? 'bg-blue-500/20 border-blue-500 text-white'
-                                                    : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
-                                                }
-                                            `}
-                                        >
-                                            <div className={`
-                                                border-2 rounded-sm mb-1
-                                                ${cropPreset === option.id ? 'border-blue-400' : 'border-current'}
-                                            `} style={{
-                                                    width: '24px',
-                                                    height: option.id === '16:9' ? '14px' : option.id === '9:16' ? '32px' : option.id === '1:1' ? '24px' : '24px',
-                                                    aspectRatio: option.id === 'original' ? 'auto' : option.id.replace(':', '/')
-                                                }}></div>
-                                            <span className="text-sm font-medium">{option.label}</span>
-                                            <span className="text-xs opacity-50">{option.ratio}</span>
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Rotation & Zoom Controls */}
-                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-white/60">Rotation</span>
-                                            <span className="text-blue-400 font-mono">{rotation}°</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="-180"
-                                            max="180"
-                                            value={rotation}
-                                            onChange={(e) => {
-                                                const val = Number(e.target.value);
-                                                setRotation(val);
-                                                if (cropperRef.current) cropperRef.current.cropper.rotateTo(val);
-                                            }}
-                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-white/60">Zoom</span>
-                                            <span className="text-blue-400 font-mono">{zoom.toFixed(1)}x</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="0.1"
-                                            max="3"
-                                            step="0.1"
-                                            value={zoom}
-                                            onChange={(e) => {
-                                                const val = Number(e.target.value);
-                                                setZoom(val);
-                                                if (cropperRef.current) cropperRef.current.cropper.zoomTo(val);
-                                            }}
-                                            className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                        />
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => {
-                                                setRotation(rotation - 90);
-                                                if (cropperRef.current) cropperRef.current.cropper.rotate(-90);
-                                            }}
-                                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white text-xs flex items-center justify-center gap-2"
-                                        >
-                                            <RotateCcw size={14} /> -90°
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setRotation(0);
-                                                setZoom(1);
-                                                if (cropperRef.current) {
-                                                    cropperRef.current.cropper.reset();
-                                                    setCropPreset('original');
-                                                }
-                                            }}
-                                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white text-xs"
-                                        >
-                                            Reset
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <CropPanel
+                                cropPreset={cropPreset}
+                                rotation={rotation}
+                                zoom={zoom}
+                                onCropPresetChange={handleCropPresetChange}
+                                onRotationChange={setRotation}
+                                onZoomChange={setZoom}
+                                onReset={handleReset}
+                            />
                         )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="hidden md:block p-4 border-t border-white/5 bg-[#0f0f12]">
-                        <button
-                            onClick={() => setShowExportModal(true)}
-                            className="w-full py-3 bg-white text-black rounded-xl font-bold text-base hover:bg-gray-200 transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-xl"
-                        >
-                            <Download size={18} />
-                            Export
-                        </button>
                     </div>
                 </div>
             </div>
+
+            {/* Custom Scrollbar Styles */}
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: rgba(255, 255, 255, 0.05);
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 3px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                }
+                @keyframes slide-up {
+                    from {
+                        opacity: 0;
+                        transform: translateY(10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+                .animate-slide-up {
+                    animation: slide-up 0.3s ease-out;
+                }
+                .animate-fade-in {
+                    animation: fade-in 0.2s ease-out;
+                }
+                @keyframes fade-in {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+            `}</style>
         </div>
     );
 };
