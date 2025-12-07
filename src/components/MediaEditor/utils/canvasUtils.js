@@ -78,6 +78,8 @@ export const buildFilterString = (adjustments = {}) => {
         tint = 0,
         vibrance = 0,
         hue = 0,
+        hslSaturation = 0,
+        hslLightness = 0,
         sharpen = 0,
         blur = 0,
         grayscale = 0,
@@ -87,49 +89,52 @@ export const buildFilterString = (adjustments = {}) => {
 
     const filters = [];
 
-    // Brightness (combined exposure + brightness)
-    const totalBrightness = Math.max(0, 100 + brightness + (exposure * 0.5));
+    // Helper to clamp and round values
+    const clamp = (val, min = 0) => Math.max(min, Math.round(val));
+
+    // Brightness (combined exposure + brightness + hslLightness)
+    const totalBrightness = clamp(100 + brightness + (exposure * 0.5) + hslLightness);
     if (totalBrightness !== 100) {
         filters.push(`brightness(${totalBrightness}%)`);
     }
 
     // Contrast (affected by highlights/shadows)
-    const totalContrast = Math.max(0, 100 + contrast + (highlights * 0.3) - (shadows * 0.3));
+    const totalContrast = clamp(100 + contrast + (highlights * 0.3) - (shadows * 0.3));
     if (totalContrast !== 100) {
         filters.push(`contrast(${totalContrast}%)`);
     }
 
-    // Saturation (vibrance adds to saturation)
-    const totalSaturation = Math.max(0, 100 + saturation + (vibrance * 0.7));
+    // Saturation (vibrance + hslSaturation adds to saturation)
+    const totalSaturation = clamp(100 + saturation + (vibrance * 0.7) + hslSaturation);
     if (totalSaturation !== 100) {
         filters.push(`saturate(${totalSaturation}%)`);
     }
 
     // Hue (affected by temp and tint)
-    const totalHue = hue + (temp * 0.5) + (tint * 0.3);
+    const totalHue = Math.round(hue + (temp * 0.5) + (tint * 0.3));
     if (totalHue !== 0) {
         filters.push(`hue-rotate(${totalHue}deg)`);
     }
 
     // Blur (inverse of sharpen, noise reduction)
     if (blur > 0) {
-        filters.push(`blur(${blur * 0.05}px)`);
+        filters.push(`blur(${Math.round(blur * 0.05 * 10) / 10}px)`);
     }
 
     // Grayscale
     if (grayscale > 0) {
-        filters.push(`grayscale(${grayscale}%)`);
+        filters.push(`grayscale(${clamp(grayscale)}%)`);
     }
 
     // Sepia
     if (sepia > 0) {
-        filters.push(`sepia(${sepia}%)`);
+        filters.push(`sepia(${clamp(sepia)}%)`);
     }
 
     // Fade (reduce contrast and saturation)
     if (fade > 0) {
-        filters.push(`contrast(${100 - fade * 0.3}%)`);
-        filters.push(`saturate(${100 - fade * 0.5}%)`);
+        filters.push(`contrast(${clamp(100 - fade * 0.3)}%)`);
+        filters.push(`saturate(${clamp(100 - fade * 0.5)}%)`);
     }
 
     return filters.length > 0 ? filters.join(' ') : 'none';
