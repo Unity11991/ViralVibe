@@ -67,25 +67,28 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
  * @returns {string} CSS filter string
  */
 export const buildFilterString = (adjustments = {}) => {
-    const {
-        brightness = 0,
-        contrast = 0,
-        saturation = 0,
-        exposure = 0,
-        highlights = 0,
-        shadows = 0,
-        temp = 0,
-        tint = 0,
-        vibrance = 0,
-        hue = 0,
-        hslSaturation = 0,
-        hslLightness = 0,
-        sharpen = 0,
-        blur = 0,
-        grayscale = 0,
-        sepia = 0,
-        fade = 0
-    } = adjustments;
+    // Helper to ensure value is a valid number
+    const safeNum = (val, def = 0) => {
+        const n = Number(val);
+        return isNaN(n) ? def : n;
+    };
+
+    const brightness = safeNum(adjustments.brightness);
+    const contrast = safeNum(adjustments.contrast);
+    const saturation = safeNum(adjustments.saturation);
+    const exposure = safeNum(adjustments.exposure);
+    const highlights = safeNum(adjustments.highlights);
+    const shadows = safeNum(adjustments.shadows);
+    const temp = safeNum(adjustments.temp);
+    const tint = safeNum(adjustments.tint);
+    const vibrance = safeNum(adjustments.vibrance);
+    const hue = safeNum(adjustments.hue);
+    const hslSaturation = safeNum(adjustments.hslSaturation);
+    const hslLightness = safeNum(adjustments.hslLightness);
+    const blur = safeNum(adjustments.blur);
+    const grayscale = safeNum(adjustments.grayscale);
+    const sepia = safeNum(adjustments.sepia);
+    const fade = safeNum(adjustments.fade);
 
     const filters = [];
 
