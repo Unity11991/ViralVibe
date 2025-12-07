@@ -88,19 +88,19 @@ export const buildFilterString = (adjustments = {}) => {
     const filters = [];
 
     // Brightness (combined exposure + brightness)
-    const totalBrightness = Math.max(0, 100 + brightness + (exposure * 0.5));
+    const totalBrightness = 100 + brightness + (exposure * 0.5);
     if (totalBrightness !== 100) {
         filters.push(`brightness(${totalBrightness}%)`);
     }
 
     // Contrast (affected by highlights/shadows)
-    const totalContrast = Math.max(0, 100 + contrast + (highlights * 0.3) - (shadows * 0.3));
+    const totalContrast = 100 + contrast + (highlights * 0.3) - (shadows * 0.3);
     if (totalContrast !== 100) {
         filters.push(`contrast(${totalContrast}%)`);
     }
 
     // Saturation (vibrance adds to saturation)
-    const totalSaturation = Math.max(0, 100 + saturation + (vibrance * 0.7));
+    const totalSaturation = 100 + saturation + (vibrance * 0.7);
     if (totalSaturation !== 100) {
         filters.push(`saturate(${totalSaturation}%)`);
     }
