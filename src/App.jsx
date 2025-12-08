@@ -43,6 +43,7 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
+  const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -111,13 +112,16 @@ function App() {
       // Fetch Profile (Coins)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('coin_balance, streak_count')
+        .select('coin_balance, streak_count, subscription_tier')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setCoinBalance(profile.coin_balance);
         setStreak(profile.streak_count || 0);
+        // Check if user has any active subscription plan
+        // setIsPro(!!profile.subscription_tier && profile.subscription_tier !== 'free');
+        setIsPro(true); // DEV: Force Pro for testing
       }
 
       // Fetch History
@@ -523,6 +527,7 @@ function App() {
         settings={settings}
         image={image}
         coinBalance={coinBalance}
+        isPro={isPro}
         onSpendCoins={handleSpendCoins}
         onOpenAdModal={() => setShowAdModal(true)}
       />

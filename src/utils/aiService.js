@@ -364,6 +364,88 @@ export const generatePremiumContent = async (type, data, settings) => {
             `;
             break;
 
+        // VIP Features
+        case 'trend-alerts':
+            systemRole = "You are a viral trend analyst.";
+            prompt = `
+                Identify 3 currently rising trends relevant to the niche: "${input}".
+                For each, explain the trend and give a content idea.
+            `;
+            jsonStructure = `
+                {
+                    "trends": [
+                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" },
+                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" },
+                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'smart-scheduler':
+            systemRole = "You are a social media data scientist.";
+            prompt = `
+                Analyze the audience behavior for a "${input}" account.
+                Provide the 3 best times to post this week for maximum engagement.
+                ALSO generate 5 engaging captions, 15-20 optimized hashtags, and 3 trending audio recommendations for this niche.
+            `;
+            jsonStructure = `
+                {
+                    "slots": [
+                        { "day": "Monday", "time": "10:00 AM", "reason": "High commute engagement" },
+                        { "day": "Wednesday", "time": "6:00 PM", "reason": "Post-work scrolling" },
+                        { "day": "Friday", "time": "12:00 PM", "reason": "Lunch break peak" }
+                    ],
+                    "captions": ["Caption 1", "Caption 2", "Caption 3", "Caption 4", "Caption 5"],
+                    "hashtags": ["#tag1", "#tag2", "#tag3", ...],
+                    "musicRecommendations": [
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'script-generator':
+            systemRole = "You are a professional screenwriter for short-form video.";
+            prompt = `
+                Write a 30-60 second Reel/TikTok script about: "${input}".
+                Include Hook, Body (3 points), and Call to Action.
+                Include visual cues in brackets.
+            `;
+            jsonStructure = `
+                {
+                    "title": "Script Title",
+                    "hook": "Visual/Audio Hook",
+                    "body": "Main script content with cues",
+                    "cta": "Call to action"
+                }
+            `;
+            break;
+
+        case 'analytics':
+            systemRole = "You are a social media analytics expert.";
+            prompt = `
+                Simulate a detailed performance report for a profile in the "${input}" niche.
+                Provide growth metrics, engagement rates, and 3 actionable insights for improvement.
+            `;
+            jsonStructure = `
+                {
+                    "metrics": {
+                        "growth": "+15%",
+                        "engagement": "4.8%",
+                        "reach": "12.5k"
+                    },
+                    "insights": [
+                        "Insight 1",
+                        "Insight 2",
+                        "Insight 3"
+                    ]
+                }
+            `;
+            break;
+
         default:
             throw new Error("Unknown feature type");
     }
