@@ -11,50 +11,41 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Check active sessions and sets the user
         const getSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             setUser(session?.user ?? null);
-            if (session?.user) {
-                checkLoginStreak(session.user.id);
-            }
             setLoading(false);
         };
 
         getSession();
 
-        // Listen for changes on auth state (logged in, signed out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user ?? null);
-            if (session?.user && _event === 'SIGNED_IN') {
-                checkLoginStreak(session.user.id);
-            }
             setLoading(false);
         });
 
         return () => subscription.unsubscribe();
     }, []);
 
-    const checkLoginStreak = async (userId) => {
+    const claimDailyReward = async (userId) => {
         try {
             const today = new Date().toISOString().split('T')[0];
 
             // Fetch current profile data
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('last_login_date, streak_count, coin_balance')
+                .select('last_login_date,streak_count,coin_balance')
                 .eq('id', userId)
                 .single();
 
-            if (!profile) return;
+            if (!profile) return { success: false, message: "Profile not found" };
 
             const lastLogin = profile.last_login_date;
             let newStreak = profile.streak_count || 0;
             let coinsToAdd = 0;
 
             if (lastLogin === today) {
-                // Already logged in today, do nothing
-                return;
+                return { success: false, message: "Already claimed today" };
             }
 
             const yesterday = new Date();
@@ -71,8 +62,11 @@ export const AuthProvider = ({ children }) => {
                 coinsToAdd = 10;
             }
 
+            // Cap streak bonus if needed (optional, e.g., max 100 coins)
+            if (coinsToAdd > 100) coinsToAdd = 100;
+
             // Update profile
-            await supabase
+            const { error } = await supabase
                 .from('profiles')
                 .update({
                     last_login_date: today,
@@ -81,18 +75,18 @@ export const AuthProvider = ({ children }) => {
                 })
                 .eq('id', userId);
 
-            if (coinsToAdd > 0) {
-                // Ideally show a toast/notification here, but context shouldn't handle UI.
-                // We can store this in a state or local storage to show a popup on Dashboard.
-                localStorage.setItem('dailyReward', JSON.stringify({ coins: coinsToAdd, streak: newStreak }));
-            }
+            if (error) throw error;
+
+            return { success: true, coins: coinsToAdd, streak: newStreak };
 
         } catch (error) {
-            console.error("Error checking login streak:", error);
+            console.error("Error claiming daily reward:", error);
+            return { success: false, message: error.message };
         }
     };
 
     const value = {
+        claimDailyReward,
         signUp: (data) => supabase.auth.signUp({
             ...data,
             options: {

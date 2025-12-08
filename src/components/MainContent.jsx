@@ -5,6 +5,7 @@ import { ResultsSection } from './ResultCard';
 import OptionsPanel from './OptionsPanel';
 import Navbar from './Navbar';
 import Dashboard from './Dashboard';
+import AdBanner from './AdBanner';
 
 const MainContent = ({
     currentView,
@@ -33,7 +34,11 @@ const MainContent = ({
     toggleTheme,
     setShowProfileModal,
     guestUsageCount,
-    setShowToolsModal
+    setShowToolsModal,
+    lastLoginDate,
+    setCoinBalance,
+    setStreak,
+    setLastLoginDate
 }) => {
     const resultsRef = useRef(null);
 
@@ -87,6 +92,10 @@ const MainContent = ({
                         onBack={() => setCurrentView('home')}
                         onWatchAd={() => setShowAdModal(true)}
                         onPurchase={handlePurchase}
+                        lastLoginDate={lastLoginDate}
+                        setCoinBalance={setCoinBalance}
+                        setStreak={setStreak}
+                        setLastLoginDate={setLastLoginDate}
                     />
                 ) : (
                     <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
@@ -148,6 +157,11 @@ const MainContent = ({
                                     )}
                                 </button>
                             </div>
+
+                            {/* Ad Banner */}
+                            <div className="mt-auto pt-6">
+                                <AdBanner slotId="1146521123" />
+                            </div>
                         </div>
 
                         {/* Right Column: Results (Scrollable) */}
@@ -183,7 +197,7 @@ const MainContent = ({
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 
