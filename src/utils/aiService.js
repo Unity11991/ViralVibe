@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { supabase } from '../lib/supabase';
 
 export const analyzeImage = async (fileOrBase64, settings) => {
     const { apiKey, platform, tone, model: modelName } = settings;
@@ -366,17 +367,45 @@ export const generatePremiumContent = async (type, data, settings) => {
 
         // VIP Features
         case 'trend-alerts':
+            // 1. Fetch Real Trends from Edge Function
+            let realTrends = [];
+            try {
+                const { data, error } = await supabase.functions.invoke('fetch-trends');
+                if (!error && data?.trends) {
+                    realTrends = data.trends;
+                }
+            } catch (err) {
+                console.warn("Failed to fetch real trends, falling back to AI knowledge:", err);
+            }
+
+            const trendsContext = realTrends.length > 0
+                ? `Here are the top trending searches right now: ${realTrends.map(t => `${t.title} (${t.traffic})`).join(', ')}.`
+                : "Analyze general current social media trends.";
+
             systemRole = "You are a viral trend analyst.";
             prompt = `
-                Identify 3 currently rising trends relevant to the niche: "${input}".
-                For each, explain the trend and give a content idea.
+                ${trendsContext}
+                
+                Identify 3 currently exploding viral trends relevant to the niche: "${input}".
+                Use the provided trending searches if they are relevant to the niche. If not, find creative ways to bridge the trending topics to this niche (e.g., "How to use [Trend] for [Niche]").
+                
+                For each trend, provide:
+                1. Trend Name (Catchy title)
+                2. Why it's viral (The psychology/reason)
+                3. Viral Audio (A specific song or sound name currently trending)
+                4. The Hook (The exact text to put on screen or say in first 3 seconds)
+                5. Content Idea (How to execute it)
             `;
             jsonStructure = `
                 {
                     "trends": [
-                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" },
-                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" },
-                        { "name": "Trend Name", "description": "What is it?", "idea": "Content idea" }
+                        {
+                            "name": "Trend Name",
+                            "why_viral": "Explanation",
+                            "audio": "Song Name - Artist",
+                            "hook": "POV: You realized...",
+                            "idea": "Filming instructions..."
+                        }
                     ]
                 }
             `;

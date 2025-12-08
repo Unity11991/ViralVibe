@@ -18,6 +18,7 @@ import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
 import MediaEditor from './components/MediaEditor';
 import { supabase } from './lib/supabase';
+import ShareModal from './components/ShareModal';
 
 import ToolsModal from './components/ToolsModal';
 import MainContent from './components/MainContent';
@@ -48,6 +49,7 @@ function App() {
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
@@ -520,6 +522,13 @@ function App() {
         />
       )}
 
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        results={results}
+        image={image}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
@@ -580,6 +589,7 @@ function App() {
             setShowProfileModal={setShowProfileModal}
             guestUsageCount={guestUsageCount}
             setShowToolsModal={setShowToolsModal}
+            setShowShareModal={setShowShareModal}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />

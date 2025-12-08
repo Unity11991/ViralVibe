@@ -38,7 +38,8 @@ const MainContent = ({
     lastLoginDate,
     setCoinBalance,
     setStreak,
-    setLastLoginDate
+    setLastLoginDate,
+    setShowShareModal
 }) => {
     const resultsRef = useRef(null);
 
@@ -181,6 +182,7 @@ const MainContent = ({
                                             }
                                         }}
                                         onOpenEditor={() => setShowMediaEditor(true)}
+                                        onOpenShare={() => setShowShareModal(true)}
                                     />
                                 </div>
                             ) : (

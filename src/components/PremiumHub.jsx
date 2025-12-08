@@ -287,7 +287,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
 
     const handleGenerate = async () => {
         if (coinBalance < COST_PER_USE) {
-            onOpenAdModal();
+            alert("Insufficient coins! Please purchase more from the dashboard.");
             return;
         }
 
@@ -329,9 +329,22 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
 
         if (loading) {
             return (
-                <div className="flex flex-col items-center justify-center h-64 space-y-4">
-                    <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-                    <p className="text-secondary animate-pulse">Consulting the AI Oracle...</p>
+                <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+                    <div className="relative w-20 h-20 mb-6">
+                        <div className="absolute inset-0 border-4 border-slate-700 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-t-indigo-500 border-r-purple-500 border-b-pink-500 border-l-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Sparkles className="text-white animate-pulse" size={24} />
+                        </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                        {activeTab === 'trend-alerts' ? 'Fetching Real-Time Trends...' : 'Generating Magic...'}
+                    </h3>
+                    <p className="text-slate-400 text-center max-w-xs">
+                        {activeTab === 'trend-alerts'
+                            ? 'Scanning Google Trends for the latest viral topics in your niche.'
+                            : 'Our AI is crafting your premium content. This usually takes 10-20 seconds.'}
+                    </p>
                 </div>
             );
         }
@@ -862,18 +875,86 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                 );
             case 'trend-alerts':
                 return (
-                    <div className="space-y-4">
-                        <p className="text-secondary">Enter your niche to discover rising viral trends.</p>
-                        <input
-                            type="text"
-                            className="w-full input-liquid p-4"
-                            placeholder="E.g., AI Tools, Sustainable Fashion..."
-                            value={currentData.input}
-                            onChange={(e) => updateInput(e.target.value)}
-                        />
-                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
-                            <TrendingUp size={18} /> Scan Trends <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
-                        </button>
+                    <div className="space-y-6">
+                        {!currentData.result ? (
+                            <div className="space-y-4">
+                                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 flex items-start gap-3">
+                                    <TrendingUp className="text-rose-400 shrink-0 mt-1" size={20} />
+                                    <div>
+                                        <h4 className="font-bold text-rose-300">Viral Trend Simulator</h4>
+                                        <p className="text-sm text-rose-200/70">
+                                            Our AI analyzes current social patterns to predict what's about to go viral in your niche.
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className="text-secondary">Enter your niche to discover exploding trends, viral audio, and hooks.</p>
+                                <input
+                                    type="text"
+                                    className="w-full input-liquid p-4"
+                                    placeholder="E.g., Skincare, Digital Marketing, Pet Owners..."
+                                    value={currentData.input}
+                                    onChange={(e) => updateInput(e.target.value)}
+                                />
+                                <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500">
+                                    <TrendingUp size={18} /> Scan for Trends <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-6 animate-fade-in">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                        <TrendingUp className="text-rose-400" /> Trending Now
+                                    </h3>
+                                    <button onClick={() => updateResult(null)} className="text-sm text-slate-400 hover:text-white">
+                                        New Scan
+                                    </button>
+                                </div>
+                                <div className="grid gap-4">
+                                    {currentData.result.trends?.map((trend, idx) => (
+                                        <div key={idx} className="bg-slate-800/50 border border-white/10 rounded-xl p-5 hover:border-rose-500/30 transition-all group">
+                                            <div className="flex items-start justify-between mb-3">
+                                                <h4 className="font-bold text-lg text-white group-hover:text-rose-400 transition-colors">{trend.name}</h4>
+                                                <span className="px-2 py-1 bg-rose-500/20 text-rose-300 text-xs font-bold rounded-full uppercase tracking-wider">Viral</span>
+                                            </div>
+
+                                            <p className="text-slate-300 text-sm mb-4">{trend.why_viral}</p>
+
+                                            <div className="space-y-3">
+                                                <div className="bg-black/30 rounded-lg p-3 flex items-center gap-3 border border-white/5">
+                                                    <div className="p-2 bg-rose-500/20 rounded-full text-rose-400">
+                                                        <Music size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-slate-500 uppercase font-bold">Viral Audio</p>
+                                                        <p className="text-sm font-medium text-white">{trend.audio}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-black/30 rounded-lg p-3 flex items-center gap-3 border border-white/5">
+                                                    <div className="p-2 bg-blue-500/20 rounded-full text-blue-400">
+                                                        <Anchor size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-slate-500 uppercase font-bold">The Hook</p>
+                                                        <p className="text-sm font-medium text-white italic">"{trend.hook}"</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-black/30 rounded-lg p-3 flex items-center gap-3 border border-white/5">
+                                                    <div className="p-2 bg-green-500/20 rounded-full text-green-400">
+                                                        <Zap size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-slate-500 uppercase font-bold">Execution</p>
+                                                        <p className="text-sm font-medium text-white">{trend.idea}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             case 'smart-scheduler':
