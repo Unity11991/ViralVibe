@@ -67,69 +67,77 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
  * @returns {string} CSS filter string
  */
 export const buildFilterString = (adjustments = {}) => {
-    const {
-        brightness = 0,
-        contrast = 0,
-        saturation = 0,
-        exposure = 0,
-        highlights = 0,
-        shadows = 0,
-        temp = 0,
-        tint = 0,
-        vibrance = 0,
-        hue = 0,
-        sharpen = 0,
-        blur = 0,
-        grayscale = 0,
-        sepia = 0,
-        fade = 0
-    } = adjustments;
+    // Helper to ensure value is a valid number
+    const safeNum = (val, def = 0) => {
+        const n = Number(val);
+        return isNaN(n) ? def : n;
+    };
+
+    const brightness = safeNum(adjustments.brightness);
+    const contrast = safeNum(adjustments.contrast);
+    const saturation = safeNum(adjustments.saturation);
+    const exposure = safeNum(adjustments.exposure);
+    const highlights = safeNum(adjustments.highlights);
+    const shadows = safeNum(adjustments.shadows);
+    const temp = safeNum(adjustments.temp);
+    const tint = safeNum(adjustments.tint);
+    const vibrance = safeNum(adjustments.vibrance);
+    const hue = safeNum(adjustments.hue);
+    const hslSaturation = safeNum(adjustments.hslSaturation);
+    const hslLightness = safeNum(adjustments.hslLightness);
+    const blur = safeNum(adjustments.blur);
+    const grayscale = safeNum(adjustments.grayscale);
+    const sepia = safeNum(adjustments.sepia);
+    const fade = safeNum(adjustments.fade);
 
     const filters = [];
 
-    // Brightness (combined exposure + brightness)
-    const totalBrightness = 100 + brightness + (exposure * 0.5);
+    // Helper to clamp and round values
+    const clamp = (val, min = 0) => Math.max(min, Math.round(val));
+
+    // Brightness (combined exposure + brightness + hslLightness)
+    const totalBrightness = clamp(100 + brightness + (exposure * 0.5) + hslLightness);
     if (totalBrightness !== 100) {
         filters.push(`brightness(${totalBrightness}%)`);
     }
 
     // Contrast (affected by highlights/shadows)
-    const totalContrast = 100 + contrast + (highlights * 0.3) - (shadows * 0.3);
+    const totalContrast = clamp(100 + contrast + (highlights * 0.3) - (shadows * 0.3));
     if (totalContrast !== 100) {
         filters.push(`contrast(${totalContrast}%)`);
     }
 
-    // Saturation (vibrance adds to saturation)
-    const totalSaturation = 100 + saturation + (vibrance * 0.7);
+    // Saturation (vibrance + hslSaturation adds to saturation)
+    const totalSaturation = clamp(100 + saturation + (vibrance * 0.7) + hslSaturation);
     if (totalSaturation !== 100) {
         filters.push(`saturate(${totalSaturation}%)`);
     }
 
     // Hue (affected by temp and tint)
-    const totalHue = hue + (temp * 0.5) + (tint * 0.3);
+    const totalHue = Math.round(hue + (temp * 0.5) + (tint * 0.3));
     if (totalHue !== 0) {
         filters.push(`hue-rotate(${totalHue}deg)`);
     }
 
     // Blur (inverse of sharpen, noise reduction)
     if (blur > 0) {
-        filters.push(`blur(${blur * 0.05}px)`);
+        filters.push(`blur(${Math.round(blur * 0.05 * 10) / 10}px)`);
     }
 
     // Grayscale
     if (grayscale > 0) {
-        filters.push(`grayscale(${grayscale}%)`);
+        filters.push(`grayscale(${clamp(grayscale)}%)`);
     }
 
     // Sepia
     if (sepia > 0) {
-        filters.push(`sepia(${sepia}%)`);
+        filters.push(`sepia(${clamp(sepia)}%)`);
     }
 
     // Fade (reduce contrast and saturation)
     if (fade > 0) {
-        filters.push(`contrast(${100 - fade * 0.3}%)`);
-        filters.push(`saturate(${100 - fade * 0.5}%)`);
+        filters.push(`contrast(${clamp(100 - fade * 0.3)}%)`);
+        filters.push(`saturate(${clamp(100 - fade * 0.5)}%)`);
     }
 
     return filters.length > 0 ? filters.join(' ') : 'none';
