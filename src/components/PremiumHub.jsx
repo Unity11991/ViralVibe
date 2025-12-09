@@ -110,6 +110,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                 media_url: mediaUrl,
                 platform: postData.platform,
                 scheduled_at: postData.scheduled_at,
+                music: postData.music,
                 status: 'pending'
             };
 
@@ -1071,9 +1072,9 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
 
                     <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
                         {/* Connect Button Moved to Smart Scheduler Tab */}
-                        {/* <button onClick={handleRunSimulation} className="w-full py-2 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-xs text-indigo-300 hover:text-white flex items-center justify-center gap-2 transition-colors border border-indigo-500/30">
+                        {<button onClick={handleRunSimulation} className="w-full py-2 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-xs text-indigo-300 hover:text-white flex items-center justify-center gap-2 transition-colors border border-indigo-500/30">
                             <Play size={12} /> Run Scheduler (Live)
-                        </button> */}
+                        </button>}
                     </div>
                 </div>
 

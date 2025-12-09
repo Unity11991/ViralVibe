@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
                         method: 'POST',
                         body: new URLSearchParams({
                             image_url: post.media_url, // Must be a public URL
-                            caption: post.music ? `${post.content}\n\n🎵 Music: ${post.music}` : post.content,
+                            caption: post.content,
                             access_token: account.access_token
                         })
                     }

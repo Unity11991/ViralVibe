@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { supabase } from '../lib/supabase';
 
 export const analyzeImage = async (fileOrBase64, settings) => {
     const { apiKey, platform, tone, model: modelName } = settings;
@@ -360,6 +361,116 @@ export const generatePremiumContent = async (type, data, settings) => {
             jsonStructure = `
                 {
                     "overlays": ["Text 1", "Text 2", "Text 3", "Text 4"]
+                }
+            `;
+            break;
+
+        // VIP Features
+        case 'trend-alerts':
+            // 1. Fetch Real Trends from Edge Function
+            let realTrends = [];
+            try {
+                const { data, error } = await supabase.functions.invoke('fetch-trends');
+                if (!error && data?.trends) {
+                    realTrends = data.trends;
+                }
+            } catch (err) {
+                console.warn("Failed to fetch real trends, falling back to AI knowledge:", err);
+            }
+
+            const trendsContext = realTrends.length > 0
+                ? `Here are the top trending searches right now: ${realTrends.map(t => `${t.title} (${t.traffic})`).join(', ')}.`
+                : "Analyze general current social media trends.";
+
+            systemRole = "You are a viral trend analyst.";
+            prompt = `
+                ${trendsContext}
+                
+                Identify 3 currently exploding viral trends relevant to the niche: "${input}".
+                Use the provided trending searches if they are relevant to the niche. If not, find creative ways to bridge the trending topics to this niche (e.g., "How to use [Trend] for [Niche]").
+                
+                For each trend, provide:
+                1. Trend Name (Catchy title)
+                2. Why it's viral (The psychology/reason)
+                3. Viral Audio (A specific song or sound name currently trending)
+                4. The Hook (The exact text to put on screen or say in first 3 seconds)
+                5. Content Idea (How to execute it)
+            `;
+            jsonStructure = `
+                {
+                    "trends": [
+                        {
+                            "name": "Trend Name",
+                            "why_viral": "Explanation",
+                            "audio": "Song Name - Artist",
+                            "hook": "POV: You realized...",
+                            "idea": "Filming instructions..."
+                        }
+                    ]
+                }
+            `;
+            break;
+
+        case 'smart-scheduler':
+            systemRole = "You are a social media data scientist.";
+            prompt = `
+                Analyze the audience behavior for a "${input}" account.
+                Provide the 3 best times to post this week for maximum engagement.
+                ALSO generate 5 engaging captions, 15-20 optimized hashtags, and 3 trending audio recommendations for this niche.
+            `;
+            jsonStructure = `
+                {
+                    "slots": [
+                        { "day": "Monday", "time": "10:00 AM", "reason": "High commute engagement" },
+                        { "day": "Wednesday", "time": "6:00 PM", "reason": "Post-work scrolling" },
+                        { "day": "Friday", "time": "12:00 PM", "reason": "Lunch break peak" }
+                    ],
+                    "captions": ["Caption 1", "Caption 2", "Caption 3", "Caption 4", "Caption 5"],
+                    "hashtags": ["#tag1", "#tag2", "#tag3", ...],
+                    "musicRecommendations": [
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'script-generator':
+            systemRole = "You are a professional screenwriter for short-form video.";
+            prompt = `
+                Write a 30-60 second Reel/TikTok script about: "${input}".
+                Include Hook, Body (3 points), and Call to Action.
+                Include visual cues in brackets.
+            `;
+            jsonStructure = `
+                {
+                    "title": "Script Title",
+                    "hook": "Visual/Audio Hook",
+                    "body": "Main script content with cues",
+                    "cta": "Call to action"
+                }
+            `;
+            break;
+
+        case 'analytics':
+            systemRole = "You are a social media analytics expert.";
+            prompt = `
+                Simulate a detailed performance report for a profile in the "${input}" niche.
+                Provide growth metrics, engagement rates, and 3 actionable insights for improvement.
+            `;
+            jsonStructure = `
+                {
+                    "metrics": {
+                        "growth": "+15%",
+                        "engagement": "4.8%",
+                        "reach": "12.5k"
+                    },
+                    "insights": [
+                        "Insight 1",
+                        "Insight 2",
+                        "Insight 3"
+                    ]
                 }
             `;
             break;

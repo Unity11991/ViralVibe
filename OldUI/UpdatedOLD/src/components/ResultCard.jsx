@@ -83,7 +83,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results, onOpenPremium, onOpenEditor }) => {
+export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
@@ -101,11 +101,20 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor }) => {
                 </div>
 
                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
-                            <Flame size={20} fill="currentColor" />
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
+                                <Flame size={20} fill="currentColor" />
+                            </div>
+                            <h3 className="text-xl font-bold text-primary">Viral Audit</h3>
                         </div>
-                        <h3 className="text-xl font-bold text-primary">Viral Audit</h3>
+                        <button
+                            onClick={onOpenShare}
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
+                            title="Share Result"
+                        >
+                            <Share2 size={20} />
+                        </button>
                     </div>
 
                     {/* The Roast */}
@@ -228,33 +237,35 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor }) => {
             </div>
 
             {/* Music */}
-            {musicRecommendations.length > 0 && (
-                <div className="glass-panel p-6">
-                    <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-                        <div className="flex items-center gap-2 text-secondary font-medium">
-                            <Music size={16} className="text-rose-400" />
-                            <h3>Audio</h3>
+            {
+                musicRecommendations.length > 0 && (
+                    <div className="glass-panel p-6">
+                        <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+                            <div className="flex items-center gap-2 text-secondary font-medium">
+                                <Music size={16} className="text-rose-400" />
+                                <h3>Audio</h3>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {musicRecommendations.map((track, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-rose-500/20 to-purple-500/20 rounded-lg flex items-center justify-center text-rose-300">
+                                            <Music size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-primary text-sm font-bold">{track.song}</p>
+                                            <p className="text-tertiary text-xs">{track.artist}</p>
+                                        </div>
+                                    </div>
+                                    <MusicPlayer song={track.song} artist={track.artist} />
+                                </div>
+                            ))}
                         </div>
                     </div>
-
-                    <div className="space-y-2">
-                        {musicRecommendations.map((track, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-rose-500/20 to-purple-500/20 rounded-lg flex items-center justify-center text-rose-300">
-                                        <Music size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-primary text-sm font-bold">{track.song}</p>
-                                        <p className="text-tertiary text-xs">{track.artist}</p>
-                                    </div>
-                                </div>
-                                <MusicPlayer song={track.song} artist={track.artist} />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+                )
+            }
             {/* Premium Features Button */}
             <div className="flex justify-center pt-6">
                 <button
@@ -268,7 +279,7 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor }) => {
                     </div>
                 </button>
             </div>
-        </div>
+        </div >
     );
 };
 

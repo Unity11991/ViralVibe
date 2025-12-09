@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.86.0",
     "cropperjs": "^1.6.2",
     "groq-sdk": "^0.37.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.555.0",
     "react": "^18.3.1",
     "react-cropper": "^2.3.3",

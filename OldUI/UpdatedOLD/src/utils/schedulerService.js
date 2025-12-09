@@ -40,8 +40,7 @@ export const runSchedulerSimulation = async () => {
     // 2. "Publish" them (update status)
     const updates = pendingPosts.map(async (post) => {
         // Here we would call the real API
-        const finalCaption = post.music ? `${post.content}\n\n🎵 Music: ${post.music}` : post.content;
-        console.log(`Publishing post ${post.id} to ${post.platform} with caption: "${finalCaption}"`);
+        console.log(`Publishing post ${post.id} to ${post.platform}...`);
 
         const { error: updateError } = await supabase
             .from('scheduled_posts')

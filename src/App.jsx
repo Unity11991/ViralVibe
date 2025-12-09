@@ -19,9 +19,11 @@ import ProfileModal from './components/ProfileModal';
 import MediaEditor from './components/MediaEditor';
 import { supabase } from './lib/supabase';
 import ShareModal from './components/ShareModal';
+import LimitReachedModal from './components/LimitReachedModal';
 
 import ToolsModal from './components/ToolsModal';
 import MainContent from './components/MainContent';
+import ReferralHandler from './components/ReferralHandler';
 
 import { Routes, Route, useLocation } from 'react-router-dom';
 import PrivacyPolicy from './pages/policies/PrivacyPolicy';
@@ -44,12 +46,13 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
-  const [isPro, setIsPro] = useState(true); // DEV: Default to true
+  const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
@@ -125,7 +128,7 @@ function App() {
         setLastLoginDate(profile.last_login_date);
         // Check if user has any active subscription plan
         // setIsPro(!!profile.subscription_tier && profile.subscription_tier !== 'free');
-        setIsPro(true); // DEV: Force Pro for testing
+        setIsPro(false); // DEV: Force Pro for testing
       }
 
       // Fetch History
@@ -219,8 +222,7 @@ function App() {
       const currentCount = currentUsage ? currentUsage.count : 0;
 
       if (currentCount >= 3) {
-        setShowAuthModal(true);
-        alert("You have reached your daily limit of 3 free generations. Please login to continue.");
+        setShowLimitModal(true);
         return;
       }
     }
@@ -529,6 +531,12 @@ function App() {
         image={image}
       />
 
+      <LimitReachedModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        onLogin={() => setShowAuthModal(true)}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
@@ -597,6 +605,7 @@ function App() {
         <Route path="/refund-policy" element={<RefundPolicy />} />
         <Route path="/shipping-policy" element={<ShippingPolicy />} />
         <Route path="/contact" element={<ContactUs />} />
+        <Route path="/referral/:code" element={<ReferralHandler />} />
       </Routes>
       <Footer />
     </div>
