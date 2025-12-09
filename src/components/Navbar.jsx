@@ -1,12 +1,23 @@
 import React from 'react';
-import { History, Coins, Sun, Moon, LogOut, User, Sparkles } from 'lucide-react';
+import { History, Coins, Sun, Moon, LogOut, User, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick }) => {
     const { user, signOut } = useAuth();
 
     return (
         <div className="flex items-center gap-2 md:gap-3">
+            {/* Trends Button */}
+            <button
+                onClick={onTrendsClick}
+                className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 hover:text-orange-300 transition-all border border-orange-500/20 hover:border-orange-500/40 group hidden sm:flex"
+            >
+                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <TrendingUp size={12} className="text-white" />
+                </div>
+                <span className="font-medium text-sm">Trends</span>
+            </button>
+
             {/* Tools Button */}
             <button
                 onClick={onToolsClick}

@@ -71,27 +71,20 @@ export const EditorCanvas = ({
                             className="hover:border-white/50 transition-colors"
                         >
                             {activeOverlayId === text.id ? (
-                                <input
-                                    type="text"
+                                <AutoResizingTextarea
                                     value={text.text}
-                                    onChange={(e) => {
-                                        e.stopPropagation();
-                                        onUpdateText(text.id, { text: e.target.value });
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="bg-transparent border-none outline-none text-center w-full"
+                                    onChange={(val) => onUpdateText(text.id, { text: val })}
                                     style={{
                                         color: text.color,
                                         fontSize: 'inherit',
                                         fontFamily: 'inherit',
                                         fontWeight: 'inherit',
-                                        textShadow: 'inherit'
+                                        textShadow: 'inherit',
+                                        minWidth: '50px'
                                     }}
-                                    autoFocus
                                 />
                             ) : (
-                                <span>{text.text}</span>
+                                <span style={{ whiteSpace: 'pre-wrap' }}>{text.text}</span>
                             )}
                             {activeOverlayId === text.id && (
                                 <button
@@ -156,5 +149,34 @@ export const EditorCanvas = ({
                 </div>
             </div>
         </div>
+    );
+};
+
+const AutoResizingTextarea = ({ value, onChange, style }) => {
+    const ref = React.useRef(null);
+
+    React.useEffect(() => {
+        if (ref.current && document.activeElement !== ref.current) {
+            ref.current.innerText = value;
+        }
+    }, [value]);
+
+    return (
+        <div
+            ref={ref}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={(e) => onChange(e.currentTarget.innerText)}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="bg-transparent outline-none w-full h-full text-center"
+            style={{
+                ...style,
+                whiteSpace: 'pre-wrap',
+                overflow: 'hidden',
+                minWidth: '1em'
+            }}
+        />
     );
 };

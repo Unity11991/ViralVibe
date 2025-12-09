@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Video, Sparkles, Image as ImageIcon, Music } from 'lucide-react';
+import { X, Video, Sparkles, Image as ImageIcon, Music, Swords } from 'lucide-react';
 
 const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
     if (!isOpen) return null;
@@ -13,6 +13,15 @@ const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
             color: 'text-blue-400',
             bg: 'bg-blue-500/10',
             border: 'border-blue-500/20'
+        },
+        {
+            id: 'vibe-battle',
+            title: 'Vibe Battle',
+            description: 'Compare two images to see which wins the viral algorithm.',
+            icon: Swords,
+            color: 'text-orange-400',
+            bg: 'bg-orange-500/10',
+            border: 'border-orange-500/20'
         },
         // Placeholders for future tools
         {

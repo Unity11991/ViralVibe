@@ -11,7 +11,7 @@
  * @param {Object} transform - Transform settings (crop, rotation, zoom)
  * @param {Object} canvasDimensions - Logical canvas dimensions
  */
-export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null) => {
+export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
     const { crop = null, rotation = 0, zoom = 1 } = transform;
@@ -55,7 +55,48 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             offsetX = (logicalWidth - drawWidth) / 2;
         }
 
-        ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
+        if (memePadding > 0) {
+            // Draw white background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+
+            // Calculate header height fraction: p / (1+p)
+            const headerFraction = memePadding / (1 + memePadding);
+            const headerHeight = logicalHeight * headerFraction;
+
+            // Draw media below header
+            // Assume media fills width
+            const mediaDrawHeight = logicalHeight - headerHeight;
+
+            // Recalculate draw dimensions to fit in the bottom area while maintaining aspect
+            // But typically memes just fill width.
+            const targetY = headerHeight;
+
+            // Fit media in the remaining space (bottom part)
+            if (mediaAspect > canvasAspect) {
+                // Media is wider than canvas slot (unlikely if we set canvas based on media width)
+                // But if it happens, fit width
+                drawWidth = logicalWidth * zoom;
+                drawHeight = (logicalWidth / mediaAspect) * zoom;
+                offsetY = targetY + (mediaDrawHeight - drawHeight) / 2;
+                offsetX = (logicalWidth - drawWidth) / 2; // Should be 0 usually
+
+            } else {
+                // Media is taller/same
+                // In our resize logic, we set width = containerWidth.
+                // So logicalWidth should match media width roughly.
+
+                drawWidth = logicalWidth * zoom;
+                drawHeight = (logicalWidth / mediaAspect) * zoom;
+                offsetX = (logicalWidth - drawWidth) / 2;
+                offsetY = targetY + (mediaDrawHeight - drawHeight) / 2;
+            }
+
+            ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
+
+        } else {
+            ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
+        }
     }
 
     ctx.restore();
@@ -269,13 +310,13 @@ export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canv
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
 export const renderFrame = (ctx, media, state) => {
-    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions } = state;
+    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding } = state;
 
     // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
     const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
     // Draw base media with filters
-    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions);
+    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding);
 
     // Apply vignette
     if (vignette > 0) {
@@ -289,6 +330,8 @@ export const renderFrame = (ctx, media, state) => {
 
     // Draw text overlays
     textOverlays.forEach(textOverlay => {
+        if (state.activeOverlayId === textOverlay.id) return; // Skip drawing active text overlay (handled by HTML editor)
+
         let overlayToDraw = { ...textOverlay };
 
         // Adjust for crop if active

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Copy, Check, Clock, Hash, MessageSquare, Music, TrendingUp, Sparkles, Play, Pause, Loader, Bookmark, Globe, Share2, Flame, Wrench } from 'lucide-react';
 import { searchTrack } from '../utils/musicService';
+import SocialPreview from './SocialPreview';
 
 const CopyButton = ({ text }) => {
     const [copied, setCopied] = useState(false);
@@ -83,7 +84,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare }) => {
+export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare, image, user }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
@@ -120,6 +121,14 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenSha
                     {/* The Roast */}
                     <div className="mb-6 bg-black/20 p-4 rounded-xl border border-orange-500/20">
                         <p className="text-orange-200 italic text-lg font-medium text-center">"{results.roast || "No roast available."}"</p>
+                        {onOpenEditor && results.roast && (
+                            <button
+                                onClick={() => onOpenEditor({ text: results.roast })}
+                                className="mx-auto mt-3 flex items-center gap-2 px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white uppercase tracking-wider transition-colors"
+                            >
+                                <Sparkles size={12} /> Make it a Meme
+                            </button>
+                        )}
                     </div>
 
                     {/* Vibe Scores */}
@@ -266,6 +275,10 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenSha
                     </div>
                 )
             }
+
+            {/* Social Preview */}
+            <SocialPreview image={image} captions={captions} hashtags={hashtags} user={user} />
+
             {/* Premium Features Button */}
             <div className="flex justify-center pt-6">
                 <button

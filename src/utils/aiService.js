@@ -517,3 +517,52 @@ async function fileToBase64(file) {
         reader.readAsDataURL(file);
     });
 }
+
+export const generateTrendInsights = async (trends, apiKey) => {
+    if (!apiKey) throw new Error("API Key is required");
+
+    const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+
+    // Simplified trend list for the prompt
+    const trendList = trends.slice(0, 5).map(t => `${t.name}: ${t.description}`).join('\n');
+
+    const prompt = `
+        You are a viral content strategist. Based on the following current real-world trends, generate a cohesive content strategy for a creator.
+
+        TRENDS:
+        ${trendList}
+
+        Generate a JSON object with:
+        1. "ideas": 3 specific video ideas (title, description, format like 'TikTok' or 'Reel').
+        2. "audio": 3 recommended trending audio tracks or vibes (title, artist, reason).
+        3. "keywords": 10 high-traffic keywords/hashtags to use right now.
+
+        Return ONLY raw JSON:
+        {
+            "ideas": [
+                { "title": "...", "description": "...", "format": "..." }
+            ],
+            "audio": [
+                { "title": "...", "artist": "...", "reason": "..." }
+            ],
+            "keywords": ["...", "..."]
+        }
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1000,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) throw new Error("No content generated");
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Trend Insight Error:", error);
+        throw error;
+    }
+};
