@@ -10,12 +10,12 @@ const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme,
             {/* Trends Button */}
             <button
                 onClick={onTrendsClick}
-                className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 hover:text-orange-300 transition-all border border-orange-500/20 hover:border-orange-500/40 group hidden sm:flex"
+                className="flex items-center gap-2 px-2 md:px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 hover:text-orange-300 transition-all border border-orange-500/20 hover:border-orange-500/40 group"
             >
                 <div className="w-5 h-5 rounded-md bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <TrendingUp size={12} className="text-white" />
                 </div>
-                <span className="font-medium text-sm">Trends</span>
+                <span className="font-medium text-sm hidden sm:inline">Trends</span>
             </button>
 
             {/* Tools Button */}
