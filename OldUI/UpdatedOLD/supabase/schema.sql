@@ -2,49 +2,12 @@
 create table if not exists profiles (
   id uuid references auth.users on delete cascade primary key,
   email text,
-  full_name text,
-  avatar_url text,
-  referral_code text,
-  niche text,
-  bio text,
-  contact_email text,
-  looking_for_collab boolean default true,
   coin_balance integer default 100,
   streak_count integer default 0,
   subscription_tier text default 'free',
   last_login_date timestamp with time zone,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone
+  created_at timestamp with time zone default now()
 );
-
--- Add columns if they don't exist (for existing databases)
-do $$
-begin
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'full_name') then
-    alter table profiles add column full_name text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'avatar_url') then
-    alter table profiles add column avatar_url text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'referral_code') then
-    alter table profiles add column referral_code text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'niche') then
-    alter table profiles add column niche text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'bio') then
-    alter table profiles add column bio text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'contact_email') then
-    alter table profiles add column contact_email text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'looking_for_collab') then
-    alter table profiles add column looking_for_collab boolean default true;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'updated_at') then
-    alter table profiles add column updated_at timestamp with time zone;
-  end if;
-end $$;
 
 -- Enable RLS for profiles
 alter table profiles enable row level security;

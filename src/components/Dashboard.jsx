@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame } from 'lucide-react';
 import CollabFinder from './CollabFinder';
 import AdBanner from './AdBanner';
@@ -12,6 +12,7 @@ const PACKAGES = [
 ];
 
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const DailyRewardCard = ({ lastLoginDate, onClaim }) => {
     const [claiming, setClaiming] = useState(false);
@@ -119,9 +120,26 @@ const PurchaseTab = ({ onWatchAd, onPurchase, lastLoginDate, onClaimReward }) =>
     </div>
 );
 
-const ReferralTab = () => {
+const ReferralTab = ({ user }) => {
     const [copied, setCopied] = useState(false);
-    const referralCode = "REF487873";
+    const [referralCode, setReferralCode] = useState('Loading...');
+
+    useEffect(() => {
+        const fetchReferralCode = async () => {
+            if (!user) return;
+            const { data } = await supabase
+                .from('profiles')
+                .select('referral_code')
+                .eq('id', user.id)
+                .single();
+
+            if (data?.referral_code) {
+                setReferralCode(data.referral_code);
+            }
+        };
+        fetchReferralCode();
+    }, [user]);
+
     const referralLink = `https://govyral.online/referral/${referralCode}`;
 
     const handleCopy = () => {
@@ -428,6 +446,7 @@ const SupportTab = ({ onPurchase }) => {
     );
 };
 
+
 const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase, lastLoginDate, setCoinBalance, setStreak, setLastLoginDate }) => {
     const [activeTab, setActiveTab] = useState('purchase');
     const { claimDailyReward, user } = useAuth();
@@ -533,7 +552,7 @@ const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchA
                 <div className="min-h-[400px]">
                     {activeTab === 'purchase' && <PurchaseTab onWatchAd={onWatchAd} onPurchase={onPurchase} lastLoginDate={lastLoginDate} onClaimReward={handleClaimReward} />}
                     {activeTab === 'collab' && <CollabFinder />}
-                    {activeTab === 'referral' && <ReferralTab />}
+                    {activeTab === 'referral' && <ReferralTab user={user} />}
                     {activeTab === 'analytics' && <AnalyticsTab history={history} totalCoinsSpent={totalCoinsSpent} />}
                     {activeTab === 'support' && <SupportTab onPurchase={onPurchase} />}
                 </div>

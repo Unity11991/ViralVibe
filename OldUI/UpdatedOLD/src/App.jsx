@@ -5,7 +5,7 @@ import { ResultsSection } from './components/ResultCard';
 import OptionsPanel from './components/OptionsPanel';
 import SeoWrapper from './components/SeoWrapper';
 import HistoryPanel from './components/HistoryPanel';
-import AdModal from './components/AdModal';
+
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
@@ -18,6 +18,7 @@ import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
 import MediaEditor from './components/MediaEditor';
 import { supabase } from './lib/supabase';
+import ShareModal from './components/ShareModal';
 
 import ToolsModal from './components/ToolsModal';
 import MainContent from './components/MainContent';
@@ -43,10 +44,12 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
+  const [isPro, setIsPro] = useState(true); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
@@ -80,9 +83,10 @@ function App() {
   // Coin System State
   const [coinBalance, setCoinBalance] = useState(100);
   const [streak, setStreak] = useState(0);
+  const [lastLoginDate, setLastLoginDate] = useState(null);
   const [totalCoinsSpent, setTotalCoinsSpent] = useState(0);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
-  const [showAdModal, setShowAdModal] = useState(false);
+
 
   // Theme State
   const [theme, setTheme] = useState(() => {
@@ -111,13 +115,17 @@ function App() {
       // Fetch Profile (Coins)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('coin_balance, streak_count')
+        .select('coin_balance,streak_count,subscription_tier,last_login_date')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setCoinBalance(profile.coin_balance);
         setStreak(profile.streak_count || 0);
+        setLastLoginDate(profile.last_login_date);
+        // Check if user has any active subscription plan
+        // setIsPro(!!profile.subscription_tier && profile.subscription_tier !== 'free');
+        setIsPro(true); // DEV: Force Pro for testing
       }
 
       // Fetch History
@@ -231,7 +239,7 @@ function App() {
 
     // Check Coin Balance - Only for logged in users
     if (user && coinBalance < cost) {
-      setShowAdModal(true); // Show ad modal instead of confirm
+      setCurrentView('dashboard'); // Redirect to dashboard to buy coins
       return;
     }
 
@@ -489,10 +497,7 @@ function App() {
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
       </div>
 
-      <AdModal
-        isOpen={showAdModal}
-        onAdComplete={handleAdComplete}
-      />
+
 
       <AuthModal
         isOpen={showAuthModal}
@@ -517,14 +522,22 @@ function App() {
         />
       )}
 
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        results={results}
+        image={image}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
         settings={settings}
         image={image}
         coinBalance={coinBalance}
+        isPro={isPro}
         onSpendCoins={handleSpendCoins}
-        onOpenAdModal={() => setShowAdModal(true)}
+
       />
 
       <ProgressPopup
@@ -549,9 +562,13 @@ function App() {
             setCurrentView={setCurrentView}
             coinBalance={coinBalance}
             streak={streak}
+            lastLoginDate={lastLoginDate}
+            setCoinBalance={setCoinBalance}
+            setStreak={setStreak}
+            setLastLoginDate={setLastLoginDate}
             history={history}
             totalCoinsSpent={totalCoinsSpent}
-            setShowAdModal={setShowAdModal}
+
             handlePurchase={handlePurchase}
             isAnalyzing={isAnalyzing}
             image={image}
@@ -572,6 +589,7 @@ function App() {
             setShowProfileModal={setShowProfileModal}
             guestUsageCount={guestUsageCount}
             setShowToolsModal={setShowToolsModal}
+            setShowShareModal={setShowShareModal}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />
