@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Sparkles, AlertCircle, Zap } from 'lucide-react';
+import { Sparkles, AlertCircle, Zap, ArrowLeft, TrendingUp } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import { ResultsSection } from './ResultCard';
 import OptionsPanel from './OptionsPanel';
 import Navbar from './Navbar';
 import Dashboard from './Dashboard';
+import TrendingSidebar from './TrendingSidebar';
 import AdBanner from './AdBanner';
 
 const MainContent = ({
@@ -53,6 +54,28 @@ const MainContent = ({
         }
     }, [results]);
 
+    if (currentView === 'trending') {
+        return (
+            <div className="min-h-screen bg-slate-900 text-white p-4 pt-8 animate-fade-in custom-scrollbar">
+                <div className="max-w-7xl mx-auto space-y-8">
+                    <div className="flex items-center justify-between">
+                        <button
+                            onClick={() => setCurrentView('home')}
+                            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+                        >
+                            <ArrowLeft size={20} />
+                            Back to Home
+                        </button>
+                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                            <TrendingUp className="text-orange-400" /> Viral Trends
+                        </h1>
+                    </div>
+                    <TrendingSidebar apiKey={settings?.apiKey} />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col min-h-screen">
             <div className="flex-1 max-w-[1600px] mx-auto p-4 lg:p-8 w-full flex flex-col">
@@ -81,6 +104,7 @@ const MainContent = ({
                         onProfileClick={() => setShowProfileModal(true)}
                         guestUsageCount={guestUsageCount}
                         onToolsClick={() => setShowToolsModal(true)}
+                        onTrendsClick={() => setCurrentView('trending')}
                     />
                 </header>
 
@@ -97,6 +121,7 @@ const MainContent = ({
                         setCoinBalance={setCoinBalance}
                         setStreak={setStreak}
                         setLastLoginDate={setLastLoginDate}
+                        settings={settings}
                     />
                 ) : (
                     <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
@@ -181,8 +206,10 @@ const MainContent = ({
                                                 setShowPremiumHub(true);
                                             }
                                         }}
-                                        onOpenEditor={() => setShowMediaEditor(true)}
+                                        onOpenEditor={(config) => setShowMediaEditor(config)}
                                         onOpenShare={() => setShowShareModal(true)}
+                                        image={image}
+                                        user={user}
                                     />
                                 </div>
                             ) : (

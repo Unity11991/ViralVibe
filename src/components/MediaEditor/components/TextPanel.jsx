@@ -47,6 +47,16 @@ export const TextPanel = ({
                             icon={Trash2}
                         />
                     </div>
+                    {/* Text Input */}
+                    <div className="space-y-2">
+                        <label className="text-xs text-white/60">Content</label>
+                        <textarea
+                            value={activeText.text}
+                            onChange={(e) => onUpdateText(activeText.id, { text: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-blue-500 resize-y min-h-[80px]"
+                            placeholder="Type your text here..."
+                        />
+                    </div>
 
                     {/* Color Picker */}
                     <ColorPicker

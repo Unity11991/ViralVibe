@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame } from 'lucide-react';
+import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame, TrendingUp } from 'lucide-react';
 import CollabFinder from './CollabFinder';
+import TrendingSidebar from './TrendingSidebar';
 import AdBanner from './AdBanner';
 
 const PACKAGES = [
@@ -447,7 +448,7 @@ const SupportTab = ({ onPurchase }) => {
 };
 
 
-const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase, lastLoginDate, setCoinBalance, setStreak, setLastLoginDate }) => {
+const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase, lastLoginDate, setCoinBalance, setStreak, setLastLoginDate, settings }) => {
     const [activeTab, setActiveTab] = useState('purchase');
     const { claimDailyReward, user } = useAuth();
 

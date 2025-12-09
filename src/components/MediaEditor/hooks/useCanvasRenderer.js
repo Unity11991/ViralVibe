@@ -12,18 +12,23 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
     /**
      * Initialize canvas with proper dimensions
      */
-    const initializeCanvas = useCallback((containerWidth, containerHeight, mediaAspectRatio) => {
+    const initializeCanvas = useCallback((containerWidth, containerHeight, mediaAspectRatio, memePadding = 0) => {
         if (!canvasRef.current) return;
 
         let width, height;
         const containerAspect = containerWidth / containerHeight;
 
-        if (mediaAspectRatio > containerAspect) {
+        // If meme mode, the effective media aspect ratio changes (it gets taller)
+        // newHeight = oldHeight * (1 + memePadding)
+        // so newAspect = width / (height * (1 + memePadding)) = oldAspect / (1 + memePadding)
+        const effectiveAspect = memePadding > 0 ? mediaAspectRatio / (1 + memePadding) : mediaAspectRatio;
+
+        if (effectiveAspect > containerAspect) {
             width = containerWidth;
-            height = containerWidth / mediaAspectRatio;
+            height = containerWidth / effectiveAspect;
         } else {
             height = containerHeight;
-            width = containerHeight * mediaAspectRatio;
+            width = containerHeight * effectiveAspect;
         }
 
         // Set internal resolution (higher for quality)

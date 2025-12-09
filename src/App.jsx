@@ -17,6 +17,7 @@ import { useAuth } from './context/AuthContext';
 import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
 import MediaEditor from './components/MediaEditor';
+import VibeBattle from './components/VibeBattle';
 import { supabase } from './lib/supabase';
 import ShareModal from './components/ShareModal';
 import LimitReachedModal from './components/LimitReachedModal';
@@ -49,6 +50,8 @@ function App() {
   const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
+  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '' });
+  const [showVibeBattle, setShowVibeBattle] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -57,7 +60,10 @@ function App() {
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
     if (toolId === 'video-editor') {
+      setMediaEditorConfig({ file: image, text: '' });
       setShowMediaEditor(true);
+    } else if (toolId === 'vibe-battle') {
+      setShowVibeBattle(true);
     }
   };
 
@@ -160,6 +166,7 @@ function App() {
 
   const handleImageSelect = (file, previewUrl) => {
     setImage(file);
+    setMediaEditorConfig({ file: file, text: '' });
     setResults(null);
     setError(null);
   };
@@ -519,8 +526,16 @@ function App() {
 
       {showMediaEditor && (
         <MediaEditor
-          mediaFile={image}
+          mediaFile={mediaEditorConfig.file || image}
+          initialText={mediaEditorConfig.text}
           onClose={() => setShowMediaEditor(false)}
+        />
+      )}
+
+      {showVibeBattle && (
+        <VibeBattle
+          onClose={() => setShowVibeBattle(false)}
+          settings={settings}
         />
       )}
 
@@ -581,7 +596,12 @@ function App() {
             isAnalyzing={isAnalyzing}
             image={image}
             handleImageSelect={handleImageSelect}
-            setShowMediaEditor={setShowMediaEditor}
+            setShowMediaEditor={(config) => {
+              if (config && config.text) {
+                setMediaEditorConfig(prev => ({ ...prev, text: config.text }));
+              }
+              setShowMediaEditor(true);
+            }}
             settings={settings}
             setSettings={setSettings}
             showMoodError={showMoodError}
@@ -598,6 +618,7 @@ function App() {
             guestUsageCount={guestUsageCount}
             setShowToolsModal={setShowToolsModal}
             setShowShareModal={setShowShareModal}
+            image={image}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />

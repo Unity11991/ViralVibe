@@ -19,7 +19,7 @@ import { Button } from './MediaEditor/components/UI';
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt from scratch with optimized performance and responsive design
  */
-const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
+const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText }) => {
     // Hooks
     const {
         mediaFile,
@@ -79,6 +79,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
     const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [memeMode, setMemeMode] = useState(!!initialText);
 
     const fileInputRef = useRef(null);
     const containerRef = useRef(null);
@@ -103,6 +104,30 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
         };
     }, []);
 
+    const initialTextProcessed = useRef(false);
+
+    // Handle Initial Text (Meme Mode)
+    useEffect(() => {
+        if (initialText && !initialTextProcessed.current) {
+            initialTextProcessed.current = true;
+            setMemeMode(true);
+            setActiveTab('text');
+            // Small delay to ensure canvas is ready
+            setTimeout(() => {
+                addTextOverlay({
+                    text: initialText,
+                    fontSize: 12,
+                    fontFamily: 'Arial',
+                    fontWeight: 'bold',
+                    color: '#000000',
+                    x: 50,
+                    y: 12 // Slightly lower in the header to ensure visibility
+                });
+                setActiveOverlayId(null); // Deselect immediately to avoid ghost box
+            }, 500);
+        }
+    }, [initialText, addTextOverlay]);
+
     // Initialize canvas when media loads and handle resizing
     useEffect(() => {
         if (!mediaUrl || !mediaElementRef.current || !previewContainerRef.current) return;
@@ -122,7 +147,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
             initializeCanvas(
                 maxWidth,
                 maxHeight,
-                mediaAspect
+                mediaAspect,
+                memeMode ? 0.3 : 0 // 30% header if meme mode
             );
         };
 
@@ -153,11 +179,14 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
             adjustments,
             vignette: adjustments.vignette,
             grain: adjustments.grain,
-            textOverlays,
+            textOverlays: [], // Hide text on canvas during preview (handled by HTML overlay)
             stickers,
             stickerImages,
             transform: { rotation, zoom },
-            canvasDimensions
+            transform: { rotation, zoom },
+            canvasDimensions,
+            activeOverlayId,
+            memePadding: memeMode ? 0.3 : 0
         };
 
         const interval = setInterval(() => {
@@ -306,7 +335,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose }) => {
             textOverlays,
             stickers,
             stickerImages,
-            transform: { crop: cropData, rotation, zoom }
+            stickers,
+            stickerImages,
+            transform: { crop: cropData, rotation, zoom },
+            memePadding: memeMode ? 0.3 : 0
         };
 
         handleExport(canvasRef, renderState, trimRange);

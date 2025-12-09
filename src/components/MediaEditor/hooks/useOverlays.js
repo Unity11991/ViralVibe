@@ -12,7 +12,7 @@ export const useOverlays = () => {
     const overlayRef = useRef(null);
 
     // Text overlay operations
-    const addTextOverlay = useCallback(() => {
+    const addTextOverlay = useCallback((options = {}) => {
         const newText = {
             id: `text-${Date.now()}`,
             text: 'Double-click to edit',
@@ -22,7 +22,8 @@ export const useOverlays = () => {
             fontFamily: 'Arial',
             fontWeight: 'bold',
             color: '#ffffff',
-            rotation: 0
+            rotation: 0,
+            ...options
         };
         setTextOverlays(prev => [...prev, newText]);
         setActiveOverlayId(newText.id);
