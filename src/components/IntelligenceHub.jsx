@@ -23,15 +23,30 @@ const IntelligenceHub = ({
     const [error, setError] = useState(null);
     const [trends, setTrends] = useState([]);
 
+    const FALLBACK_TRENDS = [
+        { title: "Artificial Intelligence", traffic: "5M+" },
+        { title: "Viral TikTok Trends", traffic: "2M+" },
+        { title: "Crypto Market", traffic: "1M+" },
+        { title: "SpaceX Launch", traffic: "500K+" },
+        { title: "New iPhone Release", traffic: "200K+" },
+        { title: "Global Tech News", traffic: "100K+" }
+    ];
+
     useEffect(() => {
         const fetchTrends = async () => {
             try {
                 const { data, error } = await supabase.functions.invoke('fetch-trends');
-                if (data?.trends) {
+                if (error) throw error;
+
+                if (data?.trends && data.trends.length > 0) {
                     setTrends(data.trends.slice(0, 6));
+                } else {
+                    console.warn("No trends data returned, using fallback");
+                    setTrends(FALLBACK_TRENDS);
                 }
             } catch (err) {
-                console.error("Failed to fetch trends:", err);
+                console.error("Failed to fetch trends, using fallback:", err);
+                setTrends(FALLBACK_TRENDS);
             }
         };
         fetchTrends();
