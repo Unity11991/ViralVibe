@@ -167,7 +167,7 @@ const SchedulerModal = ({ isOpen, onClose, content, onSchedule, initialDate = ''
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-secondary">Select Platform</label>
                         <div className="flex gap-3">
-                            {['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin'].map((p) => (
+                            {['instagram', 'facebook', 'youtube', 'twitter', 'linkedin'].map((p) => (
                                 <button
                                     key={p}
                                     onClick={() => setPlatform(p)}
@@ -178,7 +178,7 @@ const SchedulerModal = ({ isOpen, onClose, content, onSchedule, initialDate = ''
                                     title={p}
                                 >
                                     {p === 'instagram' && <Instagram size={20} />}
-                                    {p === 'tiktok' && <span className="font-bold text-lg">Tk</span>}
+                                    {p === 'facebook' && <span className="font-bold text-lg">Fb</span>}
                                     {p === 'youtube' && <Youtube size={20} />}
                                     {p === 'twitter' && <Twitter size={20} />}
                                     {p === 'linkedin' && <Linkedin size={20} />}

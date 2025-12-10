@@ -439,7 +439,7 @@ export const generatePremiumContent = async (type, data, settings) => {
         case 'script-generator':
             systemRole = "You are a professional screenwriter for short-form video.";
             prompt = `
-                Write a 30-60 second Reel/TikTok script about: "${input}".
+                Write a 30-60 second Reel/Facebook Video script about: "${input}".
                 Include Hook, Body (3 points), and Call to Action.
                 Include visual cues in brackets.
             `;
@@ -533,7 +533,7 @@ export const generateTrendInsights = async (trends, apiKey) => {
         ${trendList}
 
         Generate a JSON object with:
-        1. "ideas": 3 specific video ideas (title, description, format like 'TikTok' or 'Reel').
+        1. "ideas": 3 specific video ideas (title, description, format like 'Facebook Video' or 'Reel').
         2. "audio": 3 recommended trending audio tracks or vibes (title, artist, reason).
         3. "keywords": 10 high-traffic keywords/hashtags to use right now.
 

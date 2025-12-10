@@ -15,18 +15,17 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
       <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
         <span className="text-indigo-400">👁️</span> Social Preview
       </h3>
-      
+
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
-        {['instagram', 'tiktok', 'twitter'].map((platform) => (
+        {['instagram', 'facebook', 'twitter'].map((platform) => (
           <button
             key={platform}
             onClick={() => setActiveTab(platform)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === platform
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === platform
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                 : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-            }`}
+              }`}
           >
             {platform.charAt(0).toUpperCase() + platform.slice(1)}
           </button>
@@ -36,7 +35,7 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
       {/* Preview Container */}
       <div className="flex justify-center">
         <div className="w-[320px] bg-black rounded-[2rem] border-[8px] border-gray-900 overflow-hidden shadow-2xl relative">
-          
+
           {/* Status Bar Mock */}
           <div className="h-6 bg-black flex justify-between items-center px-4 text-[10px] text-white font-medium select-none z-20 relative">
             <span>9:41</span>
@@ -66,8 +65,8 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
               <div className="p-3">
                 <div className="flex justify-between mb-2">
                   <div className="flex gap-4">
-                    <Heart 
-                      className={`w-6 h-6 cursor-pointer transition-colors ${liked ? 'fill-red-500 text-red-500' : 'text-white'}`} 
+                    <Heart
+                      className={`w-6 h-6 cursor-pointer transition-colors ${liked ? 'fill-red-500 text-red-500' : 'text-white'}`}
                       onClick={() => setLiked(!liked)}
                     />
                     <MessageCircle className="w-6 h-6 text-white" />
@@ -75,7 +74,7 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
                   </div>
                   <Bookmark className="w-6 h-6 text-white" />
                 </div>
-                
+
                 <div className="text-white text-sm font-bold mb-1">1,234 likes</div>
                 <div className="text-white text-sm">
                   <span className="font-bold mr-2">{username}</span>
@@ -86,13 +85,13 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
             </div>
           )}
 
-          {/* --- TIKTOK --- */}
-          {activeTab === 'tiktok' && (
+          {/* --- FACEBOOK --- */}
+          {activeTab === 'facebook' && (
             <div className="bg-black h-[550px] relative">
               {displayImage && (
-                 <img src={displayImage} alt="Post" className="w-full h-full object-cover opacity-80" />
+                <img src={displayImage} alt="Post" className="w-full h-full object-cover opacity-80" />
               )}
-              
+
               {/* Overlay UI */}
               <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent pt-20">
                 <div className="text-white font-bold mb-2">@{username}</div>
@@ -128,33 +127,33 @@ const SocialPreview = ({ image, captions, hashtags, user }) => {
 
           {/* --- TWITTER --- */}
           {activeTab === 'twitter' && (
-             <div className="bg-black h-full p-4">
-                <div className="flex gap-3">
-                   <div className="w-10 h-10 rounded-full bg-gray-700 flex-shrink-0"></div>
-                   <div className="flex-1">
-                      <div className="flex items-center gap-1 mb-1">
-                         <span className="text-white font-bold text-sm">{username}</span>
-                         <span className="text-gray-500 text-sm">@govyral_user · 1h</span>
-                      </div>
-                      <div className="text-white text-sm mb-3">
-                         {captionText} <br/> <span className="text-blue-400">{hashtagText}</span>
-                      </div>
-                      
-                      {displayImage && (
-                        <div className="rounded-xl overflow-hidden border border-gray-800 mb-3">
-                           <img src={displayImage} alt="Post" className="w-full h-48 object-cover" />
-                        </div>
-                      )}
+            <div className="bg-black h-full p-4">
+              <div className="flex gap-3">
+                <div className="w-10 h-10 rounded-full bg-gray-700 flex-shrink-0"></div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-white font-bold text-sm">{username}</span>
+                    <span className="text-gray-500 text-sm">@govyral_user · 1h</span>
+                  </div>
+                  <div className="text-white text-sm mb-3">
+                    {captionText} <br /> <span className="text-blue-400">{hashtagText}</span>
+                  </div>
 
-                      <div className="flex justify-between text-gray-500 max-w-[80%]">
-                         <MessageCircle className="w-4 h-4 hover:text-blue-400" />
-                         <Repeat className="w-4 h-4 hover:text-green-400" />
-                         <Heart className="w-4 h-4 hover:text-pink-500" />
-                         <Share2 className="w-4 h-4 hover:text-blue-400" />
-                      </div>
-                   </div>
+                  {displayImage && (
+                    <div className="rounded-xl overflow-hidden border border-gray-800 mb-3">
+                      <img src={displayImage} alt="Post" className="w-full h-48 object-cover" />
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-gray-500 max-w-[80%]">
+                    <MessageCircle className="w-4 h-4 hover:text-blue-400" />
+                    <Repeat className="w-4 h-4 hover:text-green-400" />
+                    <Heart className="w-4 h-4 hover:text-pink-500" />
+                    <Share2 className="w-4 h-4 hover:text-blue-400" />
+                  </div>
                 </div>
-             </div>
+              </div>
+            </div>
           )}
 
         </div>
