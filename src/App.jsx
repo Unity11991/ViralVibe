@@ -619,7 +619,7 @@ function App() {
             guestUsageCount={guestUsageCount}
             setShowToolsModal={setShowToolsModal}
             setShowShareModal={setShowShareModal}
-            image={image}
+
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />

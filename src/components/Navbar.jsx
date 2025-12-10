@@ -2,11 +2,20 @@ import React from 'react';
 import { History, Coins, Sun, Moon, LogOut, User, Sparkles, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick, onPremiumClick }) => {
     const { user, signOut } = useAuth();
 
     return (
         <div className="flex items-center gap-2 md:gap-3">
+            {/* Unlock Premium Magic Button */}
+            <button
+                onClick={onPremiumClick}
+                className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 transition-all hover:scale-105 group animate-pulse-slow"
+            >
+                <Sparkles size={16} className="text-white fill-white" />
+                <span className="font-bold text-sm hidden sm:inline">Unlock Premium Magic</span>
+            </button>
+
             {/* Trends Button */}
             <button
                 onClick={onTrendsClick}

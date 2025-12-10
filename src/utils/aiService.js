@@ -365,6 +365,37 @@ export const generatePremiumContent = async (type, data, settings) => {
             `;
             break;
 
+        case 'meme-maker':
+            systemRole = "You are a professional meme creator.";
+            prompt = `
+                Generate 5 viral meme concepts for the topic: "${input}".
+                For each, specify the popular template to use (e.g., 'Distracted Boyfriend', 'Drake Hotline Bling', 'Woman Yelling at Cat'), the Top Text, the Bottom Text, and a brief visual description.
+            `;
+            jsonStructure = `
+                {
+                    "memes": [
+                        { "template": "Template Name", "topText": "Top Text", "bottomText": "Bottom Text", "description": "Visual description" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'storyboarder':
+            systemRole = "You are a professional film director and storyboard artist.";
+            prompt = `
+                Create a detailed visual storyboard for the following video idea/script: "${input}".
+                Break it down into 4-6 key scenes.
+                For each scene, describe the Visual (what we see), the Audio (what we hear), and the estimated Duration.
+            `;
+            jsonStructure = `
+                {
+                    "scenes": [
+                        { "visual": "Visual description", "audio": "Audio description", "duration": "5s" }
+                    ]
+                }
+            `;
+            break;
+
         // VIP Features
         case 'trend-alerts':
             // 1. Fetch Real Trends from Edge Function
