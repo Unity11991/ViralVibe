@@ -597,3 +597,46 @@ export const generateTrendInsights = async (trends, apiKey) => {
         throw error;
     }
 };
+
+export const analyzeTrend = async (query, apiKey) => {
+    if (!apiKey) throw new Error("API Key is required");
+
+    const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+
+    const prompt = `
+        You are "Viral Intelligence", an advanced AI trend analyst for content creators.
+        
+        User Query: "${query}"
+
+        Analyze this query and provide a comprehensive trend report.
+        If the user asks about a specific topic (e.g., "AI Agents"), analyze its current viral status.
+        If the user asks "What is trending?", provide a summary of the hottest current topics in tech/social media.
+
+        Return a JSON object with this EXACT structure:
+        {
+            "summary": "A concise, 2-3 sentence executive summary of the trend/answer.",
+            "sources": ["Source 1", "Source 2", "Source 3"], // e.g., "Twitter", "Google Trends", "TechCrunch"
+            "related": ["#Tag1", "#Tag2", "#Tag3"], // Related hashtags or topics
+            "sentiment": "Positive" | "Neutral" | "Negative",
+            "content_angle": "A specific angle for creators to take (e.g., 'Focus on the efficiency gains...')",
+            "viral_score": 85 // 0-100
+        }
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1000,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) throw new Error("No content generated");
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Trend Analysis Error:", error);
+        throw error;
+    }
+};
