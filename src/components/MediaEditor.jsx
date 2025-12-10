@@ -19,7 +19,7 @@ import { Button } from './MediaEditor/components/UI';
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt from scratch with optimized performance and responsive design
  */
-const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText }) => {
+const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, isPro = false }) => {
     // Hooks
     const {
         mediaFile,
@@ -407,18 +407,34 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText }) => {
                                     <Monitor size={16} /> Resolution
                                 </label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {['HD', '2K', '4K'].map(res => (
-                                        <button
-                                            key={res}
-                                            onClick={() => setExportSettings(s => ({ ...s, resolution: res }))}
-                                            className={`py-2 rounded-xl border text-sm font-bold transition-all ${exportSettings.resolution === res
-                                                ? 'bg-blue-500 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
-                                                }`}
-                                        >
-                                            {res}
-                                        </button>
-                                    ))}
+                                    {['HD', '2K', '4K'].map(res => {
+                                        const isLocked = res === '4K' && !isPro;
+                                        return (
+                                            <button
+                                                key={res}
+                                                onClick={() => {
+                                                    if (isLocked) {
+                                                        alert("Upgrade to Pro to export in 4K!");
+                                                        return;
+                                                    }
+                                                    setExportSettings(s => ({ ...s, resolution: res }))
+                                                }}
+                                                className={`py-2 rounded-xl border text-sm font-bold transition-all relative ${exportSettings.resolution === res
+                                                    ? 'bg-blue-500 border-blue-500 text-white'
+                                                    : isLocked
+                                                        ? 'bg-white/5 border-white/5 text-white/30 cursor-not-allowed'
+                                                        : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10'
+                                                    }`}
+                                            >
+                                                {res}
+                                                {isLocked && (
+                                                    <div className="absolute -top-2 -right-2 bg-yellow-500 text-black p-1 rounded-full">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                                    </div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

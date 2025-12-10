@@ -17,7 +17,7 @@ export const useExport = (mediaElementRef, mediaType) => {
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportSettings, setExportSettings] = useState({
         resolution: 'HD',
-        fps: 30,
+        fps: 60,
         format: 'image/png'
     });
 
@@ -83,6 +83,13 @@ export const useExport = (mediaElementRef, mediaType) => {
     /**
      * Export video
      */
+    const audioContextRef = useRef(null);
+    const sourceNodeRef = useRef(null);
+    const destinationNodeRef = useRef(null);
+
+    /**
+     * Export video
+     */
     const exportVideo = useCallback(async (canvasRef, state, trimRange) => {
         try {
             setIsExporting(true);
@@ -130,11 +137,72 @@ export const useExport = (mediaElementRef, mediaType) => {
             exportCanvas.width = Math.round(exportWidth);
             exportCanvas.height = Math.round(exportHeight);
 
+            // --- Audio Handling (Silent Export) ---
+            let audioTrack = null;
+            try {
+                // Initialize AudioContext if needed
+                if (!audioContextRef.current) {
+                    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const actx = audioContextRef.current;
+
+                // Create source node if needed
+                if (!sourceNodeRef.current) {
+                    sourceNodeRef.current = actx.createMediaElementSource(video);
+                }
+
+                // Create destination for recording
+                if (!destinationNodeRef.current) {
+                    destinationNodeRef.current = actx.createMediaStreamDestination();
+                }
+
+                // Connect source to recording destination
+                sourceNodeRef.current.connect(destinationNodeRef.current);
+
+                // Disconnect from speakers (audioContext.destination) to silence it
+                // We try-catch this because it might not be connected or might throw if already disconnected
+                try {
+                    sourceNodeRef.current.disconnect(actx.destination);
+                } catch (e) {
+                    // Ignore if already disconnected
+                }
+
+                // Get the audio track from the destination stream
+                const stream = destinationNodeRef.current.stream;
+                if (stream) {
+                    const audioTracks = stream.getAudioTracks();
+                    if (audioTracks.length > 0) {
+                        audioTrack = audioTracks[0];
+                    }
+                }
+
+                // Resume context if suspended
+                if (actx.state === 'suspended') {
+                    await actx.resume();
+                }
+
+            } catch (e) {
+                console.warn('Failed to setup silent audio export:', e);
+                // Fallback to captureStream if Web Audio fails (might play sound though)
+                try {
+                    const stream = video.captureStream ? video.captureStream() : video.mozCaptureStream ? video.mozCaptureStream() : null;
+                    if (stream) {
+                        const audioTracks = stream.getAudioTracks();
+                        if (audioTracks.length > 0) {
+                            audioTrack = audioTracks[0];
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Fallback audio capture failed:', err);
+                }
+            }
+
             // Setup MediaRecorder
             const mediaRecorder = setupMediaRecorder(
                 exportCanvas,
                 exportSettings.fps,
-                exportSettings.resolution
+                exportSettings.resolution,
+                audioTrack
             );
             mediaRecorderRef.current = mediaRecorder;
 
@@ -143,7 +211,21 @@ export const useExport = (mediaElementRef, mediaType) => {
                 if (e.data.size > 0) chunks.push(e.data);
             };
 
+            const cleanupAudio = () => {
+                try {
+                    if (sourceNodeRef.current && audioContextRef.current) {
+                        // Disconnect from recording destination
+                        sourceNodeRef.current.disconnect(destinationNodeRef.current);
+                        // Reconnect to speakers
+                        sourceNodeRef.current.connect(audioContextRef.current.destination);
+                    }
+                } catch (e) {
+                    console.warn('Error restoring audio:', e);
+                }
+            };
+
             mediaRecorder.onstop = () => {
+                cleanupAudio();
                 if (!isExportingRef.current) return;
 
                 const blob = new Blob(chunks, { type: 'video/webm' });
@@ -188,6 +270,13 @@ export const useExport = (mediaElementRef, mediaType) => {
             alert('Video export failed. Please try again.');
             setIsExporting(false);
             isExportingRef.current = false;
+
+            // Ensure audio is restored even on error
+            try {
+                if (sourceNodeRef.current && audioContextRef.current) {
+                    sourceNodeRef.current.connect(audioContextRef.current.destination);
+                }
+            } catch (e) { }
         }
     }, [mediaElementRef, exportSettings]);
 
@@ -202,6 +291,17 @@ export const useExport = (mediaElementRef, mediaType) => {
         if (mediaElementRef.current && mediaElementRef.current.pause) {
             mediaElementRef.current.pause();
         }
+
+        // Restore audio
+        try {
+            if (sourceNodeRef.current && audioContextRef.current) {
+                sourceNodeRef.current.disconnect(destinationNodeRef.current);
+                sourceNodeRef.current.connect(audioContextRef.current.destination);
+            }
+        } catch (e) {
+            console.warn('Error restoring audio on cancel:', e);
+        }
+
         setIsExporting(false);
         setExportProgress(0);
     }, [mediaElementRef]);
