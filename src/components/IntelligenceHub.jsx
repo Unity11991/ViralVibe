@@ -35,14 +35,27 @@ const IntelligenceHub = ({
     useEffect(() => {
         const fetchTrends = async () => {
             try {
-                const { data, error } = await supabase.functions.invoke('fetch-trends');
-                if (error) throw error;
+                // Try fetching from rss2json proxy first for real-time data
+                const response = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Ftrends.google.com%2Ftrending%2Frss%3Fgeo%3DUS');
+                const data = await response.json();
 
-                if (data?.trends && data.trends.length > 0) {
-                    setTrends(data.trends.slice(0, 6));
+                if (data.status === 'ok' && data.items && data.items.length > 0) {
+                    const mappedTrends = data.items.slice(0, 6).map(item => ({
+                        title: item.title,
+                        traffic: 'Trending' // rss2json doesn't always parse custom namespaces like ht:approx_traffic
+                    }));
+                    setTrends(mappedTrends);
                 } else {
-                    console.warn("No trends data returned, using fallback");
-                    setTrends(FALLBACK_TRENDS);
+                    // If proxy fails, try Supabase Edge Function as backup
+                    const { data: supabaseData, error } = await supabase.functions.invoke('fetch-trends');
+                    if (error) throw error;
+
+                    if (supabaseData?.trends && supabaseData.trends.length > 0) {
+                        setTrends(supabaseData.trends.slice(0, 6));
+                    } else {
+                        console.warn("No trends data returned from API or Backup, using fallback");
+                        setTrends(FALLBACK_TRENDS);
+                    }
                 }
             } catch (err) {
                 console.error("Failed to fetch trends, using fallback:", err);

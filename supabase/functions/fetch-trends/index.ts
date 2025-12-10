@@ -12,9 +12,11 @@ serve(async (req) => {
 
     try {
         // Fetch Google Trends Daily RSS for US with User-Agent to avoid 404/403
-        const response = await fetch('https://trends.google.com/trends/trendingsearches/daily/rss?geo=US', {
+        // Updated URL based on recent findings
+        const response = await fetch('https://trends.google.com/trending/rss?geo=US', {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml, */*'
             }
         });
 
@@ -33,12 +35,14 @@ serve(async (req) => {
         while ((match = itemRegex.exec(xmlText)) !== null) {
             const itemContent = match[1];
             const titleMatch = /<title>(.*?)<\/title>/.exec(itemContent);
-            const trafficMatch = /<ht:approx_traffic>(.*?)<\/ht:approx_traffic>/.exec(itemContent);
+            // Traffic might be in different tags depending on the feed version
+            const trafficMatch = /<ht:approx_traffic>(.*?)<\/ht:approx_traffic>/.exec(itemContent) ||
+                /<description>(.*?)<\/description>/.exec(itemContent);
 
             if (titleMatch) {
                 items.push({
-                    title: titleMatch[1],
-                    traffic: trafficMatch ? trafficMatch[1] : 'N/A'
+                    title: titleMatch[1].replace('<![CDATA[', '').replace(']]>', ''),
+                    traffic: trafficMatch ? trafficMatch[1].replace('<![CDATA[', '').replace(']]>', '') : 'Trending'
                 });
             }
 
@@ -46,6 +50,7 @@ serve(async (req) => {
         }
 
         if (items.length === 0) {
+            console.warn("XML parsed but no items found. XML preview:", xmlText.substring(0, 200));
             throw new Error("No items parsed from XML");
         }
 
