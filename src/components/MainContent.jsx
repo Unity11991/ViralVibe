@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sparkles, AlertCircle, Zap, ArrowLeft, TrendingUp } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import { ResultsSection } from './ResultCard';
@@ -42,6 +43,7 @@ const MainContent = ({
     setLastLoginDate,
     setShowShareModal
 }) => {
+    const navigate = useNavigate();
     const resultsRef = useRef(null);
 
     // Auto-scroll to results on mobile when results are generated
@@ -112,6 +114,7 @@ const MainContent = ({
                                 setShowPremiumHub(true);
                             }
                         }}
+                        onIntelligenceClick={() => navigate('/intelligence')}
                     />
                 </header>
 

@@ -33,6 +33,7 @@ import RefundPolicy from './pages/policies/RefundPolicy';
 import ShippingPolicy from './pages/policies/ShippingPolicy';
 import ContactUs from './pages/policies/ContactUs';
 import Footer from './components/Footer';
+import IntelligenceHub from './components/IntelligenceHub';
 
 function App() {
   const location = useLocation();
@@ -628,6 +629,19 @@ function App() {
         <Route path="/shipping-policy" element={<ShippingPolicy />} />
         <Route path="/contact" element={<ContactUs />} />
         <Route path="/referral/:code" element={<ReferralHandler />} />
+        <Route path="/intelligence" element={
+          <IntelligenceHub
+            user={user}
+            coinBalance={coinBalance}
+            setShowAuthModal={setShowAuthModal}
+            setShowProfileModal={setShowProfileModal}
+            guestUsageCount={guestUsageCount}
+            setShowToolsModal={setShowToolsModal}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            settings={settings}
+          />
+        } />
       </Routes>
       <Footer />
     </div>
