@@ -103,7 +103,7 @@ const getMockTrends = () => [
         category: 'Lifestyle',
         growth: '50K+',
         date: 'Tue, 09 Dec 2025 10:00:00 +0000',
-        description: 'Why thrift flipping is taking over TikTok.',
+        description: 'Why thrift flipping is taking over Facebook.',
         source: 'Vogue',
         image: ''
     }
