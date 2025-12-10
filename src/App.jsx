@@ -529,6 +529,7 @@ function App() {
           mediaFile={mediaEditorConfig.file || image}
           initialText={mediaEditorConfig.text}
           onClose={() => setShowMediaEditor(false)}
+          isPro={isPro}
         />
       )}
 

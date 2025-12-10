@@ -80,21 +80,40 @@ export const getExportResolution = (preset, aspectRatio = 16 / 9) => {
  * @param {string} resolution - Resolution preset
  * @returns {MediaRecorder}
  */
-export const setupMediaRecorder = (canvas, fps = 30, resolution = 'HD') => {
+export const setupMediaRecorder = (canvas, fps = 60, resolution = 'HD', audioTrack = null) => {
     const stream = canvas.captureStream(fps);
+
+    if (audioTrack) {
+        stream.addTrack(audioTrack);
+    }
+
+    // High bitrate settings for "CapCut-like" quality
+    // HD: 25 Mbps (Standard high quality)
+    // 2K: 40 Mbps
+    // 4K: 80 Mbps (Very high quality)
+    const videoBitsPerSecond = resolution === '4K' ? 80000000 :
+        resolution === '2K' ? 40000000 : 25000000;
 
     const options = {
         mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: resolution === '4K' ? 25000000 :
-            resolution === '2K' ? 15000000 : 8000000
+        videoBitsPerSecond: videoBitsPerSecond
     };
 
-    // Fallback to vp8 if vp9 is not supported
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options.mimeType = 'video/webm;codecs=vp8';
+    // Try to use high profile if available (better quality/compression)
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+        options.mimeType = 'video/webm;codecs=vp9,opus';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+        options.mimeType = 'video/webm;codecs=h264,opus';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        options.mimeType = 'video/webm;codecs=vp8,opus';
     }
 
-    return new MediaRecorder(stream, options);
+    try {
+        return new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn('MediaRecorder creation failed with options, falling back to default', e);
+        return new MediaRecorder(stream);
+    }
 };
 
 /**
