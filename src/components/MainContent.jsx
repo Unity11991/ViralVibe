@@ -105,6 +105,13 @@ const MainContent = ({
                         guestUsageCount={guestUsageCount}
                         onToolsClick={() => setShowToolsModal(true)}
                         onTrendsClick={() => setCurrentView('trending')}
+                        onPremiumClick={() => {
+                            if (!user) {
+                                setShowAuthModal(true);
+                            } else {
+                                setShowPremiumHub(true);
+                            }
+                        }}
                     />
                 </header>
 

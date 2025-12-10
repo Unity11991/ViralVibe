@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-import { X, Sparkles, MessageCircle, Layers, Eye, Split, Palette, ArrowRight, Check, Lock, Repeat, Hash, UserCircle, Anchor, Calendar, Mail, MessageSquare, Type, TrendingUp, Clock, FileText, BarChart2, Play, Instagram, LogOut, Copy, Music, PlayCircle } from 'lucide-react';
+import { X, Sparkles, MessageCircle, Layers, Eye, Split, Palette, ArrowRight, Check, Lock, Repeat, Hash, UserCircle, Anchor, Calendar, Mail, MessageSquare, Type, TrendingUp, Clock, FileText, BarChart2, Play, Instagram, LogOut, Copy, Music, PlayCircle, Smile, Film } from 'lucide-react';
 import { generatePremiumContent } from '../utils/aiService';
 import SchedulerModal from './SchedulerModal';
 import { schedulePost, runSchedulerSimulation, runEdgeFunctionScheduler } from '../utils/schedulerService';
@@ -20,6 +20,8 @@ const FEATURES = [
     { id: 'email', label: 'Email Architect', icon: Mail, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
     { id: 'response', label: 'Response Bot', icon: MessageSquare, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
     { id: 'thumbnail', label: 'Thumbnail Text', icon: Type, color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/20' },
+    { id: 'meme-maker', label: 'Meme Maker AI', icon: Smile, color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
+    { id: 'storyboarder', label: 'Storyboarder', icon: Film, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' },
     // VIP Features
     { id: 'trend-alerts', label: 'Trend Alerts', icon: TrendingUp, color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', isVip: true },
     { id: 'smart-scheduler', label: 'Smart Scheduler', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', isVip: true },
@@ -143,6 +145,8 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
         'smart-scheduler': { input: '', result: null },
         'script-generator': { input: '', result: null },
         'analytics': { input: '', result: null },
+        'meme-maker': { input: '', result: null },
+        'storyboarder': { input: '', result: null },
     });
 
     const handleConnectInstagram = () => {
@@ -560,6 +564,48 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                             <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Generate More Ideas</button>
                         </div>
                     );
+                case 'meme-maker':
+                    return (
+                        <div className="space-y-6 animate-fade-in">
+                            {currentData.result.memes.map((meme, idx) => (
+                                <div key={idx} className="p-5 rounded-xl bg-white/5 border border-white/10">
+                                    <h4 className="text-lg font-bold text-yellow-400 mb-3">{meme.template}</h4>
+                                    <div className="aspect-video bg-black/40 rounded-lg flex flex-col items-center justify-center p-6 text-center border-2 border-white/10 mb-3 relative overflow-hidden">
+                                        <p className="text-white font-black text-2xl uppercase tracking-wide drop-shadow-md mb-8 relative z-10">{meme.topText}</p>
+                                        <p className="text-white font-black text-2xl uppercase tracking-wide drop-shadow-md relative z-10">{meme.bottomText}</p>
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                                            <Smile size={100} />
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-slate-400 italic">Visual: {meme.description}</p>
+                                </div>
+                            ))}
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Generate More Memes</button>
+                        </div>
+                    );
+                case 'storyboarder':
+                    return (
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="space-y-4">
+                                {currentData.result.scenes.map((scene, idx) => (
+                                    <div key={idx} className="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                                        <div className="w-24 h-24 shrink-0 bg-black/40 rounded-lg border border-white/10 flex items-center justify-center text-indigo-400 font-bold text-xl">
+                                            {idx + 1}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between mb-2">
+                                                <h4 className="font-bold text-white">Scene {idx + 1}</h4>
+                                                <span className="text-xs font-mono text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">{scene.duration}</span>
+                                            </div>
+                                            <p className="text-slate-300 text-sm mb-2"><span className="text-secondary font-bold">Visual:</span> {scene.visual}</p>
+                                            <p className="text-slate-300 text-sm"><span className="text-secondary font-bold">Audio:</span> {scene.audio}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={clearResult} className="text-sm text-secondary hover:text-primary underline">Create New Storyboard</button>
+                        </div>
+                    );
                 case 'trend-alerts':
                     return (
                         <div className="space-y-4 animate-fade-in">
@@ -794,6 +840,37 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                         />
                         <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
                             <UserCircle size={18} /> Optimize Bio <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
+                        </button>
+                    </div>
+                );
+            case 'meme-maker':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Enter a topic, situation, or feeling to generate viral meme concepts.</p>
+                        <input
+                            type="text"
+                            className="w-full input-liquid p-4"
+                            placeholder="E.g., Monday mornings, Debugging code, Coffee addiction..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Smile size={18} /> Generate Memes <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
+                        </button>
+                    </div>
+                );
+            case 'storyboarder':
+                return (
+                    <div className="space-y-4">
+                        <p className="text-secondary">Describe your video idea or paste a script to get a visual storyboard.</p>
+                        <textarea
+                            className="w-full h-32 input-liquid p-4 resize-none"
+                            placeholder="E.g., A 30-second ad for a new energy drink featuring a tired student..."
+                            value={currentData.input}
+                            onChange={(e) => updateInput(e.target.value)}
+                        />
+                        <button onClick={handleGenerate} className="btn-liquid-primary px-6 py-3 w-full flex items-center justify-center gap-2">
+                            <Film size={18} /> Create Storyboard <span className="text-xs bg-black/20 px-2 py-0.5 rounded-full">-{COST_PER_USE}</span>
                         </button>
                     </div>
                 );
