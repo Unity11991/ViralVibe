@@ -43,7 +43,18 @@ export const analyzeImage = async (fileOrBase64, settings) => {
         "brightness": 1.0, "contrast": 1.0, "saturation": 1.0, "warmth": 1.0, "tint": 1.0, 
         "exposure": 1.0, "highlights": 1.0, "shadows": 1.0, "vibrance": 1.0, 
         "sharpen": 0.0, "blur": 0.0, "vignette": 0.0, "fade": 0.0 
-      } // Suggested edit values. 1.0 is neutral for multipliers, 0.0 is neutral for additives.
+      }, // Suggested edit values. 1.0 is neutral for multipliers, 0.0 is neutral for additives.
+      "suggestedFilter": "FILTER_ID" // CRITICAL: Analyze the image mood/lighting and choose the ONE best matching filter ID from the list below. Do NOT default to the first one.
+      // Available Filters:
+      // Cinematic: cinematic-1 (Teal & Orange), cinematic-2 (Noir), cinematic-3 (Blockbuster), cinematic-4 (Dramatic), cinematic-5 (Moody)
+      // Film: film-1 (Kodak Gold), film-2 (Fuji Velvia), film-3 (Portra 400), film-4 (CineStyle), film-5 (Technicolor)
+      // Mood: mood-1 (Melancholy), mood-2 (Euphoria), mood-3 (Tension), mood-4 (Dream), mood-5 (Ethereal)
+      // Genre: genre-1 (Horror), genre-2 (Sci-Fi), genre-3 (Western), genre-4 (Romance), genre-5 (Action), genre-6 (Cyberpunk)
+      // Vintage: vintage-1 (1920s), vintage-2 (1950s), vintage-3 (1970s), vintage-4 (1980s), vintage-5 (1990s)
+      // Nature: nature-1 (Golden Hour), nature-2 (Blue Hour), nature-3 (Forest), nature-4 (Ocean), nature-5 (Desert)
+      // Urban: urban-1 (Urban), urban-2 (Night City), urban-3 (Street)
+      // Lifestyle: life-1 (Indoor), life-2 (Studio), life-3 (Fashion), life-4 (Food), life-5 (Travel)
+      // Artistic: art-1 (Minimal), art-2 (Matte), art-3 (HDR), art-4 (Lomo), art-5 (Cross Process)
     }
   `;
 
@@ -156,6 +167,20 @@ export const aggregateVideoInsights = (results) => {
         });
     }
 
+    // 10. Suggested Filter (Most frequent)
+    const filterCounts = {};
+    let suggestedFilter = null;
+    let maxCount = 0;
+    results.forEach(r => {
+        if (r.suggestedFilter && r.suggestedFilter !== "FILTER_ID") {
+            filterCounts[r.suggestedFilter] = (filterCounts[r.suggestedFilter] || 0) + 1;
+            if (filterCounts[r.suggestedFilter] > maxCount) {
+                maxCount = filterCounts[r.suggestedFilter];
+                suggestedFilter = r.suggestedFilter;
+            }
+        }
+    });
+
     return {
         viralPotential: avgPotential,
         captions: uniqueCaptions,
@@ -166,6 +191,7 @@ export const aggregateVideoInsights = (results) => {
         scores: avgScores,
         improvements: uniqueImprovements,
         adjustments: avgAdjustments,
+        suggestedFilter: suggestedFilter,
         isVideoAnalysis: true // Flag to indicate this is a video result
     };
 };

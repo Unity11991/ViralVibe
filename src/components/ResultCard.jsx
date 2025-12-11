@@ -162,7 +162,7 @@ export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenSha
                         </ul>
                         {onOpenEditor && (
                             <button
-                                onClick={() => onOpenEditor({ adjustments: results.adjustments })}
+                                onClick={() => onOpenEditor({ adjustments: results.adjustments, suggestedFilter: results.suggestedFilter })}
                                 className="mt-4 w-full py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
                             >
                                 <Wrench size={14} /> Open Editor with AI Suggestions

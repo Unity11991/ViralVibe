@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Download, RotateCcw, Video, Sliders, Wand2, Type, Sticker, Crop, Scissors, Upload, Monitor, Film, Palette } from 'lucide-react';
+import { X, Download, RotateCcw, Video, Sliders, Wand2, Type, Sticker, Crop, Scissors, Upload, Monitor, Film, Palette, Zap } from 'lucide-react';
 import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
@@ -11,6 +11,7 @@ import { VideoTimeline } from './MediaEditor/components/VideoTimeline';
 import { CropOverlay } from './MediaEditor/components/CropOverlay';
 import { AdjustPanel } from './MediaEditor/components/AdjustPanel';
 import { FilterPanel } from './MediaEditor/components/FilterPanel';
+import { EffectsPanel, EFFECTS_PRESETS } from './MediaEditor/components/EffectsPanel';
 import { TextPanel } from './MediaEditor/components/TextPanel';
 import { StickerPanel } from './MediaEditor/components/StickerPanel';
 import { CropPanel } from './MediaEditor/components/CropPanel';
@@ -20,7 +21,7 @@ import { Button } from './MediaEditor/components/UI';
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt from scratch with optimized performance and responsive design
  */
-const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, isPro = false }) => {
+const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, suggestedFilter, isPro = false }) => {
     // Hooks
     const {
         mediaFile,
@@ -73,6 +74,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [activeTab, setActiveTab] = useState('adjust');
     const [adjustments, setAdjustments] = useState(getInitialAdjustments());
     const [activeFilterId, setActiveFilterId] = useState('normal');
+    const [activeEffectId, setActiveEffectId] = useState(null);
+    const [effectIntensity, setEffectIntensity] = useState(50);
     const [cropPreset, setCropPreset] = useState('free');
     const [cropData, setCropData] = useState({ x: 0, y: 0, width: 100, height: 100 });
     const [rotation, setRotation] = useState(0);
@@ -187,7 +190,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             transform: { rotation, zoom },
             canvasDimensions,
             activeOverlayId,
-            memePadding: memeMode ? 0.3 : 0
+            activeOverlayId,
+            memePadding: memeMode ? 0.3 : 0,
+            memePadding: memeMode ? 0.3 : 0,
+            activeEffectId, // Pass effect ID
+            effectIntensity // Pass effect intensity
         };
 
         const interval = setInterval(() => {
@@ -195,7 +202,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }, 16); // ~60fps
 
         return () => clearInterval(interval);
-    }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef, canvasDimensions]);
+    }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef, canvasDimensions, activeEffectId, effectIntensity]);
 
     // Video playback handling
     useEffect(() => {
@@ -328,6 +335,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     };
 
+    const handleEffectSelect = (effectId) => {
+        setActiveEffectId(effectId);
+    };
+
     const handleExportClick = () => {
         const renderState = {
             adjustments,
@@ -336,10 +347,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             textOverlays,
             stickers,
             stickerImages,
-            stickers,
-            stickerImages,
             transform: { crop: cropData, rotation, zoom },
-            memePadding: memeMode ? 0.3 : 0
+            memePadding: memeMode ? 0.3 : 0,
+            memePadding: memeMode ? 0.3 : 0,
+            activeEffectId, // Pass effect ID
+            effectIntensity // Pass effect intensity
         };
 
         handleExport(canvasRef, renderState, trimRange);
@@ -568,6 +580,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         {[
                             { id: 'adjust', icon: Sliders, label: 'Adjust' },
                             { id: 'filters', icon: Wand2, label: 'Filters' },
+                            { id: 'effects', icon: Zap, label: 'Effects' },
                             { id: 'text', icon: Type, label: 'Text' },
                             { id: 'stickers', icon: Sticker, label: 'Stickers' },
                             { id: 'crop', icon: Crop, label: 'Crop' },
@@ -596,7 +609,19 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             />
                         )}
                         {activeTab === 'filters' && (
-                            <FilterPanel activeFilterId={activeFilterId} onFilterSelect={handleFilterSelect} />
+                            <FilterPanel
+                                activeFilterId={activeFilterId}
+                                onFilterSelect={handleFilterSelect}
+                                suggestedFilter={suggestedFilter}
+                            />
+                        )}
+                        {activeTab === 'effects' && (
+                            <EffectsPanel
+                                activeEffectId={activeEffectId}
+                                onEffectSelect={handleEffectSelect}
+                                intensity={effectIntensity}
+                                onIntensityChange={setEffectIntensity}
+                            />
                         )}
                         {activeTab === 'text' && (
                             <TextPanel

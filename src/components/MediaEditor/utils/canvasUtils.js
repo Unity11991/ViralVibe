@@ -308,19 +308,168 @@ export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canv
 };
 
 /**
+ * Apply dynamic effect to canvas
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {string} effectId - Effect ID
+ */
+export const applyDynamicEffect = (ctx, effectId) => {
+    if (!effectId) return;
+
+    // We need to import EFFECTS_PRESETS to look up values, but to avoid circular dependency
+    // we'll assume the effect object is passed or we'll look it up from a passed list.
+    // For now, let's assume we pass the effect configuration object directly or handle lookup outside.
+    // Actually, let's just implement the logic based on the ID or passed values.
+    // Better approach: Pass the effect configuration object to renderFrame.
+};
+
+// Removed slow pixel manipulation functions (noise, rgbSplit, pixelate, halftone, duotone)
+// to improve performance and use composite operations instead.
+
+/**
  * Render complete frame with all effects and overlays
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {HTMLImageElement|HTMLVideoElement} media - Media element
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
 export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
-    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding } = state;
+    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding, activeEffectId, effectIntensity = 50 } = state;
 
     // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
     const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
     // Draw base media with filters
     drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, options.applyFiltersToContext);
+
+    // Apply Dynamic Effects
+    if (activeEffectId) {
+        // Use performant composite operations instead of pixel manipulation
+        const width = dimensions.width;
+        const height = dimensions.height;
+        const intensity = effectIntensity / 100;
+
+        ctx.save();
+
+        switch (activeEffectId) {
+            case 'chromatic':
+                // RGB Shift using composite operations
+                const offset = width * 0.01 * (intensity || 0.5); // Max 1% width shift
+
+                // Draw Red Channel
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = 'red';
+                ctx.fillRect(0, 0, width, height);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.drawImage(media, -offset, 0, width, height);
+
+                // Draw Blue Channel
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(0, 0, width, height);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.drawImage(media, offset, 0, width, height);
+
+                // Restore original (Green channel effectively)
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'vhs':
+                // Noise Overlay
+                drawGrain(ctx, 40 * intensity);
+
+                // Scanlines
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.2 * intensity})`;
+                for (let y = 0; y < height; y += 4) {
+                    ctx.fillRect(0, y, width, 2);
+                }
+
+                // Color Bleed (Simple blur + saturate)
+                ctx.filter = `blur(${2 * intensity}px) saturate(${100 + 100 * intensity}%)`;
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'glitch':
+                // Random slices
+                const sliceHeight = height / 10;
+                const glitchChance = 0.3 + (0.7 * intensity); // 30% to 100% chance
+                const maxOffset = 50 * intensity;
+
+                for (let i = 0; i < 10; i++) {
+                    if (Math.random() < glitchChance) {
+                        const xOffset = (Math.random() - 0.5) * maxOffset;
+                        ctx.drawImage(media,
+                            0, i * sliceHeight, width, sliceHeight,
+                            xOffset, i * sliceHeight, width, sliceHeight
+                        );
+                    }
+                }
+
+                // Color shift on top
+                if (Math.random() < intensity) {
+                    ctx.globalCompositeOperation = 'color-dodge';
+                    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,0,0,0.2)' : 'rgba(0,0,255,0.2)';
+                    ctx.fillRect(0, 0, width, height);
+                }
+                break;
+
+            case 'retro':
+                // Sepia + Noise + Vignette
+                ctx.filter = `sepia(${50 * intensity}%) contrast(${100 + 20 * intensity}%)`;
+                ctx.drawImage(media, 0, 0, width, height);
+                drawGrain(ctx, 20 * intensity);
+                drawVignette(ctx, 40 * intensity, dimensions);
+                break;
+
+            case 'vintage':
+                // Warm tint + Fade
+                ctx.fillStyle = `rgba(243, 226, 195, ${0.3 * intensity})`; // Warm overlay
+                ctx.fillRect(0, 0, width, height);
+                ctx.filter = `contrast(${100 - 20 * intensity}%) brightness(${100 + 10 * intensity}%)`;
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'noise':
+                drawGrain(ctx, 100 * intensity);
+                break;
+
+            case 'soft':
+                // Soft Glow (Blur + Screen)
+                ctx.filter = `blur(${20 * intensity}px)`;
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = 0.5 * intensity;
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'flash':
+                // Light Leak
+                const gradient = ctx.createLinearGradient(0, 0, width, height);
+                gradient.addColorStop(0, `rgba(255, 200, 150, ${0.6 * intensity})`);
+                gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.globalCompositeOperation = 'screen';
+                ctx.fillRect(0, 0, width, height);
+                break;
+
+            case 'duotone':
+                // Purple/Cyan Duotone using composite
+                ctx.fillStyle = '#8b5cf6'; // Purple
+                ctx.globalCompositeOperation = 'color';
+                ctx.globalAlpha = intensity;
+                ctx.fillRect(0, 0, width, height);
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = '#06b6d4'; // Cyan
+                ctx.fillRect(0, 0, width, height);
+                break;
+
+            case 'invert':
+                ctx.filter = `invert(${100 * intensity}%)`;
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+        }
+
+        ctx.restore();
+    }
 
     // Apply vignette
     if (vignette > 0) {
