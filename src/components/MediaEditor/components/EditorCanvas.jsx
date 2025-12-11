@@ -15,7 +15,8 @@ export const EditorCanvas = ({
     onOverlayPointerDown,
     onUpdateText,
     onDeleteOverlay,
-    onBackgroundClick
+    onBackgroundClick,
+    filterString = 'none'
 }) => {
     return (
         <div className="relative w-full h-full flex items-center justify-center bg-black/50">
@@ -23,7 +24,11 @@ export const EditorCanvas = ({
             <canvas
                 ref={canvasRef}
                 className="max-w-full max-h-full shadow-2xl"
-                style={{ imageRendering: 'high-quality' }}
+                style={{
+                    imageRendering: 'high-quality',
+                    filter: filterString,
+                    WebkitFilter: filterString // Safari support
+                }}
             />
 
             {/* Overlay Container */}

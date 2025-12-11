@@ -50,13 +50,13 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
     /**
      * Render single frame
      */
-    const render = useCallback((state) => {
+    const render = useCallback((state, options) => {
         if (!canvasRef.current || !mediaElementRef.current) return;
 
         const ctx = canvasRef.current.getContext('2d');
         const media = mediaElementRef.current;
 
-        renderFrame(ctx, media, state);
+        renderFrame(ctx, media, state, options);
     }, [mediaElementRef]);
 
     /**

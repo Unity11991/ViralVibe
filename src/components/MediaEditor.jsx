@@ -5,6 +5,7 @@ import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
 import { useExport } from './MediaEditor/hooks/useExport';
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
+import { buildFilterString } from './MediaEditor/utils/canvasUtils';
 import { EditorCanvas } from './MediaEditor/components/EditorCanvas';
 import { VideoTimeline } from './MediaEditor/components/VideoTimeline';
 import { CropOverlay } from './MediaEditor/components/CropOverlay';
@@ -190,7 +191,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         };
 
         const interval = setInterval(() => {
-            render(renderState);
+            render(renderState, { applyFiltersToContext: false });
         }, 16); // ~60fps
 
         return () => clearInterval(interval);
@@ -532,6 +533,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                                 onUpdateText={updateTextOverlay}
                                 onDeleteOverlay={deleteOverlay}
                                 onBackgroundClick={() => setActiveOverlayId(null)}
+                                filterString={buildFilterString(adjustments)}
                             />
                             <CropOverlay
                                 canvasRef={canvasRef}
