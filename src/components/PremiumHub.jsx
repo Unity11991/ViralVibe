@@ -1110,7 +1110,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 lg:p-8">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-            <div className="relative w-full max-w-5xl h-[80vh] glass-panel flex flex-col lg:flex-row overflow-hidden">
+            <div className="relative w-full max-w-5xl h-[90vh] md:h-[80vh] glass-panel flex flex-col lg:flex-row overflow-hidden">
                 {/* Sidebar */}
                 <div className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-white/10 p-4 flex flex-row lg:flex-col gap-2 bg-black/20 overflow-x-auto shrink-0">
                     <div className="mb-6 px-2 hidden lg:block">
@@ -1156,7 +1156,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                 </div>
 
                 {/* Main Content */}
-                <div className="flex-1 flex flex-col relative">
+                <div className="flex-1 flex flex-col relative min-h-0">
                     <button
                         onClick={onClose}
                         className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 text-secondary hover:text-white transition-colors z-10"
@@ -1164,7 +1164,7 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
                         <X size={20} />
                     </button>
 
-                    <div className="p-4 md:p-8 flex-1 overflow-y-auto custom-scrollbar relative">
+                    <div className="p-4 md:p-8 flex-1 overflow-y-auto custom-scrollbar relative min-h-0">
                         {/* VIP Gate Overlay */}
                         {FEATURES.find(f => f.id === activeTab).isVip && !isPro && (
                             <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
