@@ -31,8 +31,7 @@ const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
             icon: ImageIcon,
             color: 'text-purple-400',
             bg: 'bg-purple-500/10',
-            border: 'border-purple-500/20',
-            comingSoon: true
+            border: 'border-purple-500/20'
         },
         {
             id: 'audio-studio',

@@ -5,7 +5,7 @@ import { Slider, CollapsibleSection } from './UI';
 /**
  * Adjustment Panel Component
  */
-export const AdjustPanel = ({ adjustments, onUpdate }) => {
+export const AdjustPanel = ({ adjustments, onUpdate, aiSuggestions }) => {
     const [expandedSections, setExpandedSections] = useState({
         light: true,
         color: false,
@@ -24,8 +24,42 @@ export const AdjustPanel = ({ adjustments, onUpdate }) => {
         onUpdate({ ...adjustments, [key]: value });
     };
 
+    const applyAiSuggestions = () => {
+        if (aiSuggestions) {
+            const newAdjustments = { ...adjustments };
+
+            // Multipliers (1.0 is neutral) -> Percentage (-100 to 100)
+            if (aiSuggestions.brightness) newAdjustments.brightness = (aiSuggestions.brightness - 1) * 100;
+            if (aiSuggestions.contrast) newAdjustments.contrast = (aiSuggestions.contrast - 1) * 100;
+            if (aiSuggestions.saturation) newAdjustments.saturation = (aiSuggestions.saturation - 1) * 100;
+            if (aiSuggestions.warmth) newAdjustments.temp = (aiSuggestions.warmth - 1) * 100;
+            if (aiSuggestions.tint) newAdjustments.tint = (aiSuggestions.tint - 1) * 100;
+            if (aiSuggestions.exposure) newAdjustments.exposure = (aiSuggestions.exposure - 1) * 100;
+            if (aiSuggestions.highlights) newAdjustments.highlights = (aiSuggestions.highlights - 1) * 100;
+            if (aiSuggestions.shadows) newAdjustments.shadows = (aiSuggestions.shadows - 1) * 100;
+            if (aiSuggestions.vibrance) newAdjustments.vibrance = (aiSuggestions.vibrance - 1) * 100;
+
+            // Additives (0.0 is neutral) -> Absolute values (0 to 100)
+            if (aiSuggestions.sharpen) newAdjustments.sharpen = aiSuggestions.sharpen * 100; // Assuming AI returns 0.0-1.0
+            if (aiSuggestions.blur) newAdjustments.blur = aiSuggestions.blur * 100;
+            if (aiSuggestions.vignette) newAdjustments.vignette = aiSuggestions.vignette * 100;
+            if (aiSuggestions.fade) newAdjustments.fade = aiSuggestions.fade * 100;
+
+            onUpdate(newAdjustments);
+        }
+    };
+
     return (
         <div className="space-y-4 animate-slide-up">
+            {aiSuggestions && (
+                <button
+                    onClick={applyAiSuggestions}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl font-bold text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 transition-all flex items-center justify-center gap-2 mb-4"
+                >
+                    <Sparkles size={18} className="animate-pulse" />
+                    Apply AI Suggestions
+                </button>
+            )}
             {/* Light Section */}
             <CollapsibleSection
                 title="Light"

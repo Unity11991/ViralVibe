@@ -38,7 +38,12 @@ export const analyzeImage = async (fileOrBase64, settings) => {
       ],
       "roast": "A spicy, one-sentence roast of the image. Be funny but not mean.",
       "scores": { "lighting": 8, "composition": 7, "creativity": 9 },
-      "improvements": ["Tip 1", "Tip 2", "Tip 3"]
+      "improvements": ["Tip 1", "Tip 2", "Tip 3"],
+      "adjustments": { 
+        "brightness": 1.0, "contrast": 1.0, "saturation": 1.0, "warmth": 1.0, "tint": 1.0, 
+        "exposure": 1.0, "highlights": 1.0, "shadows": 1.0, "vibrance": 1.0, 
+        "sharpen": 0.0, "blur": 0.0, "vignette": 0.0, "fade": 0.0 
+      } // Suggested edit values. 1.0 is neutral for multipliers, 0.0 is neutral for additives.
     }
   `;
 
@@ -127,6 +132,30 @@ export const aggregateVideoInsights = (results) => {
     const allImprovements = results.flatMap(r => r.improvements || []);
     const uniqueImprovements = [...new Set(allImprovements)].slice(0, 5);
 
+    // 9. Adjustments (Average)
+    const avgAdjustments = {};
+    const adjustmentKeys = [
+        "brightness", "contrast", "saturation", "warmth", "tint",
+        "exposure", "highlights", "shadows", "vibrance",
+        "sharpen", "blur", "vignette", "fade"
+    ];
+
+    if (results[0]?.adjustments) {
+        adjustmentKeys.forEach(key => {
+            let sum = 0;
+            let count = 0;
+            results.forEach(r => {
+                if (r.adjustments && typeof r.adjustments[key] === 'number') {
+                    sum += r.adjustments[key];
+                    count++;
+                }
+            });
+            if (count > 0) {
+                avgAdjustments[key] = Number((sum / count).toFixed(2));
+            }
+        });
+    }
+
     return {
         viralPotential: avgPotential,
         captions: uniqueCaptions,
@@ -136,6 +165,7 @@ export const aggregateVideoInsights = (results) => {
         roast: combinedRoast,
         scores: avgScores,
         improvements: uniqueImprovements,
+        adjustments: avgAdjustments,
         isVideoAnalysis: true // Flag to indicate this is a video result
     };
 };

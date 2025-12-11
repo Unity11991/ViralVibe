@@ -23,6 +23,7 @@ import ShareModal from './components/ShareModal';
 import LimitReachedModal from './components/LimitReachedModal';
 
 import ToolsModal from './components/ToolsModal';
+import ImageEnhancer from './components/ImageEnhancer';
 import MainContent from './components/MainContent';
 import ReferralHandler from './components/ReferralHandler';
 
@@ -51,20 +52,23 @@ function App() {
   const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
-  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '' });
+  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '', adjustments: null });
   const [showVibeBattle, setShowVibeBattle] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
+  const [showImageEnhancer, setShowImageEnhancer] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
 
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
     if (toolId === 'video-editor') {
-      setMediaEditorConfig({ file: image, text: '' });
+      setMediaEditorConfig({ file: image, text: '', adjustments: null });
       setShowMediaEditor(true);
     } else if (toolId === 'vibe-battle') {
       setShowVibeBattle(true);
+    } else if (toolId === 'image-enhancer') {
+      setShowImageEnhancer(true);
     }
   };
 
@@ -167,7 +171,7 @@ function App() {
 
   const handleImageSelect = (file, previewUrl) => {
     setImage(file);
-    setMediaEditorConfig({ file: file, text: '' });
+    setMediaEditorConfig({ file: file, text: '', adjustments: null });
     setResults(null);
     setError(null);
   };
@@ -529,6 +533,7 @@ function App() {
         <MediaEditor
           mediaFile={mediaEditorConfig.file || image}
           initialText={mediaEditorConfig.text}
+          initialAdjustments={mediaEditorConfig.adjustments}
           onClose={() => setShowMediaEditor(false)}
           isPro={isPro}
         />
@@ -538,6 +543,12 @@ function App() {
         <VibeBattle
           onClose={() => setShowVibeBattle(false)}
           settings={settings}
+        />
+      )}
+
+      {showImageEnhancer && (
+        <ImageEnhancer
+          onClose={() => setShowImageEnhancer(false)}
         />
       )}
 
@@ -599,8 +610,12 @@ function App() {
             image={image}
             handleImageSelect={handleImageSelect}
             setShowMediaEditor={(config) => {
-              if (config && config.text) {
-                setMediaEditorConfig(prev => ({ ...prev, text: config.text }));
+              if (config) {
+                setMediaEditorConfig(prev => ({
+                  ...prev,
+                  text: config.text || prev.text,
+                  adjustments: config.adjustments || null
+                }));
               }
               setShowMediaEditor(true);
             }}
