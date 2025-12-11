@@ -4,7 +4,7 @@ import { FILTER_PRESETS } from '../utils/filterUtils';
 /**
  * Filter Panel Component
  */
-export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter }) => {
+export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter, mediaUrl }) => {
     const [activeCategory, setActiveCategory] = useState('All');
 
     // Extract unique categories
@@ -58,18 +58,57 @@ export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter })
                     >
                         {/* Filter Preview */}
                         <div className="w-full aspect-square rounded-lg overflow-hidden bg-black/50 relative">
-                            <div
-                                className="absolute inset-0 bg-gradient-to-br from-purple-500 to-blue-500"
-                                style={{
-                                    filter: `
-                                    brightness(${100 + (filter.values.brightness || 0)}%)
-                                    contrast(${100 + (filter.values.contrast || 0)}%)
-                                    saturate(${100 + (filter.values.saturation || 0)}%)
-                                    sepia(${(filter.values.sepia || 0)}%)
-                                    grayscale(${(filter.values.grayscale || 0)}%)
-                                `
-                                }}
-                            />
+                            {mediaUrl ? (
+                                <>
+                                    <img
+                                        src={mediaUrl}
+                                        alt={filter.name}
+                                        className="w-full h-full object-cover"
+                                        style={{
+                                            filter: `
+                                            brightness(${100 + (filter.values.brightness || 0)}%)
+                                            contrast(${100 + (filter.values.contrast || 0)}%)
+                                            saturate(${100 + (filter.values.saturation || 0)}%)
+                                            sepia(${(filter.values.sepia || 0)}%)
+                                            grayscale(${(filter.values.grayscale || 0)}%)
+                                        `
+                                        }}
+                                    />
+                                    {/* Overlay for Instagram Filters */}
+                                    {filter.id === 'clarendon' && <div className="absolute inset-0 bg-[#7fbbe3] mix-blend-overlay opacity-20" />}
+                                    {filter.id === 'clarendon' && <div className="absolute inset-0 bg-[#f3e2c3] mix-blend-soft-light opacity-20" />}
+
+                                    {filter.id === 'juno' && <div className="absolute inset-0 bg-[#ffffc8] mix-blend-soft-light opacity-30" />}
+                                    {filter.id === 'juno' && <div className="absolute inset-0 bg-[#000032] mix-blend-multiply opacity-10" />}
+
+                                    {filter.id === 'lark' && <div className="absolute inset-0 bg-[#3264c8] mix-blend-color opacity-10" />}
+
+                                    {filter.id === 'lofi' && <div className="absolute inset-0 bg-[#000000] mix-blend-overlay opacity-20" />}
+                                    {filter.id === 'lofi' && <div className="absolute inset-0 bg-[#ff0000] mix-blend-soft-light opacity-10" />}
+
+                                    {filter.id === 'gingham' && <div className="absolute inset-0 bg-[#e6e6d2] mix-blend-soft-light opacity-30" />}
+
+                                    {filter.id === 'valencia' && <div className="absolute inset-0 bg-[#3a0339] mix-blend-exclusion opacity-10" />}
+                                    {filter.id === 'valencia' && <div className="absolute inset-0 bg-[#e6c13d] mix-blend-soft-light opacity-20" />}
+
+                                    {filter.id === 'aden' && <div className="absolute inset-0 bg-[#420a0e] mix-blend-screen opacity-20" />}
+
+                                    {filter.id === 'sutro' && <div className="absolute inset-0 bg-[#28003c] mix-blend-multiply opacity-30" />}
+                                </>
+                            ) : (
+                                <div
+                                    className="absolute inset-0 bg-gradient-to-br from-purple-500 to-blue-500"
+                                    style={{
+                                        filter: `
+                                        brightness(${100 + (filter.values.brightness || 0)}%)
+                                        contrast(${100 + (filter.values.contrast || 0)}%)
+                                        saturate(${100 + (filter.values.saturation || 0)}%)
+                                        sepia(${(filter.values.sepia || 0)}%)
+                                        grayscale(${(filter.values.grayscale || 0)}%)
+                                    `
+                                    }}
+                                />
+                            )}
                         </div>
                         <span className="text-xs font-medium">{filter.name}</span>
                         {suggestedFilter === filter.id && (

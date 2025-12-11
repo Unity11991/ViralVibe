@@ -615,6 +615,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                                 activeFilterId={activeFilterId}
                                 onFilterSelect={handleFilterSelect}
                                 suggestedFilter={suggestedFilter}
+                                mediaUrl={mediaUrl}
                             />
                         )}
                         {activeTab === 'effects' && (
