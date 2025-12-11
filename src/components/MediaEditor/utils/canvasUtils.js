@@ -322,6 +322,113 @@ export const applyDynamicEffect = (ctx, effectId) => {
     // Better approach: Pass the effect configuration object to renderFrame.
 };
 
+/**
+ * Apply professional color grading using composite operations
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {string} filterId - Filter ID
+ * @param {number} width - Canvas width
+ * @param {number} height - Canvas height
+ */
+export const applyColorGrade = (ctx, filterId, width, height) => {
+    if (!filterId || filterId === 'normal') return;
+
+    ctx.save();
+
+    switch (filterId) {
+        case 'clarendon':
+            // Blue Tint in Shadows (Overlay)
+            ctx.fillStyle = 'rgba(127, 187, 227, 0.2)';
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.fillRect(0, 0, width, height);
+
+            // Warm Highlights (Soft Light)
+            ctx.fillStyle = 'rgba(243, 226, 195, 0.2)';
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'juno':
+            // Warm Glow (Soft Light)
+            ctx.fillStyle = 'rgba(255, 255, 200, 0.3)';
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+
+            // Cool Shadows (Multiply)
+            ctx.fillStyle = 'rgba(0, 0, 50, 0.1)';
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'lark':
+            // Brighten (Screen)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillRect(0, 0, width, height);
+
+            // Cool Tint (Color)
+            ctx.fillStyle = 'rgba(50, 100, 200, 0.1)';
+            ctx.globalCompositeOperation = 'color';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'lofi':
+            // High Contrast (Overlay)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.fillRect(0, 0, width, height);
+
+            // Saturation Boost (Saturation)
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.1)'; // Red tint often boosts perceived saturation
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'gingham':
+            // Vintage Yellow Tint (Soft Light)
+            ctx.fillStyle = 'rgba(230, 230, 210, 0.3)';
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+
+            // Low Contrast Fade (Screen)
+            ctx.fillStyle = 'rgba(50, 50, 50, 0.1)';
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'valencia':
+            // Warm Yellow/Brown (Multiply)
+            ctx.fillStyle = 'rgba(58, 3, 57, 0.1)';
+            ctx.globalCompositeOperation = 'exclusion';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.fillStyle = 'rgba(230, 193, 61, 0.2)';
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'aden':
+            // Pastel/Pink Tint (Screen)
+            ctx.fillStyle = 'rgba(66, 10, 14, 0.2)';
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillRect(0, 0, width, height);
+            break;
+
+        case 'sutro':
+            // Dark Vignette/Purple (Multiply)
+            ctx.fillStyle = 'rgba(40, 0, 60, 0.3)';
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillRect(0, 0, width, height);
+
+            // Smoke (Screen)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.globalCompositeOperation = 'soft-light';
+            ctx.fillRect(0, 0, width, height);
+            break;
+    }
+
+    ctx.restore();
+};
+
 // Removed slow pixel manipulation functions (noise, rgbSplit, pixelate, halftone, duotone)
 // to improve performance and use composite operations instead.
 
@@ -332,13 +439,18 @@ export const applyDynamicEffect = (ctx, effectId) => {
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
 export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
-    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding, activeEffectId, effectIntensity = 50 } = state;
+    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding, activeEffectId, effectIntensity = 50, activeFilterId } = state;
 
     // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
     const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
     // Draw base media with filters
     drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, options.applyFiltersToContext);
+
+    // Apply Professional Color Grading (Instagram-style)
+    if (activeFilterId && activeFilterId !== 'normal') {
+        applyColorGrade(ctx, activeFilterId, dimensions.width, dimensions.height);
+    }
 
     // Apply Dynamic Effects
     if (activeEffectId) {
@@ -350,6 +462,111 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
         ctx.save();
 
         switch (activeEffectId) {
+            case 'glow':
+                // Soft Glow (Blur + Screen)
+                ctx.filter = `blur(${15 * intensity}px) brightness(${100 + 10 * intensity}%)`;
+                ctx.globalCompositeOperation = 'screen';
+                ctx.globalAlpha = 0.6 * intensity;
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'grain':
+                // Heavy Film Grain
+                drawGrain(ctx, 80 * intensity);
+                ctx.filter = `contrast(${100 + 10 * intensity}%) grayscale(${30 * intensity}%)`;
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.drawImage(media, 0, 0, width, height);
+                break;
+
+            case 'vintage-cam':
+                // Sepia + Noise + Date Stamp look
+                ctx.filter = `sepia(${40 * intensity}%) contrast(${110 * intensity}%) saturate(${80 * intensity}%)`;
+                ctx.drawImage(media, 0, 0, width, height);
+                drawGrain(ctx, 40 * intensity);
+
+                // Date Stamp (Simulated)
+                if (intensity > 0.5) {
+                    ctx.font = `bold ${height * 0.05}px monospace`;
+                    ctx.fillStyle = '#ff9900'; // Orange-ish date color
+                    ctx.shadowColor = 'black';
+                    ctx.shadowBlur = 2;
+                    ctx.textAlign = 'right';
+                    ctx.fillText('01 01 98', width - 20, height - 20);
+                }
+                break;
+
+            case 'teal-orange':
+                // Teal shadows, Orange highlights
+                // Teal Overlay (Multiply)
+                ctx.fillStyle = '#008080'; // Teal
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.globalAlpha = 0.4 * intensity;
+                ctx.fillRect(0, 0, width, height);
+
+                // Orange Overlay (Soft Light)
+                ctx.fillStyle = '#ff8000'; // Orange
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.globalAlpha = 0.5 * intensity;
+                ctx.fillRect(0, 0, width, height);
+                break;
+
+            case 'polaroid':
+                // White Border + Vintage Filter
+                const borderSize = width * 0.05;
+                const bottomBorder = width * 0.15;
+
+                // Draw Image Scaled Down
+                ctx.drawImage(media, borderSize, borderSize, width - (borderSize * 2), height - borderSize - bottomBorder);
+
+                // Draw White Frame
+                ctx.lineWidth = borderSize;
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeRect(0, 0, width, height);
+
+                // Bottom part
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, height - bottomBorder, width, bottomBorder);
+
+                // Apply vintage filter to the image area
+                ctx.filter = `sepia(${30 * intensity}%) contrast(110%)`;
+                ctx.globalCompositeOperation = 'multiply'; // Blend with existing
+                break;
+
+            case 'flash-warn':
+                // Rapid brightness oscillation
+                // Simulate beat sync by using a sine wave based on time (mocked here with random for now or just high brightness)
+                // For a static editor, we just show the "Flash" state
+                const flashIntensity = (Math.sin(Date.now() / 100) + 1) / 2; // Pulse if animated, else static high
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * intensity})`;
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.fillRect(0, 0, width, height);
+                break;
+
+            case 'motion-blur':
+                // Directional Blur (Simulated with multiple offset draws)
+                ctx.globalAlpha = 0.1;
+                for (let i = 1; i < 10; i++) {
+                    ctx.drawImage(media, i * 2 * intensity, 0, width, height);
+                    ctx.drawImage(media, -i * 2 * intensity, 0, width, height);
+                }
+                break;
+
+            case 'color-pop':
+                // Grayscale background, color center
+                // Draw Grayscale version
+                ctx.filter = 'grayscale(100%)';
+                ctx.drawImage(media, 0, 0, width, height);
+
+                // Draw Color Center (Circular Mask)
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(width / 2, height / 2, (width / 3) * (1 + (1 - intensity)), 0, Math.PI * 2);
+                ctx.clip();
+                ctx.filter = 'none'; // Reset filter
+                ctx.drawImage(media, 0, 0, width, height); // Draw original color image
+                ctx.restore();
+                break;
+
             case 'chromatic':
                 // RGB Shift using composite operations
                 const offset = width * 0.01 * (intensity || 0.5); // Max 1% width shift

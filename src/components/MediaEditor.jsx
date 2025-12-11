@@ -193,8 +193,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             activeOverlayId,
             memePadding: memeMode ? 0.3 : 0,
             memePadding: memeMode ? 0.3 : 0,
+            memePadding: memeMode ? 0.3 : 0,
             activeEffectId, // Pass effect ID
-            effectIntensity // Pass effect intensity
+            effectIntensity, // Pass effect intensity
+            activeFilterId // Pass filter ID for color grading
         };
 
         const interval = setInterval(() => {
