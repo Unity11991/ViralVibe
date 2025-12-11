@@ -84,6 +84,44 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [memeMode, setMemeMode] = useState(!!initialText);
+    const [thumbnailUrl, setThumbnailUrl] = useState(null);
+
+    // Generate thumbnail when media loads
+    useEffect(() => {
+        if (!mediaElementRef.current) return;
+
+        const generateThumbnail = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const media = mediaElementRef.current;
+
+            // Small thumbnail size
+            const size = 150;
+            const aspect = media.videoWidth ? media.videoWidth / media.videoHeight : media.width / media.height;
+
+            let w, h;
+            if (aspect > 1) {
+                w = size;
+                h = size / aspect;
+            } else {
+                h = size;
+                w = size * aspect;
+            }
+
+            canvas.width = w;
+            canvas.height = h;
+
+            ctx.drawImage(media, 0, 0, w, h);
+            setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.7));
+        };
+
+        if (mediaElementRef.current.readyState >= 2 || mediaElementRef.current.complete) {
+            generateThumbnail();
+        } else {
+            mediaElementRef.current.onload = generateThumbnail;
+            mediaElementRef.current.onloadeddata = generateThumbnail;
+        }
+    }, [mediaUrl, mediaElementRef]);
 
     const fileInputRef = useRef(null);
     const containerRef = useRef(null);
@@ -200,8 +238,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         };
 
         const interval = setInterval(() => {
+            // Throttle to 30fps for performance, unless playing video which needs smooth playback
+            // But even for video, 30fps preview is often sufficient on mobile
             render(renderState, { applyFiltersToContext: false });
-        }, 16); // ~60fps
+        }, 33); // ~30fps
 
         return () => clearInterval(interval);
     }, [mediaUrl, adjustments, textOverlays, stickers, stickerImages, rotation, zoom, render, canvasRef, canvasDimensions, activeEffectId, effectIntensity]);
@@ -610,12 +650,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                                 aiSuggestions={initialAdjustments}
                             />
                         )}
+
+
+
+
                         {activeTab === 'filters' && (
                             <FilterPanel
                                 activeFilterId={activeFilterId}
                                 onFilterSelect={handleFilterSelect}
                                 suggestedFilter={suggestedFilter}
-                                mediaUrl={mediaUrl}
+                                mediaUrl={thumbnailUrl || mediaUrl} // Fallback to full url if thumb not ready
                             />
                         )}
                         {activeTab === 'effects' && (

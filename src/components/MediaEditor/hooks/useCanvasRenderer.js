@@ -31,20 +31,32 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
             width = containerHeight * effectiveAspect;
         }
 
-        // Set internal resolution (higher for quality)
-        const scale = window.devicePixelRatio || 1;
-        canvasRef.current.width = width * scale;
-        canvasRef.current.height = height * scale;
+        // Set internal resolution (higher for quality, but capped for performance)
+        const MAX_PREVIEW_DIMENSION = 1280;
+        const scale = Math.min(window.devicePixelRatio || 1, 2); // Cap pixel ratio at 2x
+
+        let finalWidth = width * scale;
+        let finalHeight = height * scale;
+
+        // Downscale if too large
+        if (finalWidth > MAX_PREVIEW_DIMENSION || finalHeight > MAX_PREVIEW_DIMENSION) {
+            const ratio = Math.min(MAX_PREVIEW_DIMENSION / finalWidth, MAX_PREVIEW_DIMENSION / finalHeight);
+            finalWidth *= ratio;
+            finalHeight *= ratio;
+        }
+
+        canvasRef.current.width = finalWidth;
+        canvasRef.current.height = finalHeight;
 
         // Set display size
         canvasRef.current.style.width = `${width}px`;
         canvasRef.current.style.height = `${height}px`;
 
-        // Scale context
+        // Scale context to match
         const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
-        ctx.scale(scale, scale);
+        ctx.scale(finalWidth / width, finalHeight / height);
 
-        setCanvasDimensions({ width, height });
+        setCanvasDimensions({ width: finalWidth, height: finalHeight });
     }, []);
 
     /**
