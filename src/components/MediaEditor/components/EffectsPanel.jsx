@@ -3,6 +3,19 @@ import { Zap, Tv, Grid, Layers, Activity, Eye, Sun, Moon, Droplet, Wind, CircleO
 
 export const EFFECTS_PRESETS = [
     { id: null, name: 'Normal', icon: CircleOff, values: null },
+
+    // Aesthetic / Instagram
+    { id: 'glow', name: 'Glow Up', icon: Sun, values: { type: 'glow', intensity: 50 } },
+    { id: 'grain', name: 'Film Grain', icon: Wind, values: { type: 'grain', intensity: 50 } },
+    { id: 'vintage-cam', name: 'Vintage Cam', icon: Tv, values: { type: 'vintage-cam', intensity: 50 } },
+    { id: 'teal-orange', name: 'Teal & Orange', icon: Droplet, values: { type: 'teal-orange', intensity: 50 } },
+    { id: 'polaroid', name: 'Polaroid', icon: Layers, values: { type: 'polaroid', intensity: 0 } },
+
+    // Dynamic / Motion
+    { id: 'flash-warn', name: 'Flash Warn', icon: Zap, values: { type: 'flash-warn', intensity: 50 } },
+    { id: 'motion-blur', name: 'Motion Blur', icon: Activity, values: { type: 'motion-blur', intensity: 50 } },
+    { id: 'color-pop', name: 'Color Pop', icon: Eye, values: { type: 'color-pop', intensity: 50 } },
+
     // Chromatic / Glitch
     { id: 'chromatic', name: 'Chromatic', icon: Zap, values: { type: 'chromatic', intensity: 50 } },
     { id: 'vhs', name: 'VHS', icon: Tv, values: { type: 'vhs', intensity: 50 } },
