@@ -52,7 +52,7 @@ function App() {
   const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMediaEditor, setShowMediaEditor] = useState(false);
-  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '', adjustments: null });
+  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '', adjustments: null, suggestedFilter: null });
   const [showVibeBattle, setShowVibeBattle] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
@@ -63,7 +63,7 @@ function App() {
   const handleToolSelect = (toolId) => {
     setShowToolsModal(false);
     if (toolId === 'video-editor') {
-      setMediaEditorConfig({ file: image, text: '', adjustments: null });
+      setMediaEditorConfig({ file: image, text: '', adjustments: null, suggestedFilter: null });
       setShowMediaEditor(true);
     } else if (toolId === 'vibe-battle') {
       setShowVibeBattle(true);
@@ -171,7 +171,7 @@ function App() {
 
   const handleImageSelect = (file, previewUrl) => {
     setImage(file);
-    setMediaEditorConfig({ file: file, text: '', adjustments: null });
+    setMediaEditorConfig({ file: file, text: '', adjustments: null, suggestedFilter: null });
     setResults(null);
     setError(null);
   };
@@ -534,6 +534,7 @@ function App() {
           mediaFile={mediaEditorConfig.file || image}
           initialText={mediaEditorConfig.text}
           initialAdjustments={mediaEditorConfig.adjustments}
+          suggestedFilter={mediaEditorConfig.suggestedFilter}
           onClose={() => setShowMediaEditor(false)}
           isPro={isPro}
         />
@@ -614,7 +615,8 @@ function App() {
                 setMediaEditorConfig(prev => ({
                   ...prev,
                   text: config.text || prev.text,
-                  adjustments: config.adjustments || null
+                  adjustments: config.adjustments || null,
+                  suggestedFilter: config.suggestedFilter || null
                 }));
               }
               setShowMediaEditor(true);

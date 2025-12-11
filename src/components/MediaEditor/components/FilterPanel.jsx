@@ -4,16 +4,25 @@ import { FILTER_PRESETS } from '../utils/filterUtils';
 /**
  * Filter Panel Component
  */
-export const FilterPanel = ({ activeFilterId, onFilterSelect }) => {
+export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter }) => {
     const [activeCategory, setActiveCategory] = useState('All');
 
     // Extract unique categories
     const categories = ['All', ...new Set(FILTER_PRESETS.map(f => f.category).filter(Boolean))];
 
     // Filter presets
-    const filteredPresets = activeCategory === 'All'
+    let filteredPresets = activeCategory === 'All'
         ? FILTER_PRESETS
         : FILTER_PRESETS.filter(f => f.category === activeCategory);
+
+    // Prioritize suggested filter
+    if (suggestedFilter) {
+        filteredPresets = [...filteredPresets].sort((a, b) => {
+            if (a.id === suggestedFilter) return -1;
+            if (b.id === suggestedFilter) return 1;
+            return 0;
+        });
+    }
 
     return (
         <div className="space-y-4 animate-slide-up">
@@ -40,7 +49,7 @@ export const FilterPanel = ({ activeFilterId, onFilterSelect }) => {
                         key={filter.id}
                         onClick={() => onFilterSelect(filter.id)}
                         className={`
-                        p-3 rounded-xl border transition-all flex flex-col items-center gap-2 text-center
+                        p-3 rounded-xl border transition-all flex flex-col items-center gap-2 text-center relative group
                         ${activeFilterId === filter.id
                                 ? 'bg-blue-500/20 border-blue-500 text-white shadow-lg'
                                 : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
@@ -63,6 +72,11 @@ export const FilterPanel = ({ activeFilterId, onFilterSelect }) => {
                             />
                         </div>
                         <span className="text-xs font-medium">{filter.name}</span>
+                        {suggestedFilter === filter.id && (
+                            <div className="absolute -top-2 -right-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg animate-pulse z-10">
+                                AI PICK
+                            </div>
+                        )}
                     </button>
                 ))}
             </div>

@@ -41,7 +41,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
         canvasRef.current.style.height = `${height}px`;
 
         // Scale context
-        const ctx = canvasRef.current.getContext('2d');
+        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
         ctx.scale(scale, scale);
 
         setCanvasDimensions({ width, height });
@@ -53,7 +53,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
     const render = useCallback((state, options) => {
         if (!canvasRef.current || !mediaElementRef.current) return;
 
-        const ctx = canvasRef.current.getContext('2d');
+        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
         const media = mediaElementRef.current;
 
         renderFrame(ctx, media, state, options);
