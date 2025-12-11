@@ -630,6 +630,96 @@ export const FILTER_PRESETS = [
             grain: 50,
             vignette: 40
         }
+    },
+
+    // Instagram / Aesthetic
+    {
+        id: 'clarendon',
+        name: 'Clarendon',
+        category: 'Instagram',
+        values: {
+            contrast: 20,
+            saturation: 20,
+            highlights: 20
+        }
+    },
+    {
+        id: 'juno',
+        name: 'Juno',
+        category: 'Instagram',
+        values: {
+            contrast: 10,
+            saturation: 30,
+            highlights: 20,
+            temp: 10
+        }
+    },
+    {
+        id: 'lark',
+        name: 'Lark',
+        category: 'Instagram',
+        values: {
+            brightness: 10,
+            saturation: -10,
+            contrast: -10,
+            vibrance: 10
+        }
+    },
+    {
+        id: 'lofi',
+        name: 'Lo-Fi',
+        category: 'Instagram',
+        values: {
+            contrast: 30,
+            saturation: 30,
+            shadows: 20
+        }
+    },
+    {
+        id: 'gingham',
+        name: 'Gingham',
+        category: 'Instagram',
+        values: {
+            contrast: -20,
+            brightness: 10,
+            saturation: -10,
+            sepia: 10
+        }
+    },
+    {
+        id: 'valencia',
+        name: 'Valencia',
+        category: 'Instagram',
+        values: {
+            contrast: 10,
+            brightness: 10,
+            sepia: 20,
+            temp: 10
+        }
+    },
+    {
+        id: 'aden',
+        name: 'Aden',
+        category: 'Instagram',
+        values: {
+            contrast: -10,
+            brightness: 10,
+            saturation: -20,
+            temp: 10,
+            tint: 10
+        }
+    },
+    {
+        id: 'sutro',
+        name: 'Sutro',
+        category: 'Instagram',
+        values: {
+            contrast: 20,
+            saturation: -10,
+            vignette: 40,
+            temp: -10,
+            tint: 10
+        }
     }
 ];
 
