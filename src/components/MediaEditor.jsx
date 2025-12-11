@@ -19,7 +19,7 @@ import { Button } from './MediaEditor/components/UI';
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt from scratch with optimized performance and responsive design
  */
-const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, isPro = false }) => {
+const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, isPro = false }) => {
     // Hooks
     const {
         mediaFile,
@@ -587,7 +587,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, isPro 
                     {/* Content */}
                     <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                         {activeTab === 'adjust' && (
-                            <AdjustPanel adjustments={adjustments} onUpdate={setAdjustments} />
+                            <AdjustPanel
+                                adjustments={adjustments}
+                                onUpdate={setAdjustments}
+                                aiSuggestions={initialAdjustments}
+                            />
                         )}
                         {activeTab === 'filters' && (
                             <FilterPanel activeFilterId={activeFilterId} onFilterSelect={handleFilterSelect} />
