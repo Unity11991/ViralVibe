@@ -11,7 +11,7 @@
  * @param {Object} transform - Transform settings (crop, rotation, zoom)
  * @param {Object} canvasDimensions - Logical canvas dimensions
  */
-export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0) => {
+export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0, applyFiltersToContext = true) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
     const { crop = null, rotation = 0, zoom = 1 } = transform;
@@ -20,7 +20,11 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Apply filters
-    ctx.filter = buildFilterString(filters);
+    if (applyFiltersToContext) {
+        ctx.filter = buildFilterString(filters);
+    } else {
+        ctx.filter = 'none';
+    }
 
     // Handle crop and transform
     if (crop) {
@@ -309,14 +313,14 @@ export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canv
  * @param {HTMLImageElement|HTMLVideoElement} media - Media element
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
-export const renderFrame = (ctx, media, state) => {
+export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
     const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding } = state;
 
     // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
     const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
     // Draw base media with filters
-    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding);
+    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, options.applyFiltersToContext);
 
     // Apply vignette
     if (vignette > 0) {
