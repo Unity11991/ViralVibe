@@ -26,9 +26,13 @@ export const useTimelineState = () => {
 
     // Initialize timeline with a main media file
     const initializeTimeline = useCallback((mediaFile, mediaType, duration) => {
+        // If we already have tracks, don't overwrite unless empty? 
+        // For now, we assume this is called on first load.
+
         const initialTrack = {
             id: 'track-main',
             type: mediaType === 'video' ? 'video' : 'image',
+            height: 80,
             clips: [{
                 id: `clip-${Date.now()}`,
                 type: mediaType === 'video' ? 'video' : 'image',
@@ -40,10 +44,13 @@ export const useTimelineState = () => {
                 sourceDuration: duration || 10 // Store max duration for constraints
             }]
         };
-        const textTrack = { id: 'track-text', type: 'text', clips: [] };
-        const stickerTrack = { id: 'track-sticker', type: 'sticker', clips: [] };
 
-        const newTracks = [initialTrack, textTrack, stickerTrack];
+        // Initialize with one text track, one sticker track, and one audio track
+        const textTrack = { id: 'track-text-1', type: 'text', height: 64, clips: [] };
+        const stickerTrack = { id: 'track-sticker-1', type: 'sticker', height: 64, clips: [] };
+        const audioTrack = { id: 'track-audio-1', type: 'audio', height: 48, clips: [] };
+
+        const newTracks = [initialTrack, textTrack, stickerTrack, audioTrack];
         setTracks(newTracks);
 
         // Reset history
@@ -76,16 +83,46 @@ export const useTimelineState = () => {
     // Add a new track
     const addTrack = useCallback((type) => {
         setTracks(prev => {
+            // Count existing tracks of this type to generate a nice ID
+            const count = prev.filter(t => t.type === type).length;
             const newTrack = {
-                id: `track-${Date.now()}`,
+                id: `track-${type}-${count + 1}-${Date.now()}`,
                 type,
+                height: type === 'audio' ? 48 : 80,
                 clips: []
             };
+            // Add to top (start of array) or bottom? 
+            // Usually new layers are added on top (foreground).
+            // Let's add to the end of the list for now, which we will treat as "Top/Foreground" visually in the list,
+            // but we need to decide on rendering order.
+            // If list is [Background, ..., Foreground], then push is correct for "New Layer on Top".
             const newTracks = [...prev, newTrack];
             addToHistory(newTracks);
             return newTracks;
         });
     }, [addToHistory]);
+
+    // Reorder tracks
+    const reorderTracks = useCallback((fromIndex, toIndex) => {
+        setTracks(prev => {
+            const newTracks = [...prev];
+            const [movedTrack] = newTracks.splice(fromIndex, 1);
+            newTracks.splice(toIndex, 0, movedTrack);
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
+    // Update track height
+    const updateTrackHeight = useCallback((trackId, newHeight) => {
+        setTracks(prev => {
+            const newTracks = prev.map(track =>
+                track.id === trackId ? { ...track, height: Math.max(32, newHeight) } : track
+            );
+            // Don't add to history for resizing to avoid spamming undo stack
+            return newTracks;
+        });
+    }, []);
 
     // Add a clip to a track
     const addClip = useCallback((trackId, clipData) => {
@@ -341,6 +378,8 @@ export const useTimelineState = () => {
         setSelectedClipId,
         initializeTimeline,
         addTrack,
+        reorderTracks,
+        updateTrackHeight,
         addClip,
         updateClip,
         addTransition,

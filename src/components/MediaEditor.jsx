@@ -72,7 +72,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         undo,
         redo,
         canUndo,
-        canRedo
+        canRedo,
+        addTrack,
+        reorderTracks,
+        updateTrackHeight
     } = useTimelineState();
 
     // Editor State
@@ -91,10 +94,14 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [isPlaying, setIsPlaying] = useState(false);
     const [memeMode, setMemeMode] = useState(!!initialText);
     const [thumbnailUrl, setThumbnailUrl] = useState(null);
+    const [mediaLibrary, setMediaLibrary] = useState([]);
 
     const fileInputRef = useRef(null);
     const containerRef = useRef(null);
     const overlayRef = useRef(null);
+    const imageElementsRef = useRef({}); // Cache for image clip elements
+    const audioElementsRef = useRef({}); // Cache for audio clip elements
+    const videoElementsRef = useRef({}); // Cache for secondary video clip elements
 
     // Calculate total timeline duration dynamically
     const timelineDuration = React.useMemo(() => {
@@ -208,6 +215,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         if (selectedClipId) {
             updateClip(selectedClipId, { effect: effectId });
         }
+    };
+
+    const handleSetEffectIntensity = (intensity) => {
+        setEffectIntensity(intensity);
+        // TODO: Store intensity on clip if supported
+        // For now, we assume global intensity or simple effect ID
     };
 
     // Load initial media
@@ -345,13 +358,69 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
 
         const initialAdjustments = getInitialAdjustments();
+        const transform = { rotation, zoom };
+
+        // Calculate visible clips for multi-track rendering
+        const visibleClips = tracks
+            .filter(t => t.type === 'video' || t.type === 'image') // Only renderable tracks
+            .map(track => {
+                const clip = track.clips.find(c =>
+                    currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+                );
+                if (!clip) return null;
+
+                // Resolve media source
+                let mediaSource = null;
+                if (track.id === 'track-main' && isVideo) {
+                    mediaSource = mediaElementRef.current;
+                } else if (clip.type === 'image') {
+                    // Check cache
+                    if (!imageElementsRef.current[clip.id]) {
+                        const img = new Image();
+                        img.src = clip.source;
+                        imageElementsRef.current[clip.id] = img;
+                    }
+                    mediaSource = imageElementsRef.current[clip.id];
+                } else if (clip.type === 'video' && track.id !== 'track-main') {
+                    // Secondary video support
+                    if (!videoElementsRef.current[clip.id]) {
+                        const video = document.createElement('video');
+                        video.src = clip.source;
+                        video.muted = true; // Secondary videos muted by default? Or mixed?
+                        video.crossOrigin = 'anonymous';
+                        videoElementsRef.current[clip.id] = video;
+                    }
+                    mediaSource = videoElementsRef.current[clip.id];
+                }
+
+                if (!mediaSource) return null;
+
+                return {
+                    ...clip,
+                    media: mediaSource,
+                    // Track-level or clip-level adjustments
+                    adjustments: clip.adjustments || getInitialAdjustments(),
+                    filter: clip.filter || 'normal',
+                    effect: clip.effect || null,
+                    transform: {
+                        ...transform, // Global transform (zoom/pan) applies to everything? Or just main?
+                        // Ideally, each clip has its own transform.
+                        // For now, let's apply global transform only to main track?
+                        // Or apply to all? Let's apply to all for "Canvas" feel.
+                    }
+                };
+            })
+            .filter(Boolean);
+
         renderStateRef.current = {
-            adjustments: activeClip?.adjustments || initialAdjustments, // Use clip adjustments or defaults
+            visibleClips, // New multi-track state
+            // Fallbacks for single-track renderers (if any)
+            adjustments: activeClip?.adjustments || initialAdjustments,
             vignette: activeClip?.adjustments?.vignette || initialAdjustments.vignette,
             grain: activeClip?.adjustments?.grain || initialAdjustments.grain,
             textOverlays: activeTextOverlays,
             stickers: activeStickers,
-            stickerImages: [], // We'll handle images inside the sticker object now
+            stickerImages: [],
             transform: { rotation, zoom },
             canvasDimensions,
             activeOverlayId: selectedClipId,
@@ -359,10 +428,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             activeEffectId: activeClip?.effect || null,
             effectIntensity,
             activeFilterId: activeClip?.filter || 'normal',
-            hasActiveClip,
+            hasActiveClip: visibleClips.length > 0, // Update this
             transition // Pass transition state
         };
-    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime]);
+    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo]);
 
     // Stable Render Loop
     useEffect(() => {
@@ -397,10 +466,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (newTime >= trimRange.end) {
                     setIsPlaying(false);
                     if (mediaElementRef.current) mediaElementRef.current.pause();
+
+                    // Pause all audio
+                    Object.values(audioElementsRef.current).forEach(audio => {
+                        if (!audio.paused) audio.pause();
+                    });
+
                     return trimRange.end;
                 }
 
-                // --- SMART SYNC LOGIC ---
+                // --- SMART SYNC LOGIC (Video) ---
                 if (mediaElementRef.current && isVideo) {
                     const mainTrack = tracks.find(t => t.id === 'track-main');
                     const activeClip = mainTrack?.clips.find(c =>
@@ -408,29 +483,99 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     );
 
                     if (activeClip) {
-                        // We are inside a clip
                         const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
-
-                        // Check drift
-                        const currentSourceTime = mediaElementRef.current.currentTime;
-                        const drift = Math.abs(currentSourceTime - expectedSourceTime);
+                        const drift = Math.abs(mediaElementRef.current.currentTime - expectedSourceTime);
 
                         if (drift > 0.1) {
-                            // Seek if drifted too much
                             mediaElementRef.current.currentTime = expectedSourceTime;
                         }
-
-                        // Ensure playing
                         if (mediaElementRef.current.paused) {
                             mediaElementRef.current.play().catch(() => { });
                         }
                     } else {
-                        // We are in a gap
                         if (!mediaElementRef.current.paused) {
                             mediaElementRef.current.pause();
                         }
                     }
                 }
+
+                // --- SECONDARY VIDEO SYNC LOGIC ---
+                tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
+                    const activeClip = track.clips.find(c =>
+                        newTime >= c.startTime && newTime < (c.startTime + c.duration)
+                    );
+
+                    if (activeClip) {
+                        if (!videoElementsRef.current[activeClip.id]) {
+                            const video = document.createElement('video');
+                            video.src = activeClip.source;
+                            video.muted = true;
+                            video.crossOrigin = 'anonymous';
+                            videoElementsRef.current[activeClip.id] = video;
+                        }
+                        const video = videoElementsRef.current[activeClip.id];
+
+                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
+                        const drift = Math.abs(video.currentTime - expectedSourceTime);
+
+                        if (drift > 0.1) {
+                            video.currentTime = expectedSourceTime;
+                        }
+                        if (video.paused) {
+                            video.play().catch(() => { });
+                        }
+                    } else {
+                        // Pause inactive videos
+                        track.clips.forEach(c => {
+                            if (videoElementsRef.current[c.id] && !videoElementsRef.current[c.id].paused) {
+                                videoElementsRef.current[c.id].pause();
+                            }
+                        });
+                    }
+                });
+
+                // --- AUDIO MIXER LOGIC ---
+                tracks.filter(t => t.type === 'audio').forEach(track => {
+                    const activeClip = track.clips.find(c =>
+                        newTime >= c.startTime && newTime < (c.startTime + c.duration)
+                    );
+
+                    if (activeClip) {
+                        // Get or create Audio element
+                        if (!audioElementsRef.current[activeClip.id]) {
+                            const audio = new Audio(activeClip.source);
+                            audio.loop = false;
+                            audioElementsRef.current[activeClip.id] = audio;
+                        }
+                        const audio = audioElementsRef.current[activeClip.id];
+
+                        // Sync Audio
+                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
+                        const drift = Math.abs(audio.currentTime - expectedSourceTime);
+
+                        if (drift > 0.1 || audio.paused) {
+                            if (drift > 0.1) audio.currentTime = expectedSourceTime;
+                            audio.play().catch(e => console.warn("Audio play failed", e));
+                        }
+
+                        // Volume control (TODO: Add volume to clip model)
+                        audio.volume = 1.0;
+                    } else {
+                        // Pause any playing audio for this track? 
+                        // Actually we need to check all cached audios for this track and pause them if not active.
+                        // But simpler: iterate all cached audios and pause if not active?
+                        // No, that's expensive.
+                        // Better: We only care about the *previous* active clip? 
+                        // Let's just iterate all cached audios in the cleanup or check here.
+                        // For now, let's iterate all clips in this track and ensure their audio is paused if not active.
+                        track.clips.forEach(c => {
+                            if (c.id !== activeClip?.id && audioElementsRef.current[c.id]) {
+                                const audio = audioElementsRef.current[c.id];
+                                if (!audio.paused) audio.pause();
+                            }
+                        });
+                    }
+                });
 
                 return newTime;
             });
@@ -445,6 +590,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             cancelAnimationFrame(animationFrameId);
             // Ensure video pauses when timeline pauses
             if (mediaElementRef.current) mediaElementRef.current.pause();
+
+            // Pause all audio
+            Object.values(audioElementsRef.current).forEach(audio => {
+                if (!audio.paused) audio.pause();
+            });
+
+            // Pause all secondary videos
+            Object.values(videoElementsRef.current).forEach(video => {
+                if (!video.paused) video.pause();
+            });
         }
 
         return () => cancelAnimationFrame(animationFrameId);
@@ -488,11 +643,27 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
             if (activeClip) {
                 const sourceTime = activeClip.startOffset + (time - activeClip.startTime);
-                mediaElementRef.current.currentTime = sourceTime;
+                if (Number.isFinite(sourceTime)) {
+                    mediaElementRef.current.currentTime = sourceTime;
+                }
             }
             // If in gap, we don't strictly need to seek, but maybe pause?
             // The render loop will handle the black screen.
         }
+
+        // Sync secondary videos
+        tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
+            const activeClip = track.clips.find(c =>
+                time >= c.startTime && time < (c.startTime + c.duration)
+            );
+
+            if (activeClip && videoElementsRef.current[activeClip.id]) {
+                const sourceTime = activeClip.startOffset + (time - activeClip.startTime);
+                if (Number.isFinite(sourceTime)) {
+                    videoElementsRef.current[activeClip.id].currentTime = sourceTime;
+                }
+            }
+        });
     };
 
     const handleAddAsset = (type, data) => {
@@ -543,7 +714,59 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 // Wait, we can use setTracks directly if we really wanted, but we should use the hook.
                 // Let's just add a text track on init.
             }
+        } else if (type === 'media' || type === 'audio' || type === 'video' || type === 'image') {
+            // Handle adding media/audio from library to timeline
+            // Find appropriate track or create new one
+            // For MVP: Find first track of type, or create new
+            let targetTrack = tracks.find(t => t.type === type);
+
+            // Relaxed check: Allow images on video tracks and vice versa
+            if (!targetTrack && (type === 'image' || type === 'video')) {
+                targetTrack = tracks.find(t => t.type === 'video' || t.type === 'image');
+            }
+
+            // If no track of this type, we should probably add one, but for now let's reuse logic
+            // Ideally useTimelineState should expose 'addTrack' which we have.
+
+            if (!targetTrack) {
+                // TODO: Auto-create track. For now, we rely on pre-existing tracks or manual creation
+                console.warn(`No track found for type ${type}`);
+                return;
+            }
+
+            const newClip = {
+                id: `clip-${Date.now()}`,
+                type: type,
+                name: data.file.name,
+                startTime: currentTime,
+                duration: data.duration || 10, // Default or actual duration
+                startOffset: 0,
+                source: data.url,
+                sourceDuration: data.duration
+            };
+
+            addClip(targetTrack.id, newClip);
         }
+    };
+
+    const handleAddToLibrary = (file) => {
+        const url = URL.createObjectURL(file);
+        const type = file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'image';
+
+        // For video/audio, we might want to get duration. 
+        // For now, simple add.
+        const newItem = {
+            id: `asset-${Date.now()}`,
+            file,
+            url,
+            type,
+            name: file.name
+        };
+
+        setMediaLibrary(prev => [...prev, newItem]);
+
+        // If it's the first media, maybe load it as main?
+        // Only if timeline is empty?
     };
 
     const getActiveItem = () => {
@@ -573,6 +796,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         if (selectedClipId) {
             deleteClip(selectedClipId);
         }
+    };
+
+    const handleDrop = (trackId, asset, time) => {
+        addClip(trackId, {
+            type: asset.type,
+            source: asset.url,
+            startTime: time,
+            duration: asset.duration || 5, // Default duration
+            name: asset.name
+        });
     };
 
     // Render upload screen if no media
@@ -621,10 +854,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     activeEffectId={activeEffectId}
                     setActiveEffectId={handleSetEffect}
                     effectIntensity={effectIntensity}
-                    setEffectIntensity={setEffectIntensity}
+                    setEffectIntensity={handleSetEffectIntensity}
                     mediaUrl={mediaUrl}
                     thumbnailUrl={thumbnailUrl}
                     suggestedFilter={suggestedFilter}
+                    mediaLibrary={mediaLibrary}
+                    onAddToLibrary={handleAddToLibrary}
                 />
             }
             centerPanel={
@@ -675,6 +910,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     canUndo={canUndo}
                     canRedo={canRedo}
                     onAddTransition={addTransition}
+                    onAddTrack={addTrack}
+                    onDrop={handleDrop}
+                    onReorderTrack={reorderTracks}
+                    onResizeTrack={updateTrackHeight}
                 />
             }
         />
