@@ -233,12 +233,57 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration, memeMode]);
 
+    // Generate Thumbnail for Filters
+    useEffect(() => {
+        if (!mediaUrl) return;
+
+        const generate = async () => {
+            if (mediaType === 'image') {
+                setThumbnailUrl(mediaUrl);
+            } else if (mediaType === 'video') {
+                try {
+                    const video = document.createElement('video');
+                    video.crossOrigin = 'anonymous';
+                    video.src = mediaUrl;
+                    video.muted = true;
+                    video.preload = 'metadata';
+
+                    await new Promise((resolve) => {
+                        video.onloadeddata = resolve;
+                    });
+
+                    // Seek to 1s or 10% of duration
+                    video.currentTime = Math.min(1, video.duration * 0.1);
+
+                    await new Promise((resolve) => {
+                        video.onseeked = resolve;
+                    });
+
+                    const canvas = document.createElement('canvas');
+                    // Keep aspect ratio but small
+                    const aspect = video.videoWidth / video.videoHeight;
+                    canvas.width = 160;
+                    canvas.height = 160 / aspect;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    setThumbnailUrl(canvas.toDataURL('image/jpeg', 0.7));
+                } catch (e) {
+                    console.error('Thumbnail generation failed:', e);
+                    setThumbnailUrl(null);
+                }
+            }
+        };
+
+        generate();
+    }, [mediaUrl, mediaType]);
+
     // Ref to hold latest state for the render loop
     const renderStateRef = useRef({});
 
     // Update render state ref whenever relevant state changes
     useEffect(() => {
-        // Determine if we have an active clip at the current time
         const mainTrack = tracks.find(t => t.id === 'track-main');
         const activeClip = mainTrack?.clips.find(c =>
             currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
@@ -578,6 +623,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     effectIntensity={effectIntensity}
                     setEffectIntensity={setEffectIntensity}
                     mediaUrl={mediaUrl}
+                    thumbnailUrl={thumbnailUrl}
                     suggestedFilter={suggestedFilter}
                 />
             }
@@ -636,3 +682,4 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 };
 
 export default MediaEditor;
+

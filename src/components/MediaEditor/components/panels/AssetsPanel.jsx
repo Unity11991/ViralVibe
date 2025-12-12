@@ -28,6 +28,7 @@ export const AssetsPanel = ({
     effectIntensity,
     setEffectIntensity,
     mediaUrl,
+    thumbnailUrl,
     suggestedFilter
 }) => {
     return (
@@ -101,6 +102,7 @@ export const AssetsPanel = ({
                             onFilterSelect={setActiveFilterId}
                             suggestedFilter={suggestedFilter}
                             mediaUrl={mediaUrl}
+                            thumbnailUrl={thumbnailUrl}
                         />
                     )}
 

@@ -4,7 +4,7 @@ import { FILTER_PRESETS } from '../utils/filterUtils';
 /**
  * Filter Panel Component
  */
-export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter, mediaUrl }) => {
+export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter, mediaUrl, thumbnailUrl }) => {
     const [activeCategory, setActiveCategory] = useState('All');
 
     // Extract unique categories
@@ -58,10 +58,10 @@ export const FilterPanel = ({ activeFilterId, onFilterSelect, suggestedFilter, m
                     >
                         {/* Filter Preview */}
                         <div className="w-full aspect-square rounded-lg overflow-hidden bg-black/50 relative">
-                            {mediaUrl ? (
+                            {(thumbnailUrl || mediaUrl) ? (
                                 <>
                                     <img
-                                        src={mediaUrl}
+                                        src={thumbnailUrl || mediaUrl}
                                         alt={filter.name}
                                         className="w-full h-full object-cover"
                                         style={{
