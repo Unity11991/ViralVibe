@@ -90,7 +90,8 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         const centerY = logicalHeight / 2 + y;
 
         // Soft Masking Logic
-        if (mask && mask.type !== 'none' && mask.blur > 0) {
+        // Text mask always uses soft masking (composite) because clip() doesn't work with fillText
+        if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text')) {
             const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
@@ -880,6 +881,54 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
         ctx.arc(0, 0, maskSize / 2, 0, Math.PI * 2);
     } else if (type === 'rectangle') {
         ctx.rect(-maskSize / 2, -maskSize / 2, maskSize, maskSize);
+    } else if (type === 'filmstrip') {
+        // Filmstrip: Wide rectangle with aspect ratio ~2.35:1
+        const stripWidth = width; // Full width
+        const stripHeight = width / 2.35; // Cinematic aspect ratio
+        // Scale affects the height of the strip relative to the standard cinematic ratio
+        const scaledHeight = stripHeight * (scale / 100);
+        ctx.rect(-width / 2, -scaledHeight / 2, width, scaledHeight);
+    } else if (type === 'text') {
+        const { text = 'Default text', fontSize = 40, fontFamily = 'Arial', isBold, isItalic, textAlign = 'center' } = mask;
+
+        ctx.save();
+        const s = scale / 100;
+        ctx.scale(s, s);
+
+        ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
+        ctx.textAlign = textAlign;
+        ctx.textBaseline = 'middle';
+
+        // Note: For text as a mask, we need to draw it.
+        // If clip is true, we need a path. Text to path is complex in canvas.
+        // However, ctx.clip() usually works with the current path.
+        // ctx.fillText does NOT create a path for clipping.
+        // We must use a different approach for Text Masking if we want to use it as a clip.
+        // BUT, since we implemented soft masking (composite operations), 
+        // we can just draw the text filled with white (or any color) and use destination-in.
+
+        // If clip is true (Hard Mask), text masking is very hard with standard canvas API (no textToPath).
+        // So for Text Mask, we might force Soft Masking path or use composite operation even for "Hard" mode.
+        // Or we just draw the text and use 'destination-in' globalCompositeOperation immediately if clip is false.
+
+        // Wait, `drawMask` is called with `clip=true` for hard masking.
+        // If we can't create a path from text, we can't use `ctx.clip()`.
+        // So Text Mask MUST use the soft masking logic (composite ops).
+
+        // Let's assume the caller handles this or we handle it here.
+        // If clip is true, we can't do anything for text.
+        // We should probably force `drawMediaToCanvas` to use the soft mask path for text type.
+
+        // For now, let's just draw the text if clip is false (which is used in soft mask path).
+        if (!clip) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 0, 0);
+        }
+        // If clip is true, we do nothing? That would result in no mask.
+        // We need to update drawMediaToCanvas to force soft mask path for text.
+
+        ctx.restore();
+
     } else if (type === 'heart') {
         const s = maskSize / 2; // Scale factor
         // Heart path

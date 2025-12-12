@@ -163,40 +163,48 @@ export const AssetsPanel = ({
                     {activeTab === 'text' && (
                         <div className="space-y-4">
                             <button
-                                onClick={() => onAddAsset('text', { text: 'Add Heading' })}
+                                onClick={() => onAddAsset('text', { text: 'Add Heading', fontSize: 60, fontWeight: 'bold' })}
                                 className="w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
                                 draggable="true"
                                 onDragStart={(e) => {
                                     e.dataTransfer.setData('application/json', JSON.stringify({
                                         type: 'text',
-                                        text: 'Add Heading'
+                                        text: 'Add Heading',
+                                        fontSize: 60,
+                                        fontWeight: 'bold'
                                     }));
                                 }}
                             >
                                 <span className="text-2xl font-bold">Add Heading</span>
                                 <span className="text-xs text-white/40">Click or Drag to add</span>
                             </button>
+
                             <button
-                                onClick={() => onAddAsset('text', { text: 'Add Subheading' })}
+                                onClick={() => onAddAsset('text', { text: 'Add Subheading', fontSize: 40, fontWeight: 'semibold' })}
                                 className="w-full p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
                                 draggable="true"
                                 onDragStart={(e) => {
                                     e.dataTransfer.setData('application/json', JSON.stringify({
                                         type: 'text',
-                                        text: 'Add Subheading'
+                                        text: 'Add Subheading',
+                                        fontSize: 40,
+                                        fontWeight: 'semibold'
                                     }));
                                 }}
                             >
                                 <span className="text-lg font-semibold">Add Subheading</span>
                             </button>
+
                             <button
-                                onClick={() => onAddAsset('text', { text: 'Add Body Text' })}
+                                onClick={() => onAddAsset('text', { text: 'Add Body Text', fontSize: 24, fontWeight: 'normal' })}
                                 className="w-full p-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
                                 draggable="true"
                                 onDragStart={(e) => {
                                     e.dataTransfer.setData('application/json', JSON.stringify({
                                         type: 'text',
-                                        text: 'Add Body Text'
+                                        text: 'Add Body Text',
+                                        fontSize: 24,
+                                        fontWeight: 'normal'
                                     }));
                                 }}
                             >

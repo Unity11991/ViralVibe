@@ -250,28 +250,117 @@ export const PropertiesPanel = ({ activeItem, onUpdate }) => {
     }
 
     // Fallback for Text/Other types (Simplified for now, can be expanded)
+    const fonts = [
+        'Arial', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald', 'Raleway', 'Merriweather',
+        'Playfair Display', 'Nunito', 'Poppins', 'Ubuntu', 'Lobster', 'Pacifico', 'Dancing Script',
+        'Satisfy', 'Great Vibes', 'Kaushan Script', 'Sacramento', 'Parisienne', 'Cookie', 'Bangers',
+        'Creepster', 'Fredoka One', 'Righteous', 'Audiowide', 'Press Start 2P', 'Monoton',
+        'Permanent Marker', 'Rock Salt', 'Shadows Into Light'
+    ];
+
     return (
         <div className="flex flex-col h-full">
             <div className="p-4 border-b border-white/5">
                 <h3 className="font-bold text-lg capitalize">{activeItem.type} Properties</h3>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar">
                 {activeItem.type === 'text' && (
-                    <div className="space-y-4">
-                        <textarea
-                            value={activeItem.text}
-                            onChange={(e) => onUpdate({ ...activeItem, text: e.target.value })}
-                            className="w-full bg-black/20 border border-white/10 rounded-lg p-2 text-sm focus:border-blue-500 outline-none resize-none"
-                            rows={3}
-                        />
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="color"
-                                value={activeItem.color || '#ffffff'}
-                                onChange={(e) => onUpdate({ ...activeItem, color: e.target.value })}
-                                className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                    <div className="space-y-6">
+                        {/* Text Content */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-white/60">Content</label>
+                            <textarea
+                                value={activeItem.text}
+                                onChange={(e) => onUpdate({ ...activeItem, text: e.target.value })}
+                                className="w-full bg-black/20 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-blue-500 outline-none resize-none"
+                                rows={3}
                             />
-                            <span className="text-sm text-white/70">Color</span>
+                        </div>
+
+                        {/* Font Family */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-white/60">Font</label>
+                            <select
+                                value={activeItem.style?.fontFamily || 'Arial'}
+                                onChange={(e) => onUpdate({ ...activeItem, style: { ...activeItem.style, fontFamily: e.target.value } })}
+                                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                                style={{ fontFamily: activeItem.style?.fontFamily || 'Arial' }}
+                            >
+                                {fonts.map(font => (
+                                    <option key={font} value={font} style={{ fontFamily: font }}>
+                                        {font}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Font Size */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-medium text-white/60">Size</label>
+                                <span className="text-xs text-white/40">{activeItem.style?.fontSize || 40}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="10"
+                                max="200"
+                                value={activeItem.style?.fontSize || 40}
+                                onChange={(e) => onUpdate({ ...activeItem, style: { ...activeItem.style, fontSize: parseInt(e.target.value) } })}
+                                className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+                            />
+                        </div>
+
+                        {/* Styles & Alignment */}
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex bg-black/20 rounded-lg p-1 border border-white/10">
+                                <button
+                                    onClick={() => onUpdate({ ...activeItem, style: { ...activeItem.style, fontWeight: activeItem.style?.fontWeight === 'bold' ? 'normal' : 'bold' } })}
+                                    className={`p-2 rounded-md transition-colors ${activeItem.style?.fontWeight === 'bold' ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    <span className="font-bold">B</span>
+                                </button>
+                                <button
+                                    onClick={() => onUpdate({ ...activeItem, style: { ...activeItem.style, fontStyle: activeItem.style?.fontStyle === 'italic' ? 'normal' : 'italic' } })}
+                                    className={`p-2 rounded-md transition-colors ${activeItem.style?.fontStyle === 'italic' ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    <span className="italic">I</span>
+                                </button>
+                            </div>
+
+                            <div className="flex bg-black/20 rounded-lg p-1 border border-white/10">
+                                <button
+                                    onClick={() => onUpdate({ ...activeItem, style: { ...activeItem.style, textAlign: 'left' } })}
+                                    className={`p-2 rounded-md transition-colors ${activeItem.style?.textAlign === 'left' ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    <span className="text-xs">Left</span>
+                                </button>
+                                <button
+                                    onClick={() => onUpdate({ ...activeItem, style: { ...activeItem.style, textAlign: 'center' } })}
+                                    className={`p-2 rounded-md transition-colors ${activeItem.style?.textAlign === 'center' || !activeItem.style?.textAlign ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    <span className="text-xs">Center</span>
+                                </button>
+                                <button
+                                    onClick={() => onUpdate({ ...activeItem, style: { ...activeItem.style, textAlign: 'right' } })}
+                                    className={`p-2 rounded-md transition-colors ${activeItem.style?.textAlign === 'right' ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white'}`}
+                                >
+                                    <span className="text-xs">Right</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Color */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-white/60">Color</label>
+                            <div className="flex items-center gap-2 bg-black/20 p-2 rounded-lg border border-white/10">
+                                <input
+                                    type="color"
+                                    value={activeItem.style?.color || '#ffffff'}
+                                    onChange={(e) => onUpdate({ ...activeItem, style: { ...activeItem.style, color: e.target.value } })}
+                                    className="w-8 h-8 rounded cursor-pointer bg-transparent border-none"
+                                />
+                                <span className="text-sm text-white/70 uppercase">{activeItem.style?.color || '#ffffff'}</span>
+                            </div>
                         </div>
                     </div>
                 )}
