@@ -11,6 +11,68 @@
  * @param {Object} transform - Transform settings (crop, rotation, zoom)
  * @param {Object} canvasDimensions - Logical canvas dimensions
  */
+
+
+/**
+ * Cubic Bezier Easing Helper
+ * Based on https://github.com/gre/bezier-easing
+ */
+const cubicBezier = (p1x, p1y, p2x, p2y) => {
+    const cx = 3 * p1x;
+    const bx = 3 * (p2x - p1x) - cx;
+    const ax = 1 - cx - bx;
+    const cy = 3 * p1y;
+    const by = 3 * (p2y - p1y) - cy;
+    const ay = 1 - cy - by;
+
+    const sampleCurveX = (t) => ((ax * t + bx) * t + cx) * t;
+    const sampleCurveY = (t) => ((ay * t + by) * t + cy) * t;
+    const sampleCurveDerivativeX = (t) => (3 * ax * t + 2 * bx) * t + cx;
+
+    const solveCurveX = (x) => {
+        let t0, t1, t2, x2, d2, i;
+        for (t2 = x, i = 0; i < 8; i++) {
+            x2 = sampleCurveX(t2) - x;
+            if (Math.abs(x2) < 1e-5) return t2;
+            d2 = sampleCurveDerivativeX(t2);
+            if (Math.abs(d2) < 1e-5) break;
+            t2 = t2 - x2 / d2;
+        }
+        t0 = 0;
+        t1 = 1;
+        t2 = x;
+        if (t2 < t0) return t0;
+        if (t2 > t1) return t1;
+        while (t0 < t1) {
+            x2 = sampleCurveX(t2);
+            if (Math.abs(x2 - x) < 1e-5) return t2;
+            if (x > x2) t0 = t2;
+            else t1 = t2;
+            t2 = (t1 - t0) * 0.5 + t0;
+        }
+        return t2;
+    };
+
+    return (x) => sampleCurveY(solveCurveX(x));
+};
+
+// CSS Easing Presets
+const EASING = {
+    linear: (t) => t,
+    ease: cubicBezier(0.25, 0.1, 0.25, 1.0),
+    easeIn: cubicBezier(0.42, 0.0, 1.0, 1.0),
+    easeOut: cubicBezier(0.0, 0.0, 0.58, 1.0),
+    easeInOut: cubicBezier(0.42, 0.0, 0.58, 1.0),
+};
+
+/**
+ * Draw image or video frame to canvas with filters
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {HTMLImageElement|HTMLVideoElement} media - Media element
+ * @param {Object} filters - Filter settings
+ * @param {Object} transform - Transform settings (crop, rotation, zoom)
+ * @param {Object} canvasDimensions - Logical canvas dimensions
+ */
 export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0, options = {}) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
@@ -493,7 +555,15 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
 
             if (clip.transition && clip.transition.type !== 'none') {
                 const { type, progress } = clip.transition;
-                const p = progress;
+
+                // Apply Easing (CSS-style)
+                // Default to ease-in-out for smooth transitions
+                const easeFunc = EASING.easeInOut;
+                const p = easeFunc(progress);
+
+                // Create local transition object with eased progress
+                transitionMask = { ...clip.transition, progress: p };
+
                 const w = dimensions.width;
                 const h = dimensions.height;
 
