@@ -22,10 +22,15 @@ export const TimelinePanel = ({
     redo,
     canUndo,
     canRedo,
-    onAddTransition
+    onAddTransition,
+    onAddTrack,
+    onDrop,
+    onReorderTrack,
+    onResizeTrack
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [draggedTrackIndex, setDraggedTrackIndex] = useState(null);
 
     const formatTime = (time) => {
         const mins = Math.floor(time / 60);
@@ -62,6 +67,9 @@ export const TimelinePanel = ({
     };
 
     const handleMouseDown = (e) => {
+        // Only seek if clicking on ruler or empty space, not on tracks
+        if (e.target.closest('.track-container')) return;
+
         setIsDragging(true);
         handleTimelineClick(e);
     };
@@ -90,6 +98,28 @@ export const TimelinePanel = ({
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isDragging, duration, scale, onSeek]);
+
+    // Track Reordering Logic
+    const handleTrackDragStart = (e, index) => {
+        setDraggedTrackIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        // e.dataTransfer.setDragImage(e.target, 0, 0); // Optional: Custom drag image
+    };
+
+    const handleTrackDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedTrackIndex === null || draggedTrackIndex === index) return;
+
+        // Visual feedback could be added here
+    };
+
+    const handleTrackDrop = (e, index) => {
+        e.preventDefault();
+        if (draggedTrackIndex !== null && draggedTrackIndex !== index) {
+            onReorderTrack(draggedTrackIndex, index);
+        }
+        setDraggedTrackIndex(null);
+    };
 
     return (
         <div className="flex flex-col h-full">
@@ -191,19 +221,47 @@ export const TimelinePanel = ({
 
                     {/* Render Tracks */}
                     <div className="py-2">
-                        {tracks.map(track => (
-                            <Track
+                        {tracks.map((track, index) => (
+                            <div
                                 key={track.id}
-                                track={track}
-                                scale={scale}
-                                onClipSelect={onClipSelect}
-                                selectedClipId={selectedClipId}
-                                onTrim={onTrim}
-                                onTrimEnd={onTrimEnd}
-                                onMove={onMove}
-                                onAddTransition={onAddTransition}
-                            />
+                                className="track-container"
+                                draggable
+                                onDragStart={(e) => handleTrackDragStart(e, index)}
+                                onDragOver={(e) => handleTrackDragOver(e, index)}
+                                onDrop={(e) => handleTrackDrop(e, index)}
+                            >
+                                <Track
+                                    track={track}
+                                    scale={scale}
+                                    onClipSelect={onClipSelect}
+                                    selectedClipId={selectedClipId}
+                                    onTrim={onTrim}
+                                    onTrimEnd={onTrimEnd}
+                                    onMove={onMove}
+                                    onAddTransition={onAddTransition}
+                                    onDrop={onDrop}
+                                    onResize={(height) => onResizeTrack(track.id, height)}
+                                />
+                            </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* Add Track Button */}
+                <div className="px-4 pb-4">
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => onAddTrack('video')}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-colors"
+                        >
+                            + Add Video Track
+                        </button>
+                        <button
+                            onClick={() => onAddTrack('audio')}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-colors"
+                        >
+                            + Add Audio Track
+                        </button>
                     </div>
                 </div>
             </div>

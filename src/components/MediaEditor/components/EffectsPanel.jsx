@@ -36,8 +36,8 @@ export const EFFECTS_PRESETS = [
 export const EffectsPanel = ({ activeEffectId, onEffectSelect, intensity, onIntensityChange }) => {
     return (
         <div className="w-full space-y-4 animate-slide-up">
-            {/* Horizontal Scroll Container */}
-            <div className="flex gap-4 overflow-x-auto pb-4 pt-2 px-2 custom-scrollbar snap-x">
+            {/* Vertical Grid Container */}
+            <div className="grid grid-cols-3 gap-3 pb-4 pt-2 px-2 custom-scrollbar">
                 {EFFECTS_PRESETS.map((effect) => {
                     const Icon = effect.icon;
                     const isActive = activeEffectId === effect.id;
@@ -47,7 +47,7 @@ export const EffectsPanel = ({ activeEffectId, onEffectSelect, intensity, onInte
                             key={effect.id || 'normal'}
                             onClick={() => onEffectSelect(effect.id)}
                             className={`
-                                flex-shrink-0 flex flex-col items-center gap-2 group snap-center
+                                flex flex-col items-center gap-2 group
                                 transition-all duration-200
                             `}
                         >

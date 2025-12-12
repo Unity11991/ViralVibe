@@ -10,7 +10,9 @@ export const Track = ({
     onTrim,
     onTrimEnd,
     onMove,
-    onAddTransition
+    onAddTransition,
+    onDrop,
+    onResize
 }) => {
     const getIcon = () => {
         switch (track.type) {
@@ -22,22 +24,71 @@ export const Track = ({
         }
     };
 
+    const handleResizeStart = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const startY = e.clientY;
+        const startHeight = track.height || 80;
+
+        const handleMouseMove = (moveEvent) => {
+            const deltaY = moveEvent.clientY - startY;
+            const newHeight = Math.max(32, startHeight + deltaY);
+            onResize(newHeight);
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
     return (
-        <div className="flex h-16 mb-2 group">
+        <div className="flex mb-2 group" style={{ height: `${track.height || 80}px` }}>
             {/* Track Header */}
-            <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-3 z-40 sticky left-0">
+            <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-3 z-40 sticky left-0 relative">
                 <div className="flex items-center gap-2 text-white/70 mb-1">
                     {getIcon()}
-                    <span className="text-xs font-medium uppercase tracking-wider">{track.type}</span>
+                    <span className="text-xs font-medium uppercase tracking-wider truncate">{track.type}</span>
                 </div>
                 <div className="flex gap-1">
                     <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white">M</button>
                     <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white">S</button>
                 </div>
+
+                {/* Resize Handle */}
+                <div
+                    className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-blue-500/50 z-50"
+                    onMouseDown={handleResizeStart}
+                />
             </div>
 
             {/* Track Content */}
-            <div className="flex-1 bg-[#151518] relative border-b border-white/5 group-hover:bg-[#1a1a1f] transition-colors">
+            <div
+                className="flex-1 bg-[#151518] relative border-b border-white/5 group-hover:bg-[#1a1a1f] transition-colors"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    const data = e.dataTransfer.getData('application/json');
+                    if (data) {
+                        const asset = JSON.parse(data);
+                        // Calculate time based on drop position
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const time = x / scale; // scale is pixels per second
+
+                        // Only allow dropping compatible types
+                        if (track.type === asset.type || (track.type === 'video' && asset.type === 'image')) {
+                            // We need a way to call addClip from here.
+                            // We can pass a generic onDrop handler from parent.
+                            if (onDrop) onDrop(track.id, asset, time);
+                        }
+                    }
+                }}
+            >
                 {track.clips.map((clip, index) => {
                     const nextClip = track.clips[index + 1];
                     const isConnected = nextClip && Math.abs((clip.startTime + clip.duration) - nextClip.startTime) < 0.1;
