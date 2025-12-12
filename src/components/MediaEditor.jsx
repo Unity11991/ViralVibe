@@ -380,56 +380,113 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const transform = { rotation, zoom };
 
         // Calculate visible clips for multi-track rendering
-        const visibleClips = tracks
-            .filter(t => t.type === 'video' || t.type === 'image') // Only renderable tracks
-            .map(track => {
-                const clip = track.clips.find(c =>
-                    currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
-                );
-                if (!clip) return null;
+        // Calculate visible clips for multi-track rendering
+        const visibleClips = [];
 
-                // Resolve media source
-                let mediaSource = null;
+        tracks.filter(t => t.type === 'video' || t.type === 'image').forEach(track => {
+            const clipIndex = track.clips.findIndex(c =>
+                currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+            );
+            if (clipIndex === -1) return;
+
+            const clip = track.clips[clipIndex];
+
+            // Check for Transition Overlap
+            let prevClip = null;
+            if (clip.transition && clip.transition.type !== 'none') {
+                const transitionDuration = clip.transition.duration || 1.0;
+                const timeInClip = currentTime - clip.startTime;
+                if (timeInClip < transitionDuration && clipIndex > 0) {
+                    prevClip = track.clips[clipIndex - 1];
+                }
+            }
+
+            const resolveMedia = (c, isBackground = false) => {
                 if (track.id === 'track-main' && isVideo) {
-                    mediaSource = mediaElementRef.current;
-                } else if (clip.type === 'image') {
-                    // Check cache
-                    if (!imageElementsRef.current[clip.id]) {
-                        const img = new Image();
-                        img.src = clip.source;
-                        imageElementsRef.current[clip.id] = img;
-                    }
-                    mediaSource = imageElementsRef.current[clip.id];
-                } else if (clip.type === 'video' && track.id !== 'track-main') {
-                    // Secondary video support
-                    if (!videoElementsRef.current[clip.id]) {
+                    // If it's the active main clip, use main element
+                    if (c.id === clip.id && !isBackground) return mediaElementRef.current;
+                    // If it's the previous clip (background) on main track, use secondary element
+                    if (!videoElementsRef.current[c.id]) {
                         const video = document.createElement('video');
-                        video.src = clip.source;
-                        video.muted = true; // Secondary videos muted by default? Or mixed?
+                        video.src = c.source;
+                        video.muted = true;
                         video.crossOrigin = 'anonymous';
-                        videoElementsRef.current[clip.id] = video;
+                        videoElementsRef.current[c.id] = video;
                     }
-                    mediaSource = videoElementsRef.current[clip.id];
+                    return videoElementsRef.current[c.id];
+                } else if (c.type === 'image') {
+                    if (!imageElementsRef.current[c.id]) {
+                        const img = new Image();
+                        img.src = c.source;
+                        imageElementsRef.current[c.id] = img;
+                    }
+                    return imageElementsRef.current[c.id];
+                } else if (c.type === 'video') {
+                    if (!videoElementsRef.current[c.id]) {
+                        const video = document.createElement('video');
+                        video.src = c.source;
+                        video.muted = true;
+                        video.crossOrigin = 'anonymous';
+                        videoElementsRef.current[c.id] = video;
+                    }
+                    return videoElementsRef.current[c.id];
+                }
+                return null;
+            };
+
+            // Add Previous Clip (Background)
+            if (prevClip) {
+                const prevMedia = resolveMedia(prevClip, true);
+                if (prevMedia) {
+                    visibleClips.push({
+                        ...prevClip,
+                        media: prevMedia,
+                        adjustments: prevClip.adjustments || getInitialAdjustments(),
+                        filter: prevClip.filter || 'normal',
+                        effect: prevClip.effect || null,
+                        transform: {
+                            ...(prevClip.transform || {}),
+                            opacity: 100,
+                            blendMode: 'normal'
+                        },
+                        mask: prevClip.mask || null,
+                        isTransitionBackground: true
+                    });
+                }
+            }
+
+            // Add Current Clip (Foreground)
+            const media = resolveMedia(clip);
+            if (media) {
+                // Calculate transition progress if active
+                let activeTransition = null;
+                if (clip.transition && clip.transition.type !== 'none') {
+                    const transitionDuration = clip.transition.duration || 1.0;
+                    const timeInClip = currentTime - clip.startTime;
+                    if (timeInClip < transitionDuration) {
+                        activeTransition = {
+                            ...clip.transition,
+                            progress: timeInClip / transitionDuration
+                        };
+                    }
                 }
 
-                if (!mediaSource) return null;
-
-                return {
+                visibleClips.push({
                     ...clip,
-                    media: mediaSource,
-                    // Track-level or clip-level adjustments
+                    media: media,
                     adjustments: clip.adjustments || getInitialAdjustments(),
                     filter: clip.filter || 'normal',
                     effect: clip.effect || null,
                     transform: {
-                        ...clip.transform, // Clip-specific transform (x, y, scale, rotation)
+                        ...(clip.transform || {}),
                         opacity: clip.opacity !== undefined ? clip.opacity : 100,
                         blendMode: clip.blendMode || 'normal'
                     },
-                    mask: clip.mask || null
-                };
-            })
-            .filter(Boolean);
+                    mask: clip.mask || null,
+                    transition: activeTransition // Pass calculated transition with progress
+                });
+            }
+        });
 
         renderStateRef.current = {
             visibleClips, // New multi-track state
@@ -952,6 +1009,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         );
     }
 
+    const handleTransitionSelect = (clipId) => {
+        setSelectedClipId(clipId);
+        setActiveTab('transitions');
+    };
+
     return (
         <EditorLayout
             header={
@@ -988,6 +1050,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     onAddToLibrary={handleAddToLibrary}
                     mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
                     onUpdateMask={handleSetMask}
+                    activeClip={getActiveItem()}
+                    onUpdateClip={handleUpdateActiveItem}
                 />
             }
             centerPanel={
@@ -1038,6 +1102,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     canUndo={canUndo}
                     canRedo={canRedo}
                     onAddTransition={addTransition}
+                    onTransitionSelect={handleTransitionSelect}
                     onAddTrack={addTrack}
                     onDrop={handleDrop}
                     onReorderTrack={reorderTracks}

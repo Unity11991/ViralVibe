@@ -23,6 +23,7 @@ export const TimelinePanel = ({
     canUndo,
     canRedo,
     onAddTransition,
+    onTransitionSelect,
     onAddTrack,
     onDrop,
     onReorderTrack,
@@ -239,6 +240,7 @@ export const TimelinePanel = ({
                                     onTrimEnd={onTrimEnd}
                                     onMove={onMove}
                                     onAddTransition={onAddTransition}
+                                    onTransitionSelect={onTransitionSelect}
                                     onDrop={onDrop}
                                     onResize={(height) => onResizeTrack(track.id, height)}
                                 />
