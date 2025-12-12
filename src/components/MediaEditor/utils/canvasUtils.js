@@ -11,16 +11,19 @@
  * @param {Object} transform - Transform settings (crop, rotation, zoom)
  * @param {Object} canvasDimensions - Logical canvas dimensions
  */
-export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0, applyFiltersToContext = true) => {
+export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0, options = {}) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
     const { crop = null, rotation = 0, zoom = 1 } = transform;
+    const { clearCanvas = true } = options;
 
     ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (clearCanvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
 
     // Apply filters
-    if (applyFiltersToContext) {
+    if (options.applyFiltersToContext !== false) {
         ctx.filter = buildFilterString(filters);
     } else {
         ctx.filter = 'none';
@@ -444,8 +447,32 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
     // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
     const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
 
-    // Draw base media with filters
-    drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, options.applyFiltersToContext);
+    // If no active clip (gap), just draw black and return (or continue to overlays if desired)
+    // Usually gaps should be black.
+    if (state.hasActiveClip === false) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+        // We might still want to draw overlays? 
+        // If overlays are independent of the main track, yes.
+        // But for now, let's assume overlays are tied to the timeline too.
+        // If we want to support overlays in gaps, we should continue.
+        // But drawMediaToCanvas should be skipped.
+    } else {
+        // Handle Transition
+        if (state.transition) {
+            // Fade In (from black)
+            // If we had a previous clip snapshot, we would draw it here first.
+            // For now, we assume black background (which is default canvas).
+            ctx.globalAlpha = state.transition.progress;
+        }
+
+        // Draw base media with filters
+        drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, { applyFiltersToContext: options.applyFiltersToContext });
+
+        // Reset Alpha
+        ctx.globalAlpha = 1.0;
+    }
 
     // Apply Professional Color Grading (Instagram-style)
     if (activeFilterId && activeFilterId !== 'normal') {
