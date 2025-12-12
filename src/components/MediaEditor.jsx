@@ -23,6 +23,17 @@ import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
  * Rebuilt with 3-pane layout and advanced timeline
  */
 const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, suggestedFilter, isPro = false }) => {
+    // Load Fonts
+    useEffect(() => {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Roboto&family=Open+Sans&family=Lato&family=Montserrat&family=Oswald&family=Raleway&family=Merriweather&family=Playfair+Display&family=Nunito&family=Poppins&family=Ubuntu&family=Lobster&family=Pacifico&family=Dancing+Script&family=Satisfy&family=Great+Vibes&family=Kaushan+Script&family=Sacramento&family=Parisienne&family=Cookie&family=Bangers&family=Creepster&family=Fredoka+One&family=Righteous&family=Audiowide&family=Press+Start+2P&family=Monoton&family=Permanent+Marker&family=Rock+Salt&family=Shadows+Into+Light&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+        return () => {
+            document.head.removeChild(link);
+        };
+    }, []);
+
     // Hooks
     const {
         mediaFile,
