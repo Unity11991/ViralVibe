@@ -3,6 +3,8 @@ import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles }
 import { AdjustPanel } from '../AdjustPanel';
 import { FilterPanel } from '../FilterPanel';
 import { EffectsPanel } from '../EffectsPanel';
+import { MaskPanel } from '../MaskPanel';
+import { ScanFace } from 'lucide-react';
 
 const TABS = [
     { id: 'media', icon: ImageIcon, label: 'Media' },
@@ -11,6 +13,7 @@ const TABS = [
     { id: 'adjust', icon: Sliders, label: 'Adjust' },
     { id: 'filters', icon: Wand2, label: 'Filters' },
     { id: 'effects', icon: Sparkles, label: 'Effects' },
+    { id: 'mask', icon: ScanFace, label: 'Mask' },
     { id: 'templates', icon: LayoutGrid, label: 'Templates' },
 ];
 
@@ -31,7 +34,9 @@ export const AssetsPanel = ({
     thumbnailUrl,
     suggestedFilter,
     mediaLibrary = [],
-    onAddToLibrary
+    onAddToLibrary,
+    mask,
+    onUpdateMask
 }) => {
     return (
         <div className="flex h-full">
@@ -223,6 +228,13 @@ export const AssetsPanel = ({
                             onEffectSelect={setActiveEffectId}
                             intensity={effectIntensity}
                             onIntensityChange={setEffectIntensity}
+                        />
+                    )}
+
+                    {activeTab === 'mask' && (
+                        <MaskPanel
+                            mask={mask}
+                            onUpdate={onUpdateMask}
                         />
                     )}
 

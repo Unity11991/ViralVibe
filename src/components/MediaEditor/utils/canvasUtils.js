@@ -14,7 +14,19 @@
 export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDimensions = null, memePadding = 0, options = {}) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
-    const { crop = null, rotation = 0, zoom = 1 } = transform;
+    // Destructure new transform properties with defaults
+    const {
+        crop = null,
+        rotation = 0,
+        scale = 100, // Percentage
+        x = 0,
+        y = 0,
+        opacity = 100,
+        blendMode = 'normal'
+    } = transform;
+
+    const { mask = null } = options;
+
     const { clearCanvas = true } = options;
 
     ctx.save();
@@ -29,16 +41,20 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         ctx.filter = 'none';
     }
 
+    // Apply Opacity and Blend Mode
+    ctx.globalAlpha = opacity / 100;
+    ctx.globalCompositeOperation = blendMode;
+
     // Handle crop and transform
     if (crop) {
-        const { x, y, width, height } = crop;
+        const { x: cropX, y: cropY, width: cropW, height: cropH } = crop;
         const mediaWidth = media.videoWidth || media.width;
         const mediaHeight = media.videoHeight || media.height;
 
-        const sourceX = (x / 100) * mediaWidth;
-        const sourceY = (y / 100) * mediaHeight;
-        const sourceW = (width / 100) * mediaWidth;
-        const sourceH = (height / 100) * mediaHeight;
+        const sourceX = (cropX / 100) * mediaWidth;
+        const sourceY = (cropY / 100) * mediaHeight;
+        const sourceW = (cropW / 100) * mediaWidth;
+        const sourceH = (cropH / 100) * mediaHeight;
 
         ctx.drawImage(
             media,
@@ -50,59 +66,69 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         const mediaAspect = media.videoWidth ? media.videoWidth / media.videoHeight : media.width / media.height;
         const canvasAspect = logicalWidth / logicalHeight;
 
-        let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+        let baseWidth, baseHeight;
+
+        // Calculate base dimensions to cover or fit (Cover is standard for editors usually, but let's stick to fit-contain logic unless specified)
+        // Actually, for a "transform" capable editor, we usually start with "contain" or "cover".
+        // Let's stick to the previous logic which seemed to be "contain" (fit within).
 
         if (mediaAspect > canvasAspect) {
-            drawWidth = logicalWidth * zoom;
-            drawHeight = (logicalWidth / mediaAspect) * zoom;
-            offsetY = (logicalHeight - drawHeight) / 2;
+            baseWidth = logicalWidth;
+            baseHeight = logicalWidth / mediaAspect;
         } else {
-            drawHeight = logicalHeight * zoom;
-            drawWidth = (logicalHeight * mediaAspect) * zoom;
-            offsetX = (logicalWidth - drawWidth) / 2;
+            baseHeight = logicalHeight;
+            baseWidth = logicalHeight * mediaAspect;
         }
 
-        if (memePadding > 0) {
-            // Draw white background
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+        // Apply Transform (Scale & Translate)
+        const scaleFactor = scale / 100;
+        const drawWidth = baseWidth * scaleFactor;
+        const drawHeight = baseHeight * scaleFactor;
 
-            // Calculate header height fraction: p / (1+p)
-            const headerFraction = memePadding / (1 + memePadding);
-            const headerHeight = logicalHeight * headerFraction;
+        // Center position + Offset
+        const centerX = logicalWidth / 2 + x;
+        const centerY = logicalHeight / 2 + y;
 
-            // Draw media below header
-            // Assume media fills width
-            const mediaDrawHeight = logicalHeight - headerHeight;
+        // Soft Masking Logic
+        if (mask && mask.type !== 'none' && mask.blur > 0) {
+            const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-            // Recalculate draw dimensions to fit in the bottom area while maintaining aspect
-            // But typically memes just fill width.
-            const targetY = headerHeight;
+            // Draw Media to Temp
+            tempCtx.save();
+            tempCtx.translate(centerX, centerY);
+            tempCtx.rotate((rotation * Math.PI) / 180);
+            tempCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            tempCtx.restore();
 
-            // Fit media in the remaining space (bottom part)
-            if (mediaAspect > canvasAspect) {
-                // Media is wider than canvas slot (unlikely if we set canvas based on media width)
-                // But if it happens, fit width
-                drawWidth = logicalWidth * zoom;
-                drawHeight = (logicalWidth / mediaAspect) * zoom;
-                offsetY = targetY + (mediaDrawHeight - drawHeight) / 2;
-                offsetX = (logicalWidth - drawWidth) / 2; // Should be 0 usually
+            // Composite Mask
+            tempCtx.globalCompositeOperation = 'destination-in';
+            tempCtx.filter = `blur(${mask.blur}px)`;
 
-            } else {
-                // Media is taller/same
-                // In our resize logic, we set width = containerWidth.
-                // So logicalWidth should match media width roughly.
+            tempCtx.save();
+            tempCtx.translate(centerX, centerY);
+            tempCtx.rotate((rotation * Math.PI) / 180);
+            drawMask(tempCtx, mask, drawWidth, drawHeight, false);
+            tempCtx.restore();
 
-                drawWidth = logicalWidth * zoom;
-                drawHeight = (logicalWidth / mediaAspect) * zoom;
-                offsetX = (logicalWidth - drawWidth) / 2;
-                offsetY = targetY + (mediaDrawHeight - drawHeight) / 2;
+            // Reset
+            tempCtx.globalCompositeOperation = 'source-over';
+            tempCtx.filter = 'none';
+
+            ctx.drawImage(tempCanvas, 0, 0);
+        } else {
+            // Hard Masking
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate((rotation * Math.PI) / 180);
+
+            if (mask && mask.type !== 'none') {
+                drawMask(ctx, mask, drawWidth, drawHeight, true);
             }
 
-            ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
-
-        } else {
-            ctx.drawImage(media, offsetX, offsetY, drawWidth, drawHeight);
+            ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            ctx.restore();
         }
     }
 
@@ -464,7 +490,8 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
             // Note: clearCanvas=false because we cleared it once at the start
             drawMediaToCanvas(ctx, clip.media, clipAdjustments, clipTransform, dimensions, memePadding, {
                 applyFiltersToContext: options.applyFiltersToContext,
-                clearCanvas: false
+                clearCanvas: false,
+                mask: clip.mask
             });
 
             // Apply Clip Filters (Color Grade)
@@ -478,6 +505,13 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
                 // For now using global effectIntensity
                 const intensity = effectIntensity;
                 applyEffectToCanvas(ctx, clipEffectId, intensity, dimensions.width, dimensions.height, clip.media);
+            }
+
+            // Draw Selection Box if active
+            if (state.activeOverlayId === clip.id) {
+                const mediaWidth = clip.media.videoWidth || clip.media.width;
+                const mediaHeight = clip.media.videoHeight || clip.media.height;
+                drawSelectionBox(ctx, clipTransform, dimensions, { width: mediaWidth, height: mediaHeight });
             }
         });
 
@@ -725,4 +759,150 @@ export const applyEffectToCanvas = (ctx, effectId, intensityValue, width, height
     }
 
     ctx.restore();
+};
+
+/**
+ * Draw selection box with handles around a transformed clip
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {Object} transform - Clip transform properties (x, y, scale, rotation)
+ * @param {Object} dimensions - Canvas dimensions
+ * @param {Object} mediaDimensions - Original media dimensions
+ */
+export const drawSelectionBox = (ctx, transform, dimensions, mediaDimensions) => {
+    const { width, height } = dimensions;
+    const { x = 0, y = 0, scale = 100, rotation = 0 } = transform;
+
+    // Calculate base dimensions (similar to drawMediaToCanvas logic)
+    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+    const canvasAspect = width / height;
+
+    let baseWidth, baseHeight;
+    if (mediaAspect > canvasAspect) {
+        baseWidth = width;
+        baseHeight = width / mediaAspect;
+    } else {
+        baseHeight = height;
+        baseWidth = height * mediaAspect;
+    }
+
+    const scaleFactor = scale / 100;
+    const drawWidth = baseWidth * scaleFactor;
+    const drawHeight = baseHeight * scaleFactor;
+    const centerX = width / 2 + x;
+    const centerY = height / 2 + y;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((rotation * Math.PI) / 180);
+
+    // Draw Border
+    ctx.strokeStyle = '#3b82f6'; // Blue-500
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+    // Draw Handles
+    const handleSize = 8;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 1;
+
+    const handles = [
+        { x: -drawWidth / 2, y: -drawHeight / 2 }, // Top-left
+        { x: drawWidth / 2, y: -drawHeight / 2 },  // Top-right
+        { x: -drawWidth / 2, y: drawHeight / 2 },  // Bottom-left
+        { x: drawWidth / 2, y: drawHeight / 2 },   // Bottom-right
+    ];
+
+    handles.forEach(handle => {
+        ctx.beginPath();
+        ctx.arc(handle.x, handle.y, handleSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+
+    // Rotation Handle (Top Center extended)
+    ctx.beginPath();
+    ctx.moveTo(0, -drawHeight / 2);
+    ctx.lineTo(0, -drawHeight / 2 - 20);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, -drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+};
+
+
+
+// Cached canvas for soft masking to avoid garbage collection
+let cachedMaskCanvas = null;
+
+const getCachedCanvas = (width, height) => {
+    if (!cachedMaskCanvas) {
+        cachedMaskCanvas = document.createElement('canvas');
+    }
+    if (cachedMaskCanvas.width !== width || cachedMaskCanvas.height !== height) {
+        cachedMaskCanvas.width = width;
+        cachedMaskCanvas.height = height;
+    }
+    return cachedMaskCanvas;
+};
+
+/**
+ * Apply mask clipping path or draw mask shape
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {Object} mask 
+ * @param {number} width 
+ * @param {number} height 
+ * @param {boolean} clip - If true, applies clip(). If false, fills the shape.
+ */
+export const drawMask = (ctx, mask, width, height, clip = true) => {
+    const { type, x = 0, y = 0, scale = 100, rotation = 0 } = mask;
+
+    // Mask is relative to the media size (width/height)
+    const maskX = (x / 100) * width;
+    const maskY = (y / 100) * height;
+
+    // Size base: min of width/height
+    const baseSize = Math.min(width, height);
+    const maskSize = baseSize * (scale / 100);
+
+    ctx.beginPath();
+    ctx.save();
+
+    // Move to mask center (relative to media center which is 0,0 here)
+    ctx.translate(maskX, maskY);
+    ctx.rotate((rotation * Math.PI) / 180);
+
+    if (type === 'circle') {
+        ctx.arc(0, 0, maskSize / 2, 0, Math.PI * 2);
+    } else if (type === 'rectangle') {
+        ctx.rect(-maskSize / 2, -maskSize / 2, maskSize, maskSize);
+    } else if (type === 'heart') {
+        const s = maskSize / 2; // Scale factor
+        // Heart path
+        ctx.moveTo(0, -s * 0.3);
+        ctx.bezierCurveTo(s * 0.5, -s, s, -s * 0.5, 0, s);
+        ctx.bezierCurveTo(-s, -s * 0.5, -s * 0.5, -s, 0, -s * 0.3);
+    } else if (type === 'star') {
+        const outer = maskSize / 2;
+        const inner = maskSize / 4;
+        for (let i = 0; i < 5; i++) {
+            ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * outer,
+                -Math.sin((18 + i * 72) * Math.PI / 180) * outer);
+            ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * inner,
+                -Math.sin((54 + i * 72) * Math.PI / 180) * inner);
+        }
+        ctx.closePath();
+    }
+
+    ctx.restore();
+
+    if (clip) {
+        ctx.clip();
+    } else {
+        ctx.fill();
+    }
 };

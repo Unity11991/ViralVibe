@@ -12,6 +12,8 @@ import { Button } from './MediaEditor/components/UI';
 // New Layout Components
 import { EditorLayout } from './MediaEditor/components/layout/EditorLayout';
 import { AssetsPanel } from './MediaEditor/components/panels/AssetsPanel';
+import { FilterPanel } from './MediaEditor/components/FilterPanel';
+import { MaskPanel } from './MediaEditor/components/MaskPanel';
 import { PropertiesPanel } from './MediaEditor/components/panels/PropertiesPanel';
 import { TimelinePanel } from './MediaEditor/components/timeline/TimelinePanel';
 import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
@@ -223,6 +225,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         // For now, we assume global intensity or simple effect ID
     };
 
+    const handleSetMask = (newMask) => {
+        if (selectedClipId) {
+            updateClip(selectedClipId, { mask: newMask });
+        }
+    };
+
     // Load initial media
     useEffect(() => {
         if (initialMediaFile) {
@@ -403,11 +411,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     filter: clip.filter || 'normal',
                     effect: clip.effect || null,
                     transform: {
-                        ...transform, // Global transform (zoom/pan) applies to everything? Or just main?
-                        // Ideally, each clip has its own transform.
-                        // For now, let's apply global transform only to main track?
-                        // Or apply to all? Let's apply to all for "Canvas" feel.
-                    }
+                        ...clip.transform, // Clip-specific transform (x, y, scale, rotation)
+                        opacity: clip.opacity !== undefined ? clip.opacity : 100,
+                        blendMode: clip.blendMode || 'normal'
+                    },
+                    mask: clip.mask || null
                 };
             })
             .filter(Boolean);
@@ -458,9 +466,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             const delta = (now - lastTime) / 1000; // seconds
             lastTime = now;
 
-            // Increment timeline time
+            // Find active clip on main track to get speed
+            const mainTrack = tracks.find(t => t.id === 'track-main');
+            const activeClip = mainTrack?.clips.find(c =>
+                currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+            );
+            const speed = activeClip?.speed || 1;
+
+            // Increment timeline time based on speed
             setCurrentTime(prevTime => {
-                const newTime = prevTime + delta;
+                const newTime = prevTime + (delta * speed);
 
                 // Stop if reached end
                 if (newTime >= trimRange.end) {
@@ -477,17 +492,32 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
                 // --- SMART SYNC LOGIC (Video) ---
                 if (mediaElementRef.current && isVideo) {
-                    const mainTrack = tracks.find(t => t.id === 'track-main');
-                    const activeClip = mainTrack?.clips.find(c =>
-                        newTime >= c.startTime && newTime < (c.startTime + c.duration)
-                    );
+                    // Set playback rate
+                    if (mediaElementRef.current.playbackRate !== speed) {
+                        mediaElementRef.current.playbackRate = speed;
+                    }
 
                     if (activeClip) {
-                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
-                        const drift = Math.abs(mediaElementRef.current.currentTime - expectedSourceTime);
+                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime) * speed;
+                        // Note: If video is playing at rate 'speed', currentTime advances by delta*speed.
+                        // But video.currentTime also advances by delta*speed natively if playbackRate is set.
+                        // So we just need to sync the start offset.
 
-                        if (drift > 0.1) {
-                            mediaElementRef.current.currentTime = expectedSourceTime;
+                        // Actually, simpler: 
+                        // Video Time = StartOffset + (TimelineTime - ClipStartTime) * (Speed? No, Speed is implicit in TimelineTime advancement?)
+                        // Wait. If I play 1s of timeline at 2x speed, timeline advances 2s? No.
+                        // If I play 1s of real time, timeline advances 1s * speed.
+                        // Video should also advance 1s * speed.
+                        // So the formula `activeClip.startOffset + (newTime - activeClip.startTime)` is correct 
+                        // IF `newTime` has already been adjusted for speed (which it is).
+                        // However, the video element's own internal clock runs at `playbackRate`.
+
+                        const calculatedVideoTime = activeClip.startOffset + (newTime - activeClip.startTime);
+
+                        const drift = Math.abs(mediaElementRef.current.currentTime - calculatedVideoTime);
+
+                        if (drift > 0.2) { // Increased threshold slightly
+                            mediaElementRef.current.currentTime = calculatedVideoTime;
                         }
                         if (mediaElementRef.current.paused) {
                             mediaElementRef.current.play().catch(() => { });
@@ -605,14 +635,85 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         return () => cancelAnimationFrame(animationFrameId);
     }, [isPlaying, trimRange.end, tracks, isVideo, mediaElementRef]);
 
-    // Sync video element to timeline time
+    // Canvas Interaction State
+    const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [dragAction, setDragAction] = useState(null); // 'move', 'scale', 'rotate'
+    const [initialTransform, setInitialTransform] = useState({});
+
+    const getCanvasCoordinates = (e) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return { x: 0, y: 0 };
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    };
+
+    const handleCanvasMouseDown = (e) => {
+        if (!selectedClipId || !canvasRef.current) return;
+
+        const { x, y } = getCanvasCoordinates(e);
+        const activeItem = getActiveItem();
+        if (!activeItem) return;
+
+        // Simple hit testing (approximate for now)
+        // Ideally we should project the click into the transformed space of the clip
+        // For now, let's just assume if we click, we are interacting with the selected clip
+        // We need to determine if we hit a handle or the body.
+
+        // TODO: Implement precise hit testing for handles vs body
+        // For this iteration, let's assume:
+        // - Click near center -> Move
+        // - Click near corners -> Scale (simplified)
+        // - Right click -> Rotate? No, let's use a modifier or specific handle area.
+
+        // Let's implement a basic "Move" for now to verify propagation
+        setDragAction('move');
+        setDragStart({ x, y });
+        setInitialTransform(activeItem.transform || {});
+        setIsDraggingCanvas(true);
+    };
+
+    const handleCanvasMouseMove = (e) => {
+        if (!isDraggingCanvas || !selectedClipId || !dragAction) return;
+
+        const { x, y } = getCanvasCoordinates(e);
+        const dx = x - dragStart.x;
+        const dy = y - dragStart.y;
+
+        if (dragAction === 'move') {
+            handleUpdateActiveItem({
+                transform: {
+                    ...initialTransform,
+                    x: (initialTransform.x || 0) + dx,
+                    y: (initialTransform.y || 0) + dy
+                }
+            });
+        }
+    };
+
+    const handleCanvasMouseUp = () => {
+        setIsDraggingCanvas(false);
+        setDragAction(null);
+    };
+
+    // Attach listeners to canvas
     useEffect(() => {
-        // Dragging logic for overlays on canvas needs to update the CLIP in the timeline
-        // This is complex because canvasUtils expects specific overlay objects.
-        // For now, we'll disable canvas dragging of overlays to simplify the migration
-        // and rely on the Properties Panel for positioning.
-        // TODO: Re-implement canvas dragging by mapping canvas events to updateClip
-    }, []);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        canvas.addEventListener('mousedown', handleCanvasMouseDown);
+        window.addEventListener('mousemove', handleCanvasMouseMove);
+        window.addEventListener('mouseup', handleCanvasMouseUp);
+
+        return () => {
+            canvas.removeEventListener('mousedown', handleCanvasMouseDown);
+            window.removeEventListener('mousemove', handleCanvasMouseMove);
+            window.removeEventListener('mouseup', handleCanvasMouseUp);
+        };
+    }, [canvasRef, selectedClipId, isDraggingCanvas, dragStart, dragAction, initialTransform]);
 
     // Handlers
     const handleFileSelect = (e) => {
@@ -780,16 +881,30 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const handleUpdateActiveItem = (updates) => {
         if (!selectedClipId) return;
 
-        // If updating style (x, y, etc), nest it
-        if (updates.x !== undefined || updates.color !== undefined) {
-            // Fetch current clip to merge style
-            const current = getActiveItem();
-            updateClip(selectedClipId, {
-                style: { ...current.style, ...updates }
-            });
-        } else {
-            updateClip(selectedClipId, updates);
+        const current = getActiveItem();
+        const finalUpdates = { ...updates };
+
+        // Handle Transform Merging
+        if (updates.transform) {
+            finalUpdates.transform = {
+                ...(current.transform || {}),
+                ...updates.transform
+            };
         }
+
+        // Handle Style Merging (Legacy for text/stickers)
+        if (updates.x !== undefined || updates.color !== undefined || updates.text !== undefined) {
+            finalUpdates.style = {
+                ...(current.style || {}),
+                ...updates
+            };
+            // Clean up top-level props that are now in style
+            delete finalUpdates.x;
+            delete finalUpdates.color;
+            delete finalUpdates.text;
+        }
+
+        updateClip(selectedClipId, finalUpdates);
     };
 
     const handleDelete = () => {
@@ -860,6 +975,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     suggestedFilter={suggestedFilter}
                     mediaLibrary={mediaLibrary}
                     onAddToLibrary={handleAddToLibrary}
+                    mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
+                    onUpdateMask={handleSetMask}
                 />
             }
             centerPanel={

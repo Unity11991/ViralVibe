@@ -12,6 +12,7 @@ export { FilterPanel } from './components/FilterPanel';
 export { TextPanel } from './components/TextPanel';
 export { StickerPanel } from './components/StickerPanel';
 export { CropPanel } from './components/CropPanel';
+export { MaskPanel } from './components/MaskPanel';
 export { EditorCanvas } from './components/EditorCanvas';
 export { VideoTimeline } from './components/VideoTimeline';
 

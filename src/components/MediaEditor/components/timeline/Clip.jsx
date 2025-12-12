@@ -102,7 +102,7 @@ export const Clip = ({
 
     return (
         <div
-            className={`timeline-clip absolute top-1 bottom-1 rounded-md overflow-hidden cursor-pointer border-2 transition-all ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
+            className={`timeline-clip absolute top-1 bottom-1 rounded-md cursor-pointer border-2 transition-all ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
                 } ${clip.type === 'video' ? 'bg-blue-500/20' :
                     clip.type === 'audio' ? 'bg-green-500/20' :
                         clip.type === 'text' ? 'bg-purple-500/20' :
@@ -122,7 +122,7 @@ export const Clip = ({
             }}
         >
             {/* Clip Content Preview */}
-            <div className="w-full h-full flex items-center px-2 overflow-hidden select-none">
+            <div className="w-full h-full flex items-center px-2 overflow-hidden select-none rounded-sm">
                 {clip.type === 'video' && (
                     <div className="flex gap-1 opacity-50">
                         {/* Mock filmstrip */}
@@ -141,13 +141,13 @@ export const Clip = ({
             {isSelected && (
                 <>
                     <div
-                        className="absolute left-0 top-0 bottom-0 w-3 bg-yellow-400 cursor-ew-resize hover:bg-yellow-300 z-20 flex items-center justify-center opacity-50 hover:opacity-100"
+                        className="absolute -left-1 top-0 bottom-0 w-4 bg-yellow-400 cursor-ew-resize hover:bg-yellow-300 z-20 flex items-center justify-center opacity-50 hover:opacity-100 rounded-l-sm"
                         onMouseDown={(e) => handleDragStart(e, 'start')}
                     >
                         <div className="w-0.5 h-4 bg-black/20" />
                     </div>
                     <div
-                        className="absolute right-0 top-0 bottom-0 w-3 bg-yellow-400 cursor-ew-resize hover:bg-yellow-300 z-20 flex items-center justify-center opacity-50 hover:opacity-100"
+                        className="absolute -right-1 top-0 bottom-0 w-4 bg-yellow-400 cursor-ew-resize hover:bg-yellow-300 z-20 flex items-center justify-center opacity-50 hover:opacity-100 rounded-r-sm"
                         onMouseDown={(e) => handleDragStart(e, 'end')}
                     >
                         <div className="w-0.5 h-4 bg-black/20" />
