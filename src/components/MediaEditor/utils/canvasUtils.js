@@ -487,13 +487,99 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
             const clipEffectId = clip.effect || activeEffectId;
             const clipTransform = clip.transform || transform;
 
-            // Draw clip
-            // Note: clearCanvas=false because we cleared it once at the start
-            drawMediaToCanvas(ctx, clip.media, clipAdjustments, clipTransform, dimensions, memePadding, {
-                applyFiltersToContext: options.applyFiltersToContext,
-                clearCanvas: false,
-                mask: clip.mask
-            });
+            // Handle Transition Logic
+            let drawTransform = { ...clipTransform };
+            let transitionMask = null;
+
+            if (clip.transition && clip.transition.type !== 'none') {
+                const { type, progress } = clip.transition;
+                const p = progress;
+                const w = dimensions.width;
+                const h = dimensions.height;
+
+                // Transform-based Transitions (Slide, Zoom)
+                if (type.startsWith('slide_') || type.startsWith('cover_') || type.startsWith('reveal_')) {
+                    // Map reveal/cover to slide for now (simplified)
+                    // TODO: Implement true reveal (requires modifying prevClip)
+                    const direction = type.split('_')[1];
+                    if (direction === 'left') drawTransform.x = (drawTransform.x || 0) + (1 - p) * w;
+                    else if (direction === 'right') drawTransform.x = (drawTransform.x || 0) - (1 - p) * w;
+                    else if (direction === 'up') drawTransform.y = (drawTransform.y || 0) + (1 - p) * h;
+                    else if (direction === 'down') drawTransform.y = (drawTransform.y || 0) - (1 - p) * h;
+                } else if (type.startsWith('zoom_')) {
+                    if (type === 'zoom_in') drawTransform.scale = (drawTransform.scale || 100) * p;
+                    else if (type === 'zoom_out') drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
+                    else if (type === 'zoom_rotate_in') {
+                        drawTransform.scale = (drawTransform.scale || 100) * p;
+                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 360;
+                    }
+                    else if (type === 'zoom_rotate_out') {
+                        drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
+                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 360;
+                    }
+                } else if (type.startsWith('swirl_')) {
+                    if (type === 'swirl_in') {
+                        drawTransform.scale = (drawTransform.scale || 100) * p;
+                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 720;
+                    } else {
+                        drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
+                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 720;
+                    }
+                } else if (type.startsWith('bounce_')) {
+                    // Simple bounce effect
+                    const bounce = (t) => {
+                        if (t < 1 / 2.75) return 7.5625 * t * t;
+                        if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
+                        if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
+                        return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
+                    };
+                    if (type === 'bounce_in') {
+                        drawTransform.scale = (drawTransform.scale || 100) * bounce(p);
+                    } else {
+                        drawTransform.scale = (drawTransform.scale || 100) * (2 - bounce(p));
+                    }
+                }
+
+                transitionMask = clip.transition;
+            }
+
+            // Draw Logic
+            if (transitionMask) {
+                // Use Temp Canvas for Transition Masking
+                const tempCanvas = getCachedCanvas(dimensions.width, dimensions.height);
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.clearRect(0, 0, dimensions.width, dimensions.height);
+
+                drawMediaToCanvas(tempCtx, clip.media, clipAdjustments, drawTransform, dimensions, memePadding, {
+                    applyFiltersToContext: options.applyFiltersToContext,
+                    clearCanvas: false,
+                    mask: clip.mask
+                });
+
+                // Apply Transition FX (Glitch, Blur, Color, Light)
+                applyTransitionFX(tempCtx, transitionMask, dimensions.width, dimensions.height, clip.media);
+
+                // Apply Transition Mask (Alpha/Composite)
+                applyTransitionMask(tempCtx, transitionMask, dimensions.width, dimensions.height);
+
+                // Draw Temp to Main with Blend Mode if needed
+                ctx.save();
+                const tType = transitionMask.type;
+                if (tType === 'additive') ctx.globalCompositeOperation = 'lighter';
+                else if (tType === 'multiply') ctx.globalCompositeOperation = 'multiply';
+                else if (tType === 'screen') ctx.globalCompositeOperation = 'screen';
+                else if (tType === 'overlay') ctx.globalCompositeOperation = 'overlay';
+
+                ctx.drawImage(tempCanvas, 0, 0);
+                ctx.restore();
+            } else {
+                // Normal Draw
+                drawMediaToCanvas(ctx, clip.media, clipAdjustments, drawTransform, dimensions, memePadding, {
+                    applyFiltersToContext: options.applyFiltersToContext,
+                    clearCanvas: false,
+                    mask: clip.mask
+                });
+            }
 
             // Apply Clip Filters (Color Grade)
             if (clipFilterId && clipFilterId !== 'normal') {
@@ -502,8 +588,6 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
 
             // Apply Clip Effects
             if (clipEffectId) {
-                // We need to pass effect intensity. Assuming global for now or clip specific if added.
-                // For now using global effectIntensity
                 const intensity = effectIntensity;
                 applyEffectToCanvas(ctx, clipEffectId, intensity, dimensions.width, dimensions.height, clip.media);
             }
@@ -512,18 +596,9 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
             if (state.activeOverlayId === clip.id) {
                 const mediaWidth = clip.media.videoWidth || clip.media.width;
                 const mediaHeight = clip.media.videoHeight || clip.media.height;
-                drawSelectionBox(ctx, clipTransform, dimensions, { width: mediaWidth, height: mediaHeight });
+                drawSelectionBox(ctx, drawTransform, dimensions, { width: mediaWidth, height: mediaHeight });
             }
         });
-
-        // Apply Global Effects (if any, on top of everything?)
-        // Or maybe we just rely on clip effects.
-        // Let's stick to the original logic for now:
-        // If we have visibleClips, we rendered them.
-        // Now apply global effects if activeEffectId is set and not handled per clip?
-        // Actually, the original code applied effects AFTER drawing media.
-
-        // Let's extract the effect logic to a function `applyEffectToCanvas` first.
     } else if (state.hasActiveClip !== false) {
         // Legacy Single Track Fallback
         drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, { applyFiltersToContext: options.applyFiltersToContext });
@@ -534,10 +609,6 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
     }
 
     // Apply Effects (Global or Last Clip?)
-    // If we are in multi-track, we might want to apply effects per clip.
-    // But the current structure has a huge switch case for effects inside renderFrame.
-    // I should move that switch case to a helper function.
-
     if (activeEffectId) {
         applyEffectToCanvas(ctx, activeEffectId, effectIntensity, dimensions.width, dimensions.height, media);
     }
@@ -545,12 +616,6 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
     // Draw text overlays
     if (textOverlays && textOverlays.length > 0) {
         textOverlays.forEach(textOverlay => {
-            // If we are editing this overlay (it's active), we might want to skip drawing it 
-            // if the editor UI handles it (e.g. a separate input box on top).
-            // But usually we want to draw it unless it's being dragged by a separate system.
-            // For now, let's ALWAYS draw it to be safe, unless specifically told not to.
-            // if (state.activeOverlayId === textOverlay.id) return; 
-
             let overlayToDraw = { ...textOverlay };
 
             // Adjust for crop if active (using global transform for now)
@@ -570,13 +635,7 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
     // Draw stickers
     if (stickers && stickers.length > 0) {
         stickers.forEach((sticker, index) => {
-            // We need to find the image for this sticker. 
-            // In the new state, we might not have stickerImages array populated in the same order?
-            // MediaEditor passes `stickerImages: []` currently! 
-            // We need to handle sticker images differently. 
-            // The sticker object itself should probably contain the image source or element.
-
-            const img = sticker.image; // We updated MediaEditor to pass image object in sticker
+            const img = sticker.image;
             if (img) {
                 let stickerToDraw = { ...sticker };
                 if (transform.crop) {
@@ -954,4 +1013,257 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
     } else {
         ctx.fill();
     }
+};
+
+/**
+ * Apply transition mask to context
+ */
+export const applyTransitionMask = (ctx, transition, width, height) => {
+    const { type, progress } = transition;
+    const p = progress;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-in';
+
+    if (type === 'fade' || type === 'dissolve' || type === 'none') {
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'fade_black') {
+        // For fade to black, we just fade in opacity, but the background should be black.
+        // Since we are masking, 'white' means opaque.
+        // We might need to handle this differently in renderFrame (draw black bg).
+        // For now, treat as fade.
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type.startsWith('wipe_')) {
+        ctx.beginPath();
+        if (type === 'wipe_left') ctx.rect(0, 0, width * p, height);
+        else if (type === 'wipe_right') ctx.rect(width * (1 - p), 0, width * p, height);
+        else if (type === 'wipe_up') ctx.rect(0, height * (1 - p), width, height * p);
+        else if (type === 'wipe_down') ctx.rect(0, 0, width, height * p);
+        else if (type === 'wipe_tl') ctx.moveTo(0, 0), ctx.lineTo(width * p * 2, 0), ctx.lineTo(0, height * p * 2);
+        else if (type === 'wipe_tr') ctx.moveTo(width, 0), ctx.lineTo(width - width * p * 2, 0), ctx.lineTo(width, height * p * 2);
+        else if (type === 'wipe_bl') ctx.moveTo(0, height), ctx.lineTo(width * p * 2, height), ctx.lineTo(0, height - height * p * 2);
+        else if (type === 'wipe_br') ctx.moveTo(width, height), ctx.lineTo(width - width * p * 2, height), ctx.lineTo(width, height - height * p * 2);
+        else if (type === 'wipe_center_h') ctx.rect(width / 2 - (width * p) / 2, 0, width * p, height);
+        else if (type === 'wipe_center_v') ctx.rect(0, height / 2 - (height * p) / 2, width, height * p);
+        else if (type === 'clock_cw') {
+            ctx.moveTo(width / 2, height / 2);
+            ctx.arc(width / 2, height / 2, Math.max(width, height), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+        } else if (type === 'clock_ccw') {
+            ctx.moveTo(width / 2, height / 2);
+            ctx.arc(width / 2, height / 2, Math.max(width, height), -Math.PI / 2, -Math.PI / 2 - Math.PI * 2 * p, true);
+        } else if (type === 'barn_door_h') {
+            ctx.rect(0, 0, width * p / 2, height);
+            ctx.rect(width - width * p / 2, 0, width * p / 2, height);
+        } else if (type === 'barn_door_v') {
+            ctx.rect(0, 0, width, height * p / 2);
+            ctx.rect(0, height - height * p / 2, width, height * p / 2);
+        } else if (type === 'matrix_wipe') {
+            const cols = 10;
+            const rows = 10;
+            const cellW = width / cols;
+            const cellH = height / rows;
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    if (Math.random() < p) {
+                        ctx.rect(i * cellW, j * cellH, cellW, cellH);
+                    }
+                }
+            }
+        }
+        ctx.fill();
+    } else if (type.startsWith('iris_')) {
+        ctx.beginPath();
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        if (type === 'iris_circle_in') ctx.arc(width / 2, height / 2, maxRadius * p, 0, Math.PI * 2);
+        else if (type === 'iris_circle_out') {
+            ctx.rect(0, 0, width, height);
+            ctx.arc(width / 2, height / 2, maxRadius * (1 - p), 0, Math.PI * 2, true);
+        }
+        else if (type === 'iris_rect_in') {
+            const w = width * p;
+            const h = height * p;
+            ctx.rect((width - w) / 2, (height - h) / 2, w, h);
+        }
+        else if (type === 'iris_diamond_in') {
+            const s = maxRadius * p;
+            ctx.moveTo(width / 2, height / 2 - s);
+            ctx.lineTo(width / 2 + s, height / 2);
+            ctx.lineTo(width / 2, height / 2 + s);
+            ctx.lineTo(width / 2 - s, height / 2);
+        }
+        else if (type === 'iris_star_in') {
+            const cx = width / 2;
+            const cy = height / 2;
+            const outer = maxRadius * p;
+            const inner = outer / 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.lineTo(cx + Math.cos((18 + i * 72) * Math.PI / 180) * outer,
+                    cy - Math.sin((18 + i * 72) * Math.PI / 180) * outer);
+                ctx.lineTo(cx + Math.cos((54 + i * 72) * Math.PI / 180) * inner,
+                    cy - Math.sin((54 + i * 72) * Math.PI / 180) * inner);
+            }
+        } else if (type === 'iris_heart_in') {
+            const s = maxRadius * p / 2;
+            ctx.translate(width / 2, height / 2);
+            ctx.moveTo(0, -s * 0.3);
+            ctx.bezierCurveTo(s * 0.5, -s, s, -s * 0.5, 0, s);
+            ctx.bezierCurveTo(-s, -s * 0.5, -s * 0.5, -s, 0, -s * 0.3);
+            ctx.translate(-width / 2, -height / 2);
+        }
+        ctx.fill();
+    } else if (type.startsWith('shape_')) {
+        // Simple shape patterns
+        if (type === 'shape_checker') {
+            const size = 50;
+            const cols = Math.ceil(width / size);
+            const rows = Math.ceil(height / size);
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    if ((i + j) % 2 === 0) {
+                        const s = size * p;
+                        ctx.fillRect(i * size + (size - s) / 2, j * size + (size - s) / 2, s, s);
+                    } else {
+                        const s = size * p;
+                        ctx.fillRect(i * size + (size - s) / 2, j * size + (size - s) / 2, s, s);
+                    }
+                }
+            }
+        } else if (type === 'shape_blinds') {
+            const count = 10;
+            const h = height / count;
+            for (let i = 0; i < count; i++) {
+                ctx.fillRect(0, i * h, width, h * p);
+            }
+        } else if (type === 'shape_stripes_h') {
+            const count = 10;
+            const h = height / count;
+            for (let i = 0; i < count; i += 2) {
+                ctx.fillRect(0, i * h, width * p * 2, h);
+                ctx.fillRect(width * (1 - p * 2), (i + 1) * h, width, h);
+            }
+        } else if (type === 'shape_stripes_v') {
+            const count = 10;
+            const w = width / count;
+            for (let i = 0; i < count; i += 2) {
+                ctx.fillRect(i * w, 0, w, height * p * 2);
+                ctx.fillRect((i + 1) * w, height * (1 - p * 2), w, height);
+            }
+        } else if (type === 'shape_dots') {
+            const size = 50;
+            const cols = Math.ceil(width / size);
+            const rows = Math.ceil(height / size);
+            for (let i = 0; i < cols; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const cx = i * size + size / 2;
+                    const cy = j * size + size / 2;
+                    const r = (size / 2) * p;
+                    ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                }
+            }
+        } else if (type === 'shape_spiral') {
+            // Simplified spiral (concentric circles)
+            const maxR = Math.sqrt(width * width + height * height) / 2;
+            const rings = 10;
+            for (let i = 0; i < rings; i++) {
+                ctx.arc(width / 2, height / 2, maxR * (i / rings) * p, 0, Math.PI * 2);
+                ctx.lineTo(width / 2, height / 2); // Close to center to fill ring? No.
+                // Just fill circles
+            }
+        }
+    } else {
+        // Default fallback
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    }
+
+    ctx.restore();
+};
+
+/**
+ * Apply transition special effects (Glitch, Blur, Color, Light)
+ * These are applied BEFORE the mask to the content itself.
+ */
+export const applyTransitionFX = (ctx, transition, width, height, media) => {
+    const { type, progress } = transition;
+    const p = progress;
+
+    ctx.save();
+
+    if (type.startsWith('glitch_')) {
+        const intensity = Math.sin(p * Math.PI) * 20; // Peak at 50%
+
+        if (type === 'glitch_rgb') {
+            // RGB Split
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = 'red';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(ctx.canvas, -intensity, 0);
+
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(ctx.canvas, intensity, 0);
+        } else if (type === 'glitch_analog') {
+            // Analog Noise/Displacement
+            const numSlices = 10;
+            const sliceHeight = height / numSlices;
+            for (let i = 0; i < numSlices; i++) {
+                const offset = (Math.random() - 0.5) * intensity * 2;
+                ctx.drawImage(ctx.canvas,
+                    0, i * sliceHeight, width, sliceHeight,
+                    offset, i * sliceHeight, width, sliceHeight
+                );
+            }
+        }
+    } else if (type.startsWith('blur_')) {
+        const maxBlur = 20;
+        const currentBlur = type === 'blur_zoom' ? p * maxBlur : Math.sin(p * Math.PI) * maxBlur;
+
+        if (type === 'blur_gaussian') {
+            ctx.filter = `blur(${currentBlur}px)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'blur_zoom') {
+            // Simulated zoom blur by drawing scaled up copies with low opacity
+            ctx.globalAlpha = 0.1;
+            for (let i = 1; i <= 5; i++) {
+                const s = 1 + (i * 0.05 * p);
+                const w = width * s;
+                const h = height * s;
+                ctx.drawImage(ctx.canvas, (width - w) / 2, (height - h) / 2, w, h);
+            }
+        }
+    } else if (type.startsWith('color_')) {
+        const intensity = Math.sin(p * Math.PI);
+        ctx.globalAlpha = intensity;
+
+        if (type === 'color_burn') {
+            ctx.globalCompositeOperation = 'color-burn';
+            ctx.fillStyle = '#ff0000'; // Dynamic color?
+            ctx.fillRect(0, 0, width, height);
+        } else if (type === 'color_dodge') {
+            ctx.globalCompositeOperation = 'color-dodge';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+        }
+    } else if (type.startsWith('light_')) {
+        const intensity = Math.sin(p * Math.PI);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = intensity;
+
+        if (type === 'flash') {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, width, height);
+        } else if (type === 'glow') {
+            ctx.shadowColor = 'white';
+            ctx.shadowBlur = 50;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        }
+    }
+
+    ctx.restore();
 };

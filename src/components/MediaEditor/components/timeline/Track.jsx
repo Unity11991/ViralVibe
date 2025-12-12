@@ -11,6 +11,7 @@ export const Track = ({
     onTrimEnd,
     onMove,
     onAddTransition,
+    onTransitionSelect,
     onDrop,
     onResize
 }) => {
@@ -116,17 +117,17 @@ export const Track = ({
                                             style={{ width: `${nextClip.transition.duration * scale}px` }}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                // TODO: Edit transition
+                                                onTransitionSelect(nextClip.id);
                                             }}
                                         >
                                             {nextClip.transition.type}
                                         </div>
                                     ) : (
                                         <button
-                                            className="w-4 h-4 bg-white/10 hover:bg-blue-500 rounded-full flex items-center justify-center text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="w-4 h-4 bg-white/10 hover:bg-blue-500 rounded-full flex items-center justify-center text-[10px] text-white transition-colors"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                onAddTransition(nextClip.id, 'cross-dissolve');
+                                                onTransitionSelect(nextClip.id);
                                             }}
                                         >
                                             +

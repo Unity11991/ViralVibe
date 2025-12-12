@@ -1,9 +1,10 @@
 import React from 'react';
-import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles } from 'lucide-react';
+import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles, ArrowRightLeft } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { FilterPanel } from '../FilterPanel';
 import { EffectsPanel } from '../EffectsPanel';
 import { MaskPanel } from '../MaskPanel';
+import { TransitionsPanel } from './TransitionsPanel';
 import { ScanFace } from 'lucide-react';
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
     { id: 'adjust', icon: Sliders, label: 'Adjust' },
     { id: 'filters', icon: Wand2, label: 'Filters' },
     { id: 'effects', icon: Sparkles, label: 'Effects' },
+    { id: 'transitions', icon: ArrowRightLeft, label: 'Transitions' },
     { id: 'mask', icon: ScanFace, label: 'Mask' },
     { id: 'templates', icon: LayoutGrid, label: 'Templates' },
 ];
@@ -36,7 +38,9 @@ export const AssetsPanel = ({
     mediaLibrary = [],
     onAddToLibrary,
     mask,
-    onUpdateMask
+    onUpdateMask,
+    activeClip,
+    onUpdateClip
 }) => {
     return (
         <div className="flex h-full">
@@ -48,7 +52,7 @@ export const AssetsPanel = ({
                         onClick={() => setActiveTab(tab.id)}
                         className={`p-3 rounded-xl transition-all ${activeTab === tab.id
                             ? 'bg-blue-500 text-white'
-                            : 'text-white/40 hover:text-white hover:bg-white/10'
+                            : 'text-white/40 hover:text-white hover:bg-white/5'
                             }`}
                         title={tab.label}
                     >
@@ -236,6 +240,13 @@ export const AssetsPanel = ({
                             onEffectSelect={setActiveEffectId}
                             intensity={effectIntensity}
                             onIntensityChange={setEffectIntensity}
+                        />
+                    )}
+
+                    {activeTab === 'transitions' && (
+                        <TransitionsPanel
+                            activeClip={activeClip}
+                            onUpdate={onUpdateClip}
                         />
                     )}
 
