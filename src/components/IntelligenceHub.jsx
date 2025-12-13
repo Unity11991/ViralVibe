@@ -1,9 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, ArrowRight, Sparkles, Globe, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Search, TrendingUp, ArrowRight, Sparkles, Globe, AlertCircle, ArrowLeft, Clock, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import { analyzeTrend } from '../utils/aiService';
 import { supabase } from '../lib/supabase';
+import { fetchGoogleTrends } from '../utils/trendService';
+
+const COUNTRIES = [
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+    { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+];
+
+const TIME_RANGES = [
+    { value: 'now', label: 'Past 4 hours' },
+    { value: 'today', label: 'Past 24 hours' },
+    { value: 'week', label: 'Past 7 days' },
+];
 
 const IntelligenceHub = ({
     user,
@@ -23,47 +40,19 @@ const IntelligenceHub = ({
     const [error, setError] = useState(null);
     const [trends, setTrends] = useState([]);
 
-    const FALLBACK_TRENDS = [
-        { title: "Artificial Intelligence", traffic: "5M+" },
-        { title: "Viral TikTok Trends", traffic: "2M+" },
-        { title: "Crypto Market", traffic: "1M+" },
-        { title: "SpaceX Launch", traffic: "500K+" },
-        { title: "New iPhone Release", traffic: "200K+" },
-        { title: "Global Tech News", traffic: "100K+" }
-    ];
+    // Filter States
+    const [selectedCountry, setSelectedCountry] = useState('IN'); // Default to India as per user context
+    const [selectedTime, setSelectedTime] = useState('today');
 
     useEffect(() => {
-        const fetchTrends = async () => {
-            try {
-                // Try fetching from rss2json proxy first for real-time data
-                const response = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Ftrends.google.com%2Ftrending%2Frss%3Fgeo%3DUS');
-                const data = await response.json();
-
-                if (data.status === 'ok' && data.items && data.items.length > 0) {
-                    const mappedTrends = data.items.slice(0, 6).map(item => ({
-                        title: item.title,
-                        traffic: 'Trending' // rss2json doesn't always parse custom namespaces like ht:approx_traffic
-                    }));
-                    setTrends(mappedTrends);
-                } else {
-                    // If proxy fails, try Supabase Edge Function as backup
-                    const { data: supabaseData, error } = await supabase.functions.invoke('fetch-trends');
-                    if (error) throw error;
-
-                    if (supabaseData?.trends && supabaseData.trends.length > 0) {
-                        setTrends(supabaseData.trends.slice(0, 6));
-                    } else {
-                        console.warn("No trends data returned from API or Backup, using fallback");
-                        setTrends(FALLBACK_TRENDS);
-                    }
-                }
-            } catch (err) {
-                console.error("Failed to fetch trends, using fallback:", err);
-                setTrends(FALLBACK_TRENDS);
-            }
+        const loadTrends = async () => {
+            // In a real implementation with a proper API, we'd pass selectedTime too.
+            // For now, RSS primarily supports Geo.
+            const data = await fetchGoogleTrends(selectedCountry);
+            setTrends(data.slice(0, 9)); // Show more trends
         };
-        fetchTrends();
-    }, []);
+        loadTrends();
+    }, [selectedCountry, selectedTime]);
 
     const handleSearch = async (e) => {
         e.preventDefault();
@@ -205,22 +194,94 @@ const IntelligenceHub = ({
                     {/* Suggested / Trending Ticker */}
                     {!results && (
                         <div className="mt-12 w-full">
-                            <h3 className="text-slate-500 text-sm font-medium uppercase tracking-wider mb-4 text-center">Real-time Signals</h3>
+                            <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+                                <h3 className="text-slate-500 text-sm font-medium uppercase tracking-wider">Real-time Signals</h3>
+
+                                <div className="flex items-center gap-2">
+                                    {/* Country Selector */}
+                                    <div className="relative group/menu">
+                                        <div className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-white/10 rounded-lg px-3 py-1.5 cursor-pointer text-sm text-slate-300 transition-colors">
+                                            <MapPin size={14} className="text-cyan-400" />
+                                            {COUNTRIES.find(c => c.code === selectedCountry)?.name}
+                                            <span className="opacity-50 text-xs">▼</span>
+                                        </div>
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden hidden group-hover/menu:block z-50 animate-fade-in-up">
+                                            {COUNTRIES.map(country => (
+                                                <button
+                                                    key={country.code}
+                                                    onClick={() => setSelectedCountry(country.code)}
+                                                    className={`w-full text-left px-4 py-2 text-sm flex items-center gap-2 hover:bg-slate-800 transition-colors ${selectedCountry === country.code ? 'text-cyan-400 bg-slate-800/50' : 'text-slate-300'}`}
+                                                >
+                                                    <span>{country.flag}</span>
+                                                    {country.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Time Selector */}
+                                    <div className="relative group/menu">
+                                        <div className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-white/10 rounded-lg px-3 py-1.5 cursor-pointer text-sm text-slate-300 transition-colors">
+                                            <Clock size={14} className="text-cyan-400" />
+                                            {TIME_RANGES.find(t => t.value === selectedTime)?.label}
+                                            <span className="opacity-50 text-xs">▼</span>
+                                        </div>
+                                        <div className="absolute right-0 top-full mt-2 w-40 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden hidden group-hover/menu:block z-50 animate-fade-in-up">
+                                            {TIME_RANGES.map(range => (
+                                                <button
+                                                    key={range.value}
+                                                    onClick={() => setSelectedTime(range.value)}
+                                                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-800 transition-colors ${selectedTime === range.value ? 'text-cyan-400 bg-slate-800/50' : 'text-slate-300'}`}
+                                                >
+                                                    {range.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {trends.length > 0 ? (
                                     trends.map((item, i) => (
-                                        <div
-                                            key={i}
-                                            onClick={() => setQuery(`Why is ${item.title} trending right now?`)}
-                                            className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors cursor-pointer group"
-                                        >
-                                            <div className="flex items-center gap-2 text-cyan-400 mb-2">
-                                                <TrendingUp size={16} />
-                                                <span className="text-xs font-medium uppercase tracking-wider">{item.traffic || 'Trending'}</span>
+                                        <div key={i} className="relative group perspective-1000">
+                                            {/* Hover Card */}
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-[320px] bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 z-50 pointer-events-none">
+
+                                                {item.image && (
+                                                    <div className="w-full h-32 rounded-lg bg-cover bg-center mb-4 relative overflow-hidden" style={{ backgroundImage: `url(${item.image})` }}>
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent"></div>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-xs font-bold bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20">{item.source || 'News'}</span>
+                                                    <span className="text-xs text-slate-400">{item.date ? new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}</span>
+                                                </div>
+
+                                                <h4 className="font-bold text-lg leading-tight mb-2 text-white">{item.name}</h4>
+
+                                                <p className="text-sm text-slate-300 line-clamp-3">
+                                                    {item.description || "No description available for this trending topic."}
+                                                </p>
+
+                                                {/* Arrow */}
+                                                <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 border-r border-b border-white/10 transform rotate-45"></div>
                                             </div>
-                                            <p className="text-slate-300 font-medium group-hover:text-white transition-colors truncate">
-                                                {item.title}
-                                            </p>
+
+                                            {/* Main Card */}
+                                            <div
+                                                onClick={() => setQuery(`Why is ${item.name} trending right now?`)}
+                                                className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-cyan-500/30 hover:bg-white/10 transition-all cursor-pointer h-full"
+                                            >
+                                                <div className="flex items-center gap-2 text-cyan-400 mb-2">
+                                                    <TrendingUp size={16} />
+                                                    <span className="text-xs font-medium uppercase tracking-wider">{item.growth || 'Trending'}</span>
+                                                </div>
+                                                <p className="text-slate-300 font-medium group-hover:text-white transition-colors truncate">
+                                                    {item.name}
+                                                </p>
+                                            </div>
                                         </div>
                                     ))
                                 ) : (

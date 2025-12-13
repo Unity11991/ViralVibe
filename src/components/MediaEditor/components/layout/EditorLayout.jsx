@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Layout, Layers, Settings, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Layout, Layers, Settings, Clock, GripHorizontal } from 'lucide-react';
 
 export const EditorLayout = ({
     leftPanel,
@@ -9,6 +9,59 @@ export const EditorLayout = ({
     header
 }) => {
     const [activeMobileTab, setActiveMobileTab] = useState('timeline'); // 'timeline', 'assets', 'properties'
+    const [timelineHeight, setTimelineHeight] = useState(300);
+    const [isResizing, setIsResizing] = useState(false);
+
+    // Refs for resizing logic to avoid stale closures in event listeners
+    const resizingRef = useRef(false);
+    const startYRef = useRef(0);
+    const startHeightRef = useRef(300);
+
+    // Resizing Handlers
+    const startResizing = (e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Stop propagation to prevent canvas events
+        setIsResizing(true);
+        resizingRef.current = true;
+        startYRef.current = e.clientY;
+        startHeightRef.current = timelineHeight;
+
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'row-resize';
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!resizingRef.current) return;
+            e.preventDefault();
+
+            // Calculate new height: dragging UP increases height (negative dy)
+            const dy = startYRef.current - e.clientY;
+
+            // Constrain height: Min 150px, Max window height - 100px (header + minimal preview)
+            const maxHeight = window.innerHeight - 100;
+            const newHeight = Math.min(Math.max(startHeightRef.current + dy, 150), maxHeight);
+
+            setTimelineHeight(newHeight);
+        };
+
+        const handleMouseUp = () => {
+            if (resizingRef.current) {
+                resizingRef.current = false;
+                setIsResizing(false);
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
 
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0f0f12] text-white overflow-hidden">
@@ -26,27 +79,31 @@ export const EditorLayout = ({
                 </div>
 
                 {/* Center Area (Preview + Timeline) */}
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex-1 flex flex-col min-w-0 h-full">
                     {/* Preview Area */}
-                    {/* On mobile, hide preview if a full-screen panel is open? No, usually preview is always good to have, 
-                        but if panels take full screen, we might hide it. 
-                        Let's keep preview visible but maybe smaller? 
-                        Actually, if 'assets' or 'properties' is open on mobile, they should probably cover the preview 
-                        to give enough space for controls. 
-                        
-                        Current plan: 
-                        - Assets/Properties take full screen on mobile (z-20 absolute inset-0).
-                        - Timeline replaces bottom panel.
-                        
-                        So if 'assets' is active, it covers everything.
-                    */}
-                    <div className="flex-1 relative bg-[#0f0f12] flex items-center justify-center p-4">
+                    <div className="flex-1 relative bg-[#0f0f12] flex items-center justify-center p-4 min-h-0 overflow-hidden">
                         {centerPanel}
                     </div>
 
+                    {/* Resize Handle (Desktop Only) */}
+                    <div
+                        onMouseDown={startResizing}
+                        className={`hidden md:flex h-4 -mt-2 -mb-2 z-40 cursor-row-resize items-center justify-center group relative touch-none select-none`}
+                    >
+                        {/* Visual Handle */}
+                        <div className={`w-full h-2 flex items-center justify-center transition-colors bg-[#0f0f12] border-t border-white/5 ${isResizing ? 'bg-blue-900/20' : 'group-hover:bg-white/5'}`}>
+                            <div className={`w-12 h-1 rounded-full transition-colors flex items-center justify-center ${isResizing ? 'bg-blue-500' : 'bg-white/10 group-hover:bg-white/30'}`}>
+                                <GripHorizontal size={12} className={isResizing ? 'text-blue-200' : 'text-transparent group-hover:text-white/50'} />
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Timeline Area */}
-                    {/* Desktop: Always visible. Mobile: Visible only when active tab is timeline */}
-                    <div className={`${activeMobileTab === 'timeline' ? 'flex' : 'hidden'} md:flex h-[300px] border-t border-white/5 bg-[#1a1a1f] flex-col`}>
+                    {/* Desktop: Dynamic Height. Mobile: Fixed/Flex for tab view */}
+                    <div
+                        style={{ height: window.innerWidth >= 768 ? `${timelineHeight}px` : undefined }}
+                        className={`${activeMobileTab === 'timeline' ? 'flex' : 'hidden'} md:flex border-t border-white/5 bg-[#1a1a1f] flex-col overflow-hidden`}
+                    >
                         {bottomPanel}
                     </div>
                 </div>

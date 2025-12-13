@@ -24,8 +24,8 @@ export const PreviewPlayer = ({
     onCanvasPointerUp
 }) => {
     return (
-        <div className="relative w-full h-full flex items-center justify-center bg-[#0f0f12] overflow-hidden">
-            <div className="relative shadow-2xl">
+        <div className="relative w-full h-full flex items-center justify-center bg-[#0f0f12] overflow-hidden p-4">
+            <div className="relative shadow-2xl max-w-full max-h-full flex items-center justify-center">
                 <EditorCanvas
                     canvasRef={canvasRef}
                     overlayRef={overlayRef}
