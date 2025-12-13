@@ -144,6 +144,26 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
+    // Add a clip to a new track
+    const addClipToNewTrack = useCallback((type, clipData) => {
+        setTracks(prev => {
+            const count = prev.filter(t => t.type === type).length;
+            const newTrackId = `track-${type}-${count + 1}-${Date.now()}`;
+            const newTrack = {
+                id: newTrackId,
+                type,
+                height: type === 'audio' ? 48 : 80,
+                clips: [{
+                    id: clipData.id || `clip-${Date.now()}`,
+                    ...clipData
+                }]
+            };
+            const newTracks = [...prev, newTrack];
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
     // Update a clip's properties (e.g., filters, effects, text content)
     const updateClip = useCallback((clipId, updates) => {
         setTracks(prev => {
@@ -381,6 +401,7 @@ export const useTimelineState = () => {
         reorderTracks,
         updateTrackHeight,
         addClip,
+        addClipToNewTrack,
         updateClip,
         addTransition,
         splitClip,

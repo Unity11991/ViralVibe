@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -114,13 +114,17 @@ export const TimelinePanel = ({
         // Visual feedback could be added here
     };
 
-    const handleTrackDrop = (e, index) => {
-        e.preventDefault();
-        if (draggedTrackIndex !== null && draggedTrackIndex !== index) {
-            onReorderTrack(draggedTrackIndex, index);
-        }
-        setDraggedTrackIndex(null);
-    };
+    // Split tracks for display
+    // Visual Tracks: Reversed (Top of list = Top Z-Index/Foreground)
+    const visualTracks = tracks
+        .map((t, i) => ({ ...t, originalIndex: i }))
+        .filter(t => t.type !== 'audio')
+        .reverse();
+
+    // Audio Tracks: Normal Order
+    const audioTracks = tracks
+        .map((t, i) => ({ ...t, originalIndex: i }))
+        .filter(t => t.type === 'audio');
 
     return (
         <div className="flex flex-col h-full">
@@ -211,7 +215,35 @@ export const TimelinePanel = ({
                 </div>
 
                 {/* Tracks Container */}
-                <div className="min-w-full relative" style={{ width: `${duration * scale + 320}px` }}>
+                <div
+                    className="min-w-full relative pb-10"
+                    style={{ width: `${duration * scale + 320}px` }}
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                    }}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        // Check if we dropped on a track (handled by Track component propagation stop?)
+                        // If we are here, it means we dropped on the background (empty space).
+
+                        // Calculate time
+                        const rect = timelineRef.current.getBoundingClientRect();
+                        const scrollLeft = timelineRef.current.scrollLeft;
+                        const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
+                        const time = Math.max(0, Math.min(duration, x / scale));
+
+                        // Get asset data
+                        try {
+                            const assetData = JSON.parse(e.dataTransfer.getData('application/json'));
+                            if (assetData) {
+                                onDrop(null, assetData, time);
+                            }
+                        } catch (err) {
+                            console.error('Invalid drop data', err);
+                        }
+                    }}
+                >
                     {/* Playhead Line */}
                     <div
                         className="absolute top-0 bottom-0 w-px bg-blue-500 z-30 pointer-events-none"
@@ -220,37 +252,135 @@ export const TimelinePanel = ({
                         <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-blue-500 transform rotate-45" />
                     </div>
 
-                    {/* Render Tracks */}
-                    <div className="py-2">
-                        {tracks.map((track, index) => (
-                            <div
-                                key={track.id}
-                                className="track-container"
-                                draggable
-                                onDragStart={(e) => handleTrackDragStart(e, index)}
-                                onDragOver={(e) => handleTrackDragOver(e, index)}
-                                onDrop={(e) => handleTrackDrop(e, index)}
-                            >
-                                <Track
-                                    track={track}
-                                    scale={scale}
-                                    onClipSelect={onClipSelect}
-                                    selectedClipId={selectedClipId}
-                                    onTrim={onTrim}
-                                    onTrimEnd={onTrimEnd}
-                                    onMove={onMove}
-                                    onAddTransition={onAddTransition}
-                                    onTransitionSelect={onTransitionSelect}
-                                    onDrop={onDrop}
-                                    onResize={(height) => onResizeTrack(track.id, height)}
-                                />
+                    {/* Render Visual Tracks */}
+                    {visualTracks.length > 0 && (
+                        <div className="py-2">
+                            <div className="sticky left-0 z-10 px-4 py-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/30 font-semibold bg-[#0f0f12]/90 backdrop-blur-sm border-b border-white/5 mb-1">
+                                <Layers size={12} />
+                                <span>Visual Tracks</span>
                             </div>
-                        ))}
-                    </div>
+                            {visualTracks.map((track) => (
+                                <div
+                                    key={track.id}
+                                    className="track-container"
+                                    draggable
+                                    onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
+                                    onDragEnd={() => setDraggedTrackIndex(null)}
+                                    onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+
+                                        if (draggedTrackIndex !== null) {
+                                            if (draggedTrackIndex !== track.originalIndex) {
+                                                onReorderTrack(draggedTrackIndex, track.originalIndex);
+                                            }
+                                            setDraggedTrackIndex(null);
+                                        } else {
+                                            // External Drop
+                                            try {
+                                                const data = e.dataTransfer.getData('application/json');
+                                                if (data) {
+                                                    const asset = JSON.parse(data);
+                                                    const rect = timelineRef.current.getBoundingClientRect();
+                                                    const scrollLeft = timelineRef.current.scrollLeft;
+                                                    const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
+                                                    const time = Math.max(0, Math.min(duration, x / scale));
+
+                                                    if (track.type === asset.type || (track.type === 'video' && asset.type === 'image')) {
+                                                        onDrop(track.id, asset, time);
+                                                    }
+                                                }
+                                            } catch (err) {
+                                                console.error('Drop error', err);
+                                            }
+                                        }
+                                    }}
+                                >
+                                    <Track
+                                        track={track}
+                                        scale={scale}
+                                        onClipSelect={onClipSelect}
+                                        selectedClipId={selectedClipId}
+                                        onTrim={onTrim}
+                                        onTrimEnd={onTrimEnd}
+                                        onMove={onMove}
+                                        onAddTransition={onAddTransition}
+                                        onTransitionSelect={onTransitionSelect}
+                                        onDrop={onDrop}
+                                        onResize={(height) => onResizeTrack(track.id, height)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Render Audio Tracks */}
+                    {audioTracks.length > 0 && (
+                        <div className="py-2 border-t border-white/5 mt-2">
+                            <div className="sticky left-0 z-10 px-4 py-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/30 font-semibold bg-[#0f0f12]/90 backdrop-blur-sm border-b border-white/5 mb-1">
+                                <Music size={12} />
+                                <span>Audio Tracks</span>
+                            </div>
+                            {audioTracks.map((track) => (
+                                <div
+                                    key={track.id}
+                                    className="track-container"
+                                    draggable
+                                    onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
+                                    onDragEnd={() => setDraggedTrackIndex(null)}
+                                    onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+
+                                        if (draggedTrackIndex !== null) {
+                                            if (draggedTrackIndex !== track.originalIndex) {
+                                                onReorderTrack(draggedTrackIndex, track.originalIndex);
+                                            }
+                                            setDraggedTrackIndex(null);
+                                        } else {
+                                            // External Drop
+                                            try {
+                                                const data = e.dataTransfer.getData('application/json');
+                                                if (data) {
+                                                    const asset = JSON.parse(data);
+                                                    const rect = timelineRef.current.getBoundingClientRect();
+                                                    const scrollLeft = timelineRef.current.scrollLeft;
+                                                    const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
+                                                    const time = Math.max(0, Math.min(duration, x / scale));
+
+                                                    if (track.type === asset.type) {
+                                                        onDrop(track.id, asset, time);
+                                                    }
+                                                }
+                                            } catch (err) {
+                                                console.error('Drop error', err);
+                                            }
+                                        }
+                                    }}
+                                >
+                                    <Track
+                                        track={track}
+                                        scale={scale}
+                                        onClipSelect={onClipSelect}
+                                        selectedClipId={selectedClipId}
+                                        onTrim={onTrim}
+                                        onTrimEnd={onTrimEnd}
+                                        onMove={onMove}
+                                        onAddTransition={onAddTransition}
+                                        onTransitionSelect={onTransitionSelect}
+                                        onDrop={onDrop}
+                                        onResize={(height) => onResizeTrack(track.id, height)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Add Track Button */}
-                <div className="px-4 pb-4">
+                <div className="px-4 pb-4 mt-4">
                     <div className="flex gap-2">
                         <button
                             onClick={() => onAddTrack('video')}
