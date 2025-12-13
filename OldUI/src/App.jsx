@@ -5,26 +5,86 @@ import { ResultsSection } from './components/ResultCard';
 import OptionsPanel from './components/OptionsPanel';
 import SeoWrapper from './components/SeoWrapper';
 import HistoryPanel from './components/HistoryPanel';
-import AdModal from './components/AdModal';
+
 import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import ProgressPopup from './components/ProgressPopup';
-import { analyzeImage } from './utils/aiService';
+import { analyzeImage, aggregateVideoInsights } from './utils/aiService';
+import { extractFramesFromVideo } from './utils/videoUtils';
 import PremiumHub from './components/PremiumHub';
 import { initializePayment } from './utils/paymentService';
 import { useAuth } from './context/AuthContext';
 import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
+import MediaEditor from './components/MediaEditor';
+import VibeBattle from './components/VibeBattle';
 import { supabase } from './lib/supabase';
+import ShareModal from './components/ShareModal';
+import LimitReachedModal from './components/LimitReachedModal';
+
+import ToolsModal from './components/ToolsModal';
+import ImageEnhancer from './components/ImageEnhancer';
+import MainContent from './components/MainContent';
+import ReferralHandler from './components/ReferralHandler';
+
+import { Routes, Route, useLocation } from 'react-router-dom';
+import PrivacyPolicy from './pages/policies/PrivacyPolicy';
+import TermsAndConditions from './pages/policies/TermsAndConditions';
+import RefundPolicy from './pages/policies/RefundPolicy';
+import ShippingPolicy from './pages/policies/ShippingPolicy';
+import ContactUs from './pages/policies/ContactUs';
+import Footer from './components/Footer';
+import IntelligenceHub from './components/IntelligenceHub';
+
+
+const OldMediaEditor = React.lazy(() => import('./mobile/MobileEntry').then(module => ({ default: module.MobileApp })));
 
 function App() {
+  const location = useLocation();
+  const isPolicyPage = location.pathname.includes('/privacy') ||
+    location.pathname.includes('/terms') ||
+    location.pathname.includes('/refund-policy') ||
+    location.pathname.includes('/shipping-policy') ||
+    location.pathname.includes('/contact');
+
+  // Mobile Check
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [image, setImage] = useState(null);
   const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const [showPremiumHub, setShowPremiumHub] = useState(false);
+  const [isPro, setIsPro] = useState(false); // DEV: Default to true
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showMediaEditor, setShowMediaEditor] = useState(false);
+  const [mediaEditorConfig, setMediaEditorConfig] = useState({ file: null, text: '', adjustments: null, suggestedFilter: null });
+  const [showVibeBattle, setShowVibeBattle] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showToolsModal, setShowToolsModal] = useState(false);
+  const [showImageEnhancer, setShowImageEnhancer] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showLimitModal, setShowLimitModal] = useState(false);
+
+  const handleToolSelect = (toolId) => {
+    setShowToolsModal(false);
+    if (toolId === 'video-editor') {
+      setMediaEditorConfig({ file: image, text: '', adjustments: null, suggestedFilter: null });
+      setShowMediaEditor(true);
+    } else if (toolId === 'vibe-battle') {
+      setShowVibeBattle(true);
+    } else if (toolId === 'image-enhancer') {
+      setShowImageEnhancer(true);
+    }
+  };
 
   const { user } = useAuth();
 
@@ -51,9 +111,10 @@ function App() {
   // Coin System State
   const [coinBalance, setCoinBalance] = useState(100);
   const [streak, setStreak] = useState(0);
+  const [lastLoginDate, setLastLoginDate] = useState(null);
   const [totalCoinsSpent, setTotalCoinsSpent] = useState(0);
   const [currentView, setCurrentView] = useState('home'); // 'home' | 'dashboard'
-  const [showAdModal, setShowAdModal] = useState(false);
+
 
   // Theme State
   const [theme, setTheme] = useState(() => {
@@ -72,10 +133,9 @@ function App() {
   // Fetch Data from Supabase
   useEffect(() => {
     if (!user) {
-      // Fallback to localStorage for guest (optional, or just reset)
-      // For now, let's just reset or keep defaults to encourage login
       setCoinBalance(100);
       setHistory([]);
+      setCurrentView('home');
       return;
     }
 
@@ -83,13 +143,17 @@ function App() {
       // Fetch Profile (Coins)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('coin_balance, streak_count')
+        .select('coin_balance,streak_count,subscription_tier,last_login_date')
         .eq('id', user.id)
         .single();
 
       if (profile) {
         setCoinBalance(profile.coin_balance);
         setStreak(profile.streak_count || 0);
+        setLastLoginDate(profile.last_login_date);
+        // Check if user has any active subscription plan
+        // setIsPro(!!profile.subscription_tier && profile.subscription_tier !== 'free');
+        setIsPro(false); // DEV: Force Pro for testing
       }
 
       // Fetch History
@@ -121,6 +185,7 @@ function App() {
 
   const handleImageSelect = (file, previewUrl) => {
     setImage(file);
+    setMediaEditorConfig({ file: file, text: '', adjustments: null, suggestedFilter: null });
     setResults(null);
     setError(null);
   };
@@ -183,8 +248,7 @@ function App() {
       const currentCount = currentUsage ? currentUsage.count : 0;
 
       if (currentCount >= 3) {
-        setShowAuthModal(true);
-        alert("You have reached your daily limit of 3 free generations. Please login to continue.");
+        setShowLimitModal(true);
         return;
       }
     }
@@ -198,9 +262,12 @@ function App() {
     }
     setShowMoodError(false);
 
-    // Check Coin Balance (Cost: 50 coins) - Only for logged in users
-    if (user && coinBalance < 50) {
-      setShowAdModal(true); // Show ad modal instead of confirm
+    const isVideo = image.type.startsWith('video/');
+    const cost = isVideo ? 100 : 50;
+
+    // Check Coin Balance - Only for logged in users
+    if (user && coinBalance < cost) {
+      setCurrentView('dashboard'); // Redirect to dashboard to buy coins
       return;
     }
 
@@ -218,22 +285,51 @@ function App() {
     try {
       // Simulate Upload Step
       await new Promise(resolve => setTimeout(resolve, 800));
-      setProgress(25);
+      setProgress(10);
       setCurrentStep('analyze');
 
-      // Simulate Analysis Step (concurrent with actual API call)
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) return prev;
-          return prev + Math.random() * 10;
-        });
-      }, 500);
+      let data;
 
-      // Actual API Call
-      const data = await analyzeImage(image, settings);
+      if (isVideo) {
+        // --- VIDEO ANALYSIS FLOW ---
+        setProgress(20);
 
-      clearInterval(progressInterval);
-      setProgress(90);
+        // 1. Extract Frames
+        const frames = await extractFramesFromVideo(image, 3); // Extract 3 frames
+        setProgress(40);
+
+        // 2. Analyze Each Frame
+        const frameResults = [];
+        for (let i = 0; i < frames.length; i++) {
+          // Update progress to show which frame is being analyzed
+          const frameProgress = 40 + ((i / frames.length) * 40); // 40% to 80%
+          setProgress(frameProgress);
+
+          const frameResult = await analyzeImage(frames[i], settings);
+          frameResults.push(frameResult);
+        }
+
+        // 3. Aggregate Results
+        setProgress(90);
+        data = aggregateVideoInsights(frameResults);
+
+      } else {
+        // --- IMAGE ANALYSIS FLOW ---
+
+        // Simulate Analysis Step (concurrent with actual API call)
+        const progressInterval = setInterval(() => {
+          setProgress(prev => {
+            if (prev >= 90) return prev;
+            return prev + Math.random() * 10;
+          });
+        }, 500);
+
+        // Actual API Call
+        data = await analyzeImage(image, settings);
+        clearInterval(progressInterval);
+      }
+
+      setProgress(95);
       setCurrentStep('generate');
 
       // Simulate Generation Step
@@ -246,9 +342,9 @@ function App() {
 
       if (user) {
         // Update Coins in DB
-        const newBalance = coinBalance - 50;
+        const newBalance = coinBalance - cost;
         setCoinBalance(newBalance);
-        setTotalCoinsSpent(prev => prev + 50);
+        setTotalCoinsSpent(prev => prev + cost);
 
         await supabase
           .from('profiles')
@@ -379,8 +475,15 @@ function App() {
       setShowAuthModal(true);
       return;
     }
+    const userDetails = {
+      name: user.user_metadata?.full_name || user.email?.split('@')[0] || "GoVyral User",
+      email: user.email,
+      contact: user.phone || "" // Assuming phone might be available
+    };
+
     initializePayment(
       price,
+      userDetails,
       async (response) => {
         const newBalance = coinBalance + coins;
         setCoinBalance(newBalance);
@@ -408,8 +511,10 @@ function App() {
     );
   };
 
+
+
   return (
-    <div className="min-h-screen relative overflow-hidden font-sans text-primary selection:bg-indigo-500/30">
+    <div className="min-h-screen relative font-sans text-primary selection:bg-indigo-500/30">
       <SeoWrapper />
 
       {/* Liquid Background */}
@@ -420,10 +525,7 @@ function App() {
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
       </div>
 
-      <AdModal
-        isOpen={showAdModal}
-        onAdComplete={handleAdComplete}
-      />
+
 
       <AuthModal
         isOpen={showAuthModal}
@@ -435,14 +537,67 @@ function App() {
         onClose={() => setShowProfileModal(false)}
       />
 
+      <ToolsModal
+        isOpen={showToolsModal}
+        onClose={() => setShowToolsModal(false)}
+        onSelectTool={handleToolSelect}
+      />
+
+      {showMediaEditor && (
+        isMobile ? (
+          <React.Suspense fallback={<div className="fixed inset-0 z-50 bg-black flex items-center justify-center text-white">Loading Editor...</div>}>
+            <OldMediaEditor
+              mediaFile={mediaEditorConfig.file || image}
+              onClose={() => setShowMediaEditor(false)}
+            />
+          </React.Suspense>
+        ) : (
+          <MediaEditor
+            mediaFile={mediaEditorConfig.file || image}
+            initialText={mediaEditorConfig.text}
+            initialAdjustments={mediaEditorConfig.adjustments}
+            suggestedFilter={mediaEditorConfig.suggestedFilter}
+            onClose={() => setShowMediaEditor(false)}
+            isPro={isPro}
+          />
+        )
+      )}
+
+      {showVibeBattle && (
+        <VibeBattle
+          onClose={() => setShowVibeBattle(false)}
+          settings={settings}
+        />
+      )}
+
+      {showImageEnhancer && (
+        <ImageEnhancer
+          onClose={() => setShowImageEnhancer(false)}
+        />
+      )}
+
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        results={results}
+        image={image}
+      />
+
+      <LimitReachedModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        onLogin={() => setShowAuthModal(true)}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
         settings={settings}
         image={image}
         coinBalance={coinBalance}
+        isPro={isPro}
         onSpendCoins={handleSpendCoins}
-        onOpenAdModal={() => setShowAdModal(true)}
+
       />
 
       <ProgressPopup
@@ -460,133 +615,75 @@ function App() {
         onDelete={deleteHistoryItem}
       />
 
-      {/* Main Layout */}
-      <div className="max-w-[1600px] mx-auto p-4 lg:p-8 h-screen flex flex-col">
-
-        {/* Header */}
-        <header className="flex items-center justify-between mb-8 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Zap className="text-white" size={20} fill="currentColor" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-primary hidden md:block">GoVyral</h1>
-          </div>
-
-          <Navbar
-            onHistoryClick={() => setIsHistoryOpen(true)}
+      <Routes>
+        <Route path="/" element={
+          <MainContent
+            currentView={currentView}
+            setCurrentView={setCurrentView}
             coinBalance={coinBalance}
-            onCoinsClick={() => {
-              if (!user) {
-                setShowAuthModal(true);
-              } else {
-                setCurrentView('dashboard');
-              }
-            }}
-            theme={theme}
-            toggleTheme={toggleTheme}
-            onLoginClick={() => setShowAuthModal(true)}
-            onProfileClick={() => setShowProfileModal(true)}
-            guestUsageCount={guestUsageCount}
-          />
-        </header>
-
-        {currentView === 'dashboard' ? (
-          <Dashboard
-            balance={coinBalance}
             streak={streak}
+            lastLoginDate={lastLoginDate}
+            setCoinBalance={setCoinBalance}
+            setStreak={setStreak}
+            setLastLoginDate={setLastLoginDate}
             history={history}
             totalCoinsSpent={totalCoinsSpent}
-            onBack={() => setCurrentView('home')}
-            onWatchAd={() => setShowAdModal(true)}
-            onPurchase={handlePurchase}
+
+            handlePurchase={handlePurchase}
+            isAnalyzing={isAnalyzing}
+            image={image}
+            handleImageSelect={handleImageSelect}
+            setShowMediaEditor={(config) => {
+              if (config) {
+                setMediaEditorConfig(prev => ({
+                  ...prev,
+                  text: config.text || prev.text,
+                  adjustments: config.adjustments || null,
+                  suggestedFilter: config.suggestedFilter || null
+                }));
+              }
+              setShowMediaEditor(true);
+            }}
+            settings={settings}
+            setSettings={setSettings}
+            showMoodError={showMoodError}
+            error={error}
+            handleAnalyze={handleAnalyze}
+            results={results}
+            user={user}
+            setShowAuthModal={setShowAuthModal}
+            setShowPremiumHub={setShowPremiumHub}
+            setIsHistoryOpen={setIsHistoryOpen}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            setShowProfileModal={setShowProfileModal}
+            guestUsageCount={guestUsageCount}
+            setShowToolsModal={setShowToolsModal}
+            setShowShareModal={setShowShareModal}
+
           />
-        ) : (
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
-
-            {/* Left Column: Controls (Scrollable) */}
-            <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-20 lg:pb-0">
-              <div className="space-y-2">
-                <h2 className="text-4xl font-light tracking-tight text-primary">
-                  Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
-                </h2>
-                <p className="text-secondary text-lg">Upload, customize, and let AI handle the rest.</p>
-              </div>
-
-              <div className="space-y-6">
-                <ImageUploader
-                  onImageSelect={handleImageSelect}
-                  isAnalyzing={isAnalyzing}
-                />
-
-                <OptionsPanel
-                  settings={settings}
-                  onSettingsChange={setSettings}
-                  showMoodError={showMoodError}
-                />
-
-                {error && (
-                  <div className="glass-panel p-4 border-red-500/30 bg-red-500/10 flex items-center gap-3 text-red-200 animate-slide-in">
-                    <AlertCircle className="text-red-500 shrink-0" size={20} />
-                    <p className="font-medium text-sm">{error}</p>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleAnalyze}
-                  disabled={!image || isAnalyzing}
-                  className={`
-                    w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300
-                    ${!image || isAnalyzing
-                      ? 'bg-white/5 text-slate-500 cursor-not-allowed'
-                      : 'bg-white text-black hover:scale-[1.02] shadow-xl shadow-white/10'
-                    }
-                  `}
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                      <span>Processing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={20} />
-                      <span>Generate Content</span>
-                      <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">-50</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Right Column: Results (Scrollable) */}
-            <div className={`lg:col-span-7 h-full min-h-[500px] glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}>
-              {results ? (
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
-                  <ResultsSection
-                    results={results}
-                    onOpenPremium={() => {
-                      if (!user) {
-                        setShowAuthModal(true);
-                      } else {
-                        setShowPremiumHub(true);
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-secondary">
-                  <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
-                    <Sparkles size={40} className="text-primary/20" />
-                  </div>
-                  <h3 className="text-xl font-medium text-primary mb-2">Ready to Create?</h3>
-                  <p className="max-w-xs mx-auto">Upload an image and configure your settings to see AI-generated insights here.</p>
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
-      </div>
+        } />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsAndConditions />} />
+        <Route path="/refund-policy" element={<RefundPolicy />} />
+        <Route path="/shipping-policy" element={<ShippingPolicy />} />
+        <Route path="/contact" element={<ContactUs />} />
+        <Route path="/referral/:code" element={<ReferralHandler />} />
+        <Route path="/intelligence" element={
+          <IntelligenceHub
+            user={user}
+            coinBalance={coinBalance}
+            setShowAuthModal={setShowAuthModal}
+            setShowProfileModal={setShowProfileModal}
+            guestUsageCount={guestUsageCount}
+            setShowToolsModal={setShowToolsModal}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            settings={settings}
+          />
+        } />
+      </Routes>
+      <Footer />
     </div>
   );
 }

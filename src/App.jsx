@@ -16,7 +16,10 @@ import { initializePayment } from './utils/paymentService';
 import { useAuth } from './context/AuthContext';
 import AuthModal from './components/AuthModal';
 import ProfileModal from './components/ProfileModal';
+import LegacyMediaEditor from './components/LegacyMediaEditor';
 import MediaEditor from './components/MediaEditor';
+
+
 import VibeBattle from './components/VibeBattle';
 import { supabase } from './lib/supabase';
 import ShareModal from './components/ShareModal';
@@ -38,6 +41,17 @@ import IntelligenceHub from './components/IntelligenceHub';
 
 function App() {
   const location = useLocation();
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const isPolicyPage = location.pathname.includes('/privacy') ||
     location.pathname.includes('/terms') ||
     location.pathname.includes('/refund-policy') ||
@@ -530,14 +544,25 @@ function App() {
       />
 
       {showMediaEditor && (
-        <MediaEditor
-          mediaFile={mediaEditorConfig.file || image}
-          initialText={mediaEditorConfig.text}
-          initialAdjustments={mediaEditorConfig.adjustments}
-          suggestedFilter={mediaEditorConfig.suggestedFilter}
-          onClose={() => setShowMediaEditor(false)}
-          isPro={isPro}
-        />
+        isMobile ? (
+          <LegacyMediaEditor
+            mediaFile={mediaEditorConfig.file || image}
+            initialText={mediaEditorConfig.text}
+            initialAdjustments={mediaEditorConfig.adjustments}
+            suggestedFilter={mediaEditorConfig.suggestedFilter}
+            onClose={() => setShowMediaEditor(false)}
+            isPro={isPro}
+          />
+        ) : (
+          <MediaEditor
+            mediaFile={mediaEditorConfig.file || image}
+            initialText={mediaEditorConfig.text}
+            initialAdjustments={mediaEditorConfig.adjustments}
+            suggestedFilter={mediaEditorConfig.suggestedFilter}
+            onClose={() => setShowMediaEditor(false)}
+            isPro={isPro}
+          />
+        )
       )}
 
       {showVibeBattle && (

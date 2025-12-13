@@ -95,7 +95,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                                 <option value="instagram">Instagram</option>
                                 <option value="linkedin">LinkedIn</option>
                                 <option value="twitter">Twitter / X</option>
-                                <option value="tiktok">TikTok</option>
+                                <option value="facebook">Facebook</option>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-secondary">
                                 <ChevronDown size={14} />

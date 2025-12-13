@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Copy, Check, Clock, Hash, MessageSquare, Music, TrendingUp, Sparkles, Play, Pause, Loader, Bookmark, Globe, Share2, Flame, Wrench } from 'lucide-react';
 import { searchTrack } from '../utils/musicService';
+import SocialPreview from './SocialPreview';
 
 const CopyButton = ({ text }) => {
     const [copied, setCopied] = useState(false);
@@ -83,7 +84,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results, onOpenPremium }) => {
+export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare, image, user }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
@@ -101,16 +102,33 @@ export const ResultsSection = ({ results, onOpenPremium }) => {
                 </div>
 
                 <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
-                            <Flame size={20} fill="currentColor" />
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
+                                <Flame size={20} fill="currentColor" />
+                            </div>
+                            <h3 className="text-xl font-bold text-primary">Viral Audit</h3>
                         </div>
-                        <h3 className="text-xl font-bold text-primary">Viral Audit</h3>
+                        <button
+                            onClick={onOpenShare}
+                            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
+                            title="Share Result"
+                        >
+                            <Share2 size={20} />
+                        </button>
                     </div>
 
                     {/* The Roast */}
                     <div className="mb-6 bg-black/20 p-4 rounded-xl border border-orange-500/20">
                         <p className="text-orange-200 italic text-lg font-medium text-center">"{results.roast || "No roast available."}"</p>
+                        {onOpenEditor && results.roast && (
+                            <button
+                                onClick={() => onOpenEditor({ text: results.roast })}
+                                className="mx-auto mt-3 flex items-center gap-2 px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold text-white uppercase tracking-wider transition-colors"
+                            >
+                                <Sparkles size={12} /> Make it a Meme
+                            </button>
+                        )}
                     </div>
 
                     {/* Vibe Scores */}
@@ -142,6 +160,14 @@ export const ResultsSection = ({ results, onOpenPremium }) => {
                                 </li>
                             ))}
                         </ul>
+                        {onOpenEditor && (
+                            <button
+                                onClick={() => onOpenEditor({ adjustments: results.adjustments, suggestedFilter: results.suggestedFilter })}
+                                className="mt-4 w-full py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Wrench size={14} /> Open Editor with AI Suggestions
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -220,33 +246,39 @@ export const ResultsSection = ({ results, onOpenPremium }) => {
             </div>
 
             {/* Music */}
-            {musicRecommendations.length > 0 && (
-                <div className="glass-panel p-6">
-                    <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-                        <div className="flex items-center gap-2 text-secondary font-medium">
-                            <Music size={16} className="text-rose-400" />
-                            <h3>Audio</h3>
+            {
+                musicRecommendations.length > 0 && (
+                    <div className="glass-panel p-6">
+                        <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+                            <div className="flex items-center gap-2 text-secondary font-medium">
+                                <Music size={16} className="text-rose-400" />
+                                <h3>Audio</h3>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {musicRecommendations.map((track, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-rose-500/20 to-purple-500/20 rounded-lg flex items-center justify-center text-rose-300">
+                                            <Music size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-primary text-sm font-bold">{track.song}</p>
+                                            <p className="text-tertiary text-xs">{track.artist}</p>
+                                        </div>
+                                    </div>
+                                    <MusicPlayer song={track.song} artist={track.artist} />
+                                </div>
+                            ))}
                         </div>
                     </div>
+                )
+            }
 
-                    <div className="space-y-2">
-                        {musicRecommendations.map((track, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-rose-500/20 to-purple-500/20 rounded-lg flex items-center justify-center text-rose-300">
-                                        <Music size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-primary text-sm font-bold">{track.song}</p>
-                                        <p className="text-tertiary text-xs">{track.artist}</p>
-                                    </div>
-                                </div>
-                                <MusicPlayer song={track.song} artist={track.artist} />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* Social Preview */}
+            <SocialPreview image={image} captions={captions} hashtags={hashtags} user={user} />
+
             {/* Premium Features Button */}
             <div className="flex justify-center pt-6">
                 <button
@@ -260,7 +292,7 @@ export const ResultsSection = ({ results, onOpenPremium }) => {
                     </div>
                 </button>
             </div>
-        </div>
+        </div >
     );
 };
 

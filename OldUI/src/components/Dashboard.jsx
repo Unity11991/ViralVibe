@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Coins, ArrowLeft, Play, Zap, Shield, Users, CreditCard, Copy, Check, Share2, BarChart3, Heart, Coffee, Crown, Rocket, Trophy, Flame, TrendingUp } from 'lucide-react';
 import CollabFinder from './CollabFinder';
+import TrendingSidebar from './TrendingSidebar';
+import AdBanner from './AdBanner';
 
 const PACKAGES = [
     { id: 1, price: 49, coins: 5000, label: 'Starter' },
@@ -10,26 +12,66 @@ const PACKAGES = [
     { id: 5, price: 949, coins: 150000, label: 'Enterprise' },
 ];
 
-const PurchaseTab = ({ onWatchAd, onPurchase }) => (
-    <div className="space-y-8 animate-fade-in">
-        {/* Free Coins Banner */}
-        <div className="bg-gradient-to-r from-emerald-500/10 to-green-500/10 border border-emerald-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+
+const DailyRewardCard = ({ lastLoginDate, onClaim }) => {
+    const [claiming, setClaiming] = useState(false);
+    const today = new Date().toISOString().split('T')[0];
+    const isClaimed = lastLoginDate === today;
+
+    const handleClaim = async () => {
+        setClaiming(true);
+        await onClaim();
+        setClaiming(false);
+    };
+
+    return (
+        <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-6 mb-8">
             <div className="flex items-center gap-4">
-                <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400">
-                    <Play size={24} />
+                <div className="p-3 bg-indigo-500/20 rounded-xl text-indigo-400">
+                    <Flame size={24} fill="currentColor" />
                 </div>
                 <div>
-                    <h3 className="text-lg font-bold text-emerald-300">Free Coins</h3>
-                    <p className="text-emerald-200/60">Watch a short ad to earn <span className="text-emerald-400 font-bold">+35 coins</span></p>
+                    <h3 className="text-lg font-bold text-indigo-300">Daily Reward</h3>
+                    <p className="text-indigo-200/60">
+                        {isClaimed
+                            ? "You've claimed your reward for today. Come back tomorrow!"
+                            : "Claim your daily coins and keep your streak alive!"}
+                    </p>
                 </div>
             </div>
             <button
-                onClick={onWatchAd}
-                className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
+                onClick={handleClaim}
+                disabled={isClaimed || claiming}
+                className={`px-8 py-3 font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${isClaimed
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 hover:scale-105'
+                    }`}
             >
-                <Play size={18} fill="currentColor" /> Watch Ad
+                {claiming ? (
+                    <span className="animate-pulse">Claiming...</span>
+                ) : isClaimed ? (
+                    <>
+                        <Check size={18} /> Claimed
+                    </>
+                ) : (
+                    <>
+                        <Zap size={18} fill="currentColor" /> Claim Coins
+                    </>
+                )}
             </button>
         </div>
+    );
+};
+
+const PurchaseTab = ({ onWatchAd, onPurchase, lastLoginDate, onClaimReward }) => (
+    <div className="space-y-8 animate-fade-in">
+        {/* Daily Reward Card */}
+        <DailyRewardCard lastLoginDate={lastLoginDate} onClaim={onClaimReward} />
+
+        {/* Ad Banner */}
+        <AdBanner slotId="1146521123" className="mb-8" />
 
         {/* Packages Grid */}
         <div className="space-y-6">
@@ -79,9 +121,26 @@ const PurchaseTab = ({ onWatchAd, onPurchase }) => (
     </div>
 );
 
-const ReferralTab = () => {
+const ReferralTab = ({ user }) => {
     const [copied, setCopied] = useState(false);
-    const referralCode = "REF487873";
+    const [referralCode, setReferralCode] = useState('Loading...');
+
+    useEffect(() => {
+        const fetchReferralCode = async () => {
+            if (!user) return;
+            const { data } = await supabase
+                .from('profiles')
+                .select('referral_code')
+                .eq('id', user.id)
+                .single();
+
+            if (data?.referral_code) {
+                setReferralCode(data.referral_code);
+            }
+        };
+        fetchReferralCode();
+    }, [user]);
+
     const referralLink = `https://govyral.online/referral/${referralCode}`;
 
     const handleCopy = () => {
@@ -388,8 +447,23 @@ const SupportTab = ({ onPurchase }) => {
     );
 };
 
-const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase }) => {
+
+const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchAd, onPurchase, lastLoginDate, setCoinBalance, setStreak, setLastLoginDate, settings }) => {
     const [activeTab, setActiveTab] = useState('purchase');
+    const { claimDailyReward, user } = useAuth();
+
+    const handleClaimReward = async () => {
+        if (!user) return;
+        const result = await claimDailyReward(user.id);
+        if (result.success) {
+            setCoinBalance(prev => prev + result.coins);
+            setStreak(result.streak);
+            setLastLoginDate(new Date().toISOString().split('T')[0]);
+            alert(`You claimed ${result.coins} coins! Streak: ${result.streak} days.`);
+        } else {
+            alert(result.message || "Failed to claim reward.");
+        }
+    };
 
     const tabs = [
         { id: 'purchase', label: 'Purchase', icon: CreditCard },
@@ -477,9 +551,9 @@ const Dashboard = ({ balance, streak, history, totalCoinsSpent, onBack, onWatchA
 
                 {/* Content */}
                 <div className="min-h-[400px]">
-                    {activeTab === 'purchase' && <PurchaseTab onWatchAd={onWatchAd} onPurchase={onPurchase} />}
+                    {activeTab === 'purchase' && <PurchaseTab onWatchAd={onWatchAd} onPurchase={onPurchase} lastLoginDate={lastLoginDate} onClaimReward={handleClaimReward} />}
                     {activeTab === 'collab' && <CollabFinder />}
-                    {activeTab === 'referral' && <ReferralTab />}
+                    {activeTab === 'referral' && <ReferralTab user={user} />}
                     {activeTab === 'analytics' && <AnalyticsTab history={history} totalCoinsSpent={totalCoinsSpent} />}
                     {activeTab === 'support' && <SupportTab onPurchase={onPurchase} />}
                 </div>
