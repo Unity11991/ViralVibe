@@ -73,6 +73,7 @@ export const Track = ({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     const data = e.dataTransfer.getData('application/json');
                     if (data) {
                         const asset = JSON.parse(data);

@@ -56,7 +56,9 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
         const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
         ctx.scale(finalWidth / width, finalHeight / height);
 
-        setCanvasDimensions({ width: finalWidth, height: finalHeight });
+        // IMPORTANT: We expose the LOGICAL dimensions to the app, so all calculations (hit testing, etc.)
+        // happen in CSS pixels. The canvas internal resolution is hidden implementation detail.
+        setCanvasDimensions({ width: width, height: height });
     }, []);
 
     /**

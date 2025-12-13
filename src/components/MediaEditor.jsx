@@ -4,9 +4,11 @@ import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
 import { useExport } from './MediaEditor/hooks/useExport';
+
 import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
+import { usePlayback } from './MediaEditor/hooks/usePlayback';
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
-import { buildFilterString } from './MediaEditor/utils/canvasUtils';
+import { buildFilterString, isPointInClip, isPointInText, getHandleAtPoint } from './MediaEditor/utils/canvasUtils';
 import { Button } from './MediaEditor/components/UI';
 
 // New Layout Components
@@ -75,6 +77,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setSelectedClipId,
         initializeTimeline,
         addClip,
+        addClipToNewTrack,
         updateClip,
         addTransition,
         splitClip,
@@ -103,9 +106,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [zoom, setZoom] = useState(1);
     const [timelineZoom, setTimelineZoom] = useState(1);
     const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
-    const [currentTime, setCurrentTime] = useState(0);
-    const [isPlaying, setIsPlaying] = useState(false);
     const [memeMode, setMemeMode] = useState(!!initialText);
+
+    // Canvas Interaction State
+    const [isDragging, setIsDragging] = useState(false);
+    const [activeHandle, setActiveHandle] = useState(null); // 'tl', 'tr', 'br', 'bl', 'rot'
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const initialClipStateRef = useRef(null);
     const [thumbnailUrl, setThumbnailUrl] = useState(null);
     const [mediaLibrary, setMediaLibrary] = useState([]);
 
@@ -129,10 +136,30 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         return Math.max(maxDuration, (videoDuration || 10));
     }, [tracks, videoDuration]);
 
-    // Update trim range when timeline duration changes
+    // Update trimRange when timeline duration changes
     useEffect(() => {
         setTrimRange(prev => ({ ...prev, end: timelineDuration }));
     }, [timelineDuration]);
+
+    // Playback Hook
+    const {
+        isPlaying,
+        currentTime,
+        play,
+        pause,
+        togglePlay,
+        seek,
+        registerMedia
+    } = usePlayback(trimRange.end, (time) => {
+        // Optional: Any per-tick logic that isn't rendering
+    });
+
+    // Register Main Media Element
+    useEffect(() => {
+        if (mediaElementRef.current && isVideo) {
+            return registerMedia(mediaElementRef.current);
+        }
+    }, [mediaElementRef, isVideo, registerMedia]);
 
     // Initialize Timeline when media loads
     useEffect(() => {
@@ -314,189 +341,132 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // Ref to hold latest state for the render loop
     const renderStateRef = useRef({});
 
-    // Update render state ref whenever relevant state changes
+    // Update render state ref whenever relevant state changes AND render immediately
     useEffect(() => {
+        if (!mediaUrl || !canvasRef.current) return;
+
         const mainTrack = tracks.find(t => t.id === 'track-main');
         const activeClip = mainTrack?.clips.find(c =>
             currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
         );
         const hasActiveClip = !!activeClip;
 
+        // Create Unified Layer List
+        const visibleLayers = [];
 
-
-        // Extract overlays from tracks for rendering
-        // We only render overlays that are active at the current time!
-        const activeTextOverlays = [];
-        const activeStickers = [];
-
-        tracks.forEach(track => {
-            if (track.type === 'text') {
-                track.clips.forEach(clip => {
-                    if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
-                        activeTextOverlays.push({
-                            id: clip.id,
-                            text: clip.text || 'Text',
-                            x: clip.style?.x || 50,
-                            y: clip.style?.y || 50,
-                            fontSize: clip.style?.fontSize || 48,
-                            fontFamily: clip.style?.fontFamily || 'Arial',
-                            fontWeight: clip.style?.fontWeight || 'bold',
-                            color: clip.style?.color || '#ffffff',
-                            rotation: clip.style?.rotation || 0
-                        });
-                    }
-                });
-            } else if (track.type === 'sticker') {
-                track.clips.forEach(clip => {
-                    if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
-                        activeStickers.push({
-                            id: clip.id,
-                            x: clip.sticker?.x || 50,
-                            y: clip.sticker?.y || 50,
-                            scale: clip.sticker?.scale || 1,
-                            rotation: clip.sticker?.rotation || 0,
-                            image: clip.sticker?.image // We need to store the image object or URL
-                        });
-                    }
-                });
-            }
-        });
-
-        // Calculate Transition State
-        let transition = null;
-        if (activeClip && activeClip.transition) {
-            const transitionDuration = activeClip.transition.duration || 1.0;
-            const timeInClip = currentTime - activeClip.startTime;
-
-            if (timeInClip < transitionDuration) {
-                transition = {
-                    type: activeClip.transition.type,
-                    progress: timeInClip / transitionDuration
-                };
-            }
-        }
-
-        const initialAdjustments = getInitialAdjustments();
-        const transform = { rotation, zoom };
-
-        // Calculate visible clips for multi-track rendering
-        // Calculate visible clips for multi-track rendering
-        const visibleClips = [];
-
-        tracks.filter(t => t.type === 'video' || t.type === 'image').forEach(track => {
-            const clipIndex = track.clips.findIndex(c =>
+        // Iterate tracks in order (Bottom to Top)
+        tracks.forEach((track, trackIndex) => {
+            // Find active clip in this track
+            const clip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
             );
-            if (clipIndex === -1) return;
 
-            const clip = track.clips[clipIndex];
+            if (!clip) return;
 
-            // Check for Transition Overlap
-            let prevClip = null;
-            if (clip.transition && clip.transition.type !== 'none') {
-                const transitionDuration = clip.transition.duration || 1.0;
-                const timeInClip = currentTime - clip.startTime;
-                if (timeInClip < transitionDuration && clipIndex > 0) {
-                    prevClip = track.clips[clipIndex - 1];
-                }
-            }
-
-            const resolveMedia = (c, isBackground = false) => {
-                if (track.id === 'track-main' && isVideo) {
-                    // If it's the active main clip, use main element
-                    if (c.id === clip.id && !isBackground) return mediaElementRef.current;
-                    // If it's the previous clip (background) on main track, use secondary element
-                    if (!videoElementsRef.current[c.id]) {
-                        const video = document.createElement('video');
-                        video.src = c.source;
-                        video.muted = true;
-                        video.crossOrigin = 'anonymous';
-                        videoElementsRef.current[c.id] = video;
-                    }
-                    return videoElementsRef.current[c.id];
-                } else if (c.type === 'image') {
-                    if (!imageElementsRef.current[c.id]) {
-                        const img = new Image();
-                        img.src = c.source;
-                        imageElementsRef.current[c.id] = img;
-                    }
-                    return imageElementsRef.current[c.id];
-                } else if (c.type === 'video') {
-                    if (!videoElementsRef.current[c.id]) {
-                        const video = document.createElement('video');
-                        video.src = c.source;
-                        video.muted = true;
-                        video.crossOrigin = 'anonymous';
-                        videoElementsRef.current[c.id] = video;
-                    }
-                    return videoElementsRef.current[c.id];
-                }
-                return null;
+            // Common Layer Properties
+            const baseLayer = {
+                id: clip.id,
+                zIndex: trackIndex, // Use track index as Z-index
+                opacity: clip.opacity !== undefined ? clip.opacity : 100,
+                blendMode: clip.blendMode || 'normal',
+                startTime: clip.startTime,
+                duration: clip.duration
             };
 
-            // Add Previous Clip (Background)
-            if (prevClip) {
-                const prevMedia = resolveMedia(prevClip, true);
-                if (prevMedia) {
-                    visibleClips.push({
-                        ...prevClip,
-                        media: prevMedia,
-                        adjustments: prevClip.adjustments || getInitialAdjustments(),
-                        filter: prevClip.filter || 'normal',
-                        effect: prevClip.effect || null,
+            if (track.type === 'text') {
+                visibleLayers.push({
+                    ...baseLayer,
+                    type: 'text',
+                    text: clip.text || 'Text',
+                    x: clip.style?.x || 50,
+                    y: clip.style?.y || 50,
+                    fontSize: clip.style?.fontSize || 48,
+                    fontFamily: clip.style?.fontFamily || 'Arial',
+                    fontWeight: clip.style?.fontWeight || 'bold',
+                    color: clip.style?.color || '#ffffff',
+                    rotation: clip.style?.rotation || 0,
+                    // Pass style as top-level properties for renderLayer convenience or keep in style object?
+                    // renderLayer expects top level props for text currently in my refactor
+                    // Let's map them to top level
+                });
+            } else if (track.type === 'sticker') {
+                visibleLayers.push({
+                    ...baseLayer,
+                    type: 'sticker',
+                    x: clip.sticker?.x || 50,
+                    y: clip.sticker?.y || 50,
+                    scale: clip.sticker?.scale || 1,
+                    rotation: clip.sticker?.rotation || 0,
+                    image: clip.sticker?.image
+                });
+            } else if (track.type === 'video' || track.type === 'image') {
+                // Resolve Media Element
+                let media = null;
+                const isMainSource = clip.source === mediaUrl;
+
+                if (isMainSource && isVideo && clip.id === activeClip?.id) {
+                    // Use the main shared element ONLY if it's the active clip and matches source
+                    media = mediaElementRef.current;
+                }
+
+                if (!media) {
+                    // Fallback to individual element (for background clips OR non-main sources)
+                    if (clip.type === 'image') {
+                        if (!imageElementsRef.current[clip.id]) {
+                            const img = new Image();
+                            img.src = clip.source;
+                            imageElementsRef.current[clip.id] = img;
+                        }
+                        media = imageElementsRef.current[clip.id];
+                    } else {
+                        // Video
+                        if (!videoElementsRef.current[clip.id]) {
+                            const v = document.createElement('video');
+                            v.src = clip.source;
+                            v.muted = true;
+                            v.crossOrigin = 'anonymous';
+                            videoElementsRef.current[clip.id] = v;
+                        }
+                        media = videoElementsRef.current[clip.id];
+                    }
+                }
+
+                if (media) {
+                    // Calculate Transition
+                    let transition = null;
+                    if (clip.transition && clip.transition.type !== 'none') {
+                        const tDur = clip.transition.duration || 1.0;
+                        const tTime = currentTime - clip.startTime;
+                        if (tTime < tDur) {
+                            transition = { ...clip.transition, progress: tTime / tDur };
+                        }
+                    }
+
+                    visibleLayers.push({
+                        ...baseLayer,
+                        type: clip.type || 'video',
+                        media: media,
+                        adjustments: clip.adjustments || getInitialAdjustments(),
+                        filter: clip.filter || 'normal',
+                        effect: clip.effect || null,
                         transform: {
-                            ...(prevClip.transform || {}),
-                            opacity: 100,
-                            blendMode: 'normal'
+                            ...(clip.transform || { rotation, zoom }),
+                            blendMode: clip.blendMode || 'normal'
                         },
-                        mask: prevClip.mask || null,
-                        isTransitionBackground: true
+                        mask: clip.mask || null,
+                        transition: transition
                     });
                 }
             }
-
-            // Add Current Clip (Foreground)
-            const media = resolveMedia(clip);
-            if (media) {
-                // Calculate transition progress if active
-                let activeTransition = null;
-                if (clip.transition && clip.transition.type !== 'none') {
-                    const transitionDuration = clip.transition.duration || 1.0;
-                    const timeInClip = currentTime - clip.startTime;
-                    if (timeInClip < transitionDuration) {
-                        activeTransition = {
-                            ...clip.transition,
-                            progress: timeInClip / transitionDuration
-                        };
-                    }
-                }
-
-                visibleClips.push({
-                    ...clip,
-                    media: media,
-                    adjustments: clip.adjustments || getInitialAdjustments(),
-                    filter: clip.filter || 'normal',
-                    effect: clip.effect || null,
-                    transform: {
-                        ...(clip.transform || {}),
-                        opacity: clip.opacity !== undefined ? clip.opacity : 100,
-                        blendMode: clip.blendMode || 'normal'
-                    },
-                    mask: clip.mask || null,
-                    transition: activeTransition // Pass calculated transition with progress
-                });
-            }
         });
 
-        renderStateRef.current = {
-            visibleClips, // New multi-track state
-            // Fallbacks for single-track renderers (if any)
+        const newState = {
+            visibleLayers, // Unified List
+            // Legacy props for fallback (can be empty or derived)
+            visibleClips: [],
+            textOverlays: [],
+            stickers: [],
             adjustments: activeClip?.adjustments || initialAdjustments,
-            vignette: activeClip?.adjustments?.vignette || initialAdjustments.vignette,
-            grain: activeClip?.adjustments?.grain || initialAdjustments.grain,
-            textOverlays: activeTextOverlays,
-            stickers: activeStickers,
-            stickerImages: [],
             transform: { rotation, zoom },
             canvasDimensions,
             activeOverlayId: selectedClipId,
@@ -504,204 +474,86 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             activeEffectId: activeClip?.effect || null,
             effectIntensity,
             activeFilterId: activeClip?.filter || 'normal',
-            hasActiveClip: visibleClips.length > 0, // Update this
-            transition // Pass transition state
+            hasActiveClip: visibleLayers.length > 0
         };
-    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo]);
 
-    // Stable Render Loop
+        renderStateRef.current = newState;
+
+        // Render immediately
+        render(newState, { applyFiltersToContext: true });
+
+    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo, render, mediaUrl]);
+
+    // Playback controls are now handled by usePlayback
+    // We just need to sync secondary videos and audio manually in the render/tick loop if usePlayback doesn't handle them all.
+    // usePlayback handles registered elements.
+    // For dynamic elements (secondary tracks), we should register them or sync them in an effect.
+
     useEffect(() => {
-        if (!mediaUrl || !canvasRef.current) return;
-
-        const interval = setInterval(() => {
-            if (renderStateRef.current) {
-                render(renderStateRef.current, { applyFiltersToContext: true });
-            }
-        }, 33);
-
-        return () => clearInterval(interval);
-    }, [mediaUrl, canvasRef, render]);
-
-    // Video playback engine
-    useEffect(() => {
-        let animationFrameId;
-        let lastTime = Date.now();
-
-        const playbackLoop = () => {
-            if (!isPlaying) return;
-
-            const now = Date.now();
-            const delta = (now - lastTime) / 1000; // seconds
-            lastTime = now;
-
-            // Find active clip on main track to get speed
-            const mainTrack = tracks.find(t => t.id === 'track-main');
-            const activeClip = mainTrack?.clips.find(c =>
+        // Sync Secondary Videos
+        tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
+            const activeClip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
             );
-            const speed = activeClip?.speed || 1;
 
-            // Increment timeline time based on speed
-            setCurrentTime(prevTime => {
-                const newTime = prevTime + (delta * speed);
-
-                // Stop if reached end
-                if (newTime >= trimRange.end) {
-                    setIsPlaying(false);
-                    if (mediaElementRef.current) mediaElementRef.current.pause();
-
-                    // Pause all audio
-                    Object.values(audioElementsRef.current).forEach(audio => {
-                        if (!audio.paused) audio.pause();
-                    });
-
-                    return trimRange.end;
+            if (activeClip) {
+                if (!videoElementsRef.current[activeClip.id]) {
+                    const video = document.createElement('video');
+                    video.src = activeClip.source;
+                    video.muted = true;
+                    video.crossOrigin = 'anonymous';
+                    videoElementsRef.current[activeClip.id] = video;
                 }
+                const video = videoElementsRef.current[activeClip.id];
 
-                // --- SMART SYNC LOGIC (Video) ---
-                if (mediaElementRef.current && isVideo) {
-                    // Set playback rate
-                    if (mediaElementRef.current.playbackRate !== speed) {
-                        mediaElementRef.current.playbackRate = speed;
-                    }
+                // Manual Sync for now (or register if we want auto-sync)
+                const expectedSourceTime = activeClip.startOffset + (currentTime - activeClip.startTime);
+                const drift = Math.abs(video.currentTime - expectedSourceTime);
 
-                    if (activeClip) {
-                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime) * speed;
-                        // Note: If video is playing at rate 'speed', currentTime advances by delta*speed.
-                        // But video.currentTime also advances by delta*speed natively if playbackRate is set.
-                        // So we just need to sync the start offset.
+                if (drift > 0.2) video.currentTime = expectedSourceTime;
 
-                        // Actually, simpler: 
-                        // Video Time = StartOffset + (TimelineTime - ClipStartTime) * (Speed? No, Speed is implicit in TimelineTime advancement?)
-                        // Wait. If I play 1s of timeline at 2x speed, timeline advances 2s? No.
-                        // If I play 1s of real time, timeline advances 1s * speed.
-                        // Video should also advance 1s * speed.
-                        // So the formula `activeClip.startOffset + (newTime - activeClip.startTime)` is correct 
-                        // IF `newTime` has already been adjusted for speed (which it is).
-                        // However, the video element's own internal clock runs at `playbackRate`.
-
-                        const calculatedVideoTime = activeClip.startOffset + (newTime - activeClip.startTime);
-
-                        const drift = Math.abs(mediaElementRef.current.currentTime - calculatedVideoTime);
-
-                        if (drift > 0.2) { // Increased threshold slightly
-                            mediaElementRef.current.currentTime = calculatedVideoTime;
-                        }
-                        if (mediaElementRef.current.paused) {
-                            mediaElementRef.current.play().catch(() => { });
-                        }
-                    } else {
-                        if (!mediaElementRef.current.paused) {
-                            mediaElementRef.current.pause();
-                        }
-                    }
-                }
-
-                // --- SECONDARY VIDEO SYNC LOGIC ---
-                tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
-                    const activeClip = track.clips.find(c =>
-                        newTime >= c.startTime && newTime < (c.startTime + c.duration)
-                    );
-
-                    if (activeClip) {
-                        if (!videoElementsRef.current[activeClip.id]) {
-                            const video = document.createElement('video');
-                            video.src = activeClip.source;
-                            video.muted = true;
-                            video.crossOrigin = 'anonymous';
-                            videoElementsRef.current[activeClip.id] = video;
-                        }
-                        const video = videoElementsRef.current[activeClip.id];
-
-                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
-                        const drift = Math.abs(video.currentTime - expectedSourceTime);
-
-                        if (drift > 0.1) {
-                            video.currentTime = expectedSourceTime;
-                        }
-                        if (video.paused) {
-                            video.play().catch(() => { });
-                        }
-                    } else {
-                        // Pause inactive videos
-                        track.clips.forEach(c => {
-                            if (videoElementsRef.current[c.id] && !videoElementsRef.current[c.id].paused) {
-                                videoElementsRef.current[c.id].pause();
-                            }
-                        });
+                if (isPlaying && video.paused) video.play().catch(() => { });
+                else if (!isPlaying && !video.paused) video.pause();
+            } else {
+                // Pause inactive
+                track.clips.forEach(c => {
+                    if (videoElementsRef.current[c.id] && !videoElementsRef.current[c.id].paused) {
+                        videoElementsRef.current[c.id].pause();
                     }
                 });
+            }
+        });
 
-                // --- AUDIO MIXER LOGIC ---
-                tracks.filter(t => t.type === 'audio').forEach(track => {
-                    const activeClip = track.clips.find(c =>
-                        newTime >= c.startTime && newTime < (c.startTime + c.duration)
-                    );
+        // Sync Audio
+        tracks.filter(t => t.type === 'audio').forEach(track => {
+            const activeClip = track.clips.find(c =>
+                currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+            );
 
-                    if (activeClip) {
-                        // Get or create Audio element
-                        if (!audioElementsRef.current[activeClip.id]) {
-                            const audio = new Audio(activeClip.source);
-                            audio.loop = false;
-                            audioElementsRef.current[activeClip.id] = audio;
-                        }
-                        const audio = audioElementsRef.current[activeClip.id];
+            if (activeClip) {
+                if (!audioElementsRef.current[activeClip.id]) {
+                    const audio = new Audio(activeClip.source);
+                    audioElementsRef.current[activeClip.id] = audio;
+                }
+                const audio = audioElementsRef.current[activeClip.id];
 
-                        // Sync Audio
-                        const expectedSourceTime = activeClip.startOffset + (newTime - activeClip.startTime);
-                        const drift = Math.abs(audio.currentTime - expectedSourceTime);
+                const expectedSourceTime = activeClip.startOffset + (currentTime - activeClip.startTime);
+                const drift = Math.abs(audio.currentTime - expectedSourceTime);
 
-                        if (drift > 0.1 || audio.paused) {
-                            if (drift > 0.1) audio.currentTime = expectedSourceTime;
-                            audio.play().catch(e => console.warn("Audio play failed", e));
-                        }
+                if (drift > 0.2) audio.currentTime = expectedSourceTime;
 
-                        // Volume control (TODO: Add volume to clip model)
-                        audio.volume = 1.0;
-                    } else {
-                        // Pause any playing audio for this track? 
-                        // Actually we need to check all cached audios for this track and pause them if not active.
-                        // But simpler: iterate all cached audios and pause if not active?
-                        // No, that's expensive.
-                        // Better: We only care about the *previous* active clip? 
-                        // Let's just iterate all cached audios in the cleanup or check here.
-                        // For now, let's iterate all clips in this track and ensure their audio is paused if not active.
-                        track.clips.forEach(c => {
-                            if (c.id !== activeClip?.id && audioElementsRef.current[c.id]) {
-                                const audio = audioElementsRef.current[c.id];
-                                if (!audio.paused) audio.pause();
-                            }
-                        });
+                if (isPlaying && audio.paused) audio.play().catch(() => { });
+                else if (!isPlaying && !audio.paused) audio.pause();
+            } else {
+                track.clips.forEach(c => {
+                    if (audioElementsRef.current[c.id] && !audioElementsRef.current[c.id].paused) {
+                        audioElementsRef.current[c.id].pause();
                     }
                 });
+            }
+        });
 
-                return newTime;
-            });
-
-            animationFrameId = requestAnimationFrame(playbackLoop);
-        };
-
-        if (isPlaying) {
-            lastTime = Date.now();
-            playbackLoop();
-        } else {
-            cancelAnimationFrame(animationFrameId);
-            // Ensure video pauses when timeline pauses
-            if (mediaElementRef.current) mediaElementRef.current.pause();
-
-            // Pause all audio
-            Object.values(audioElementsRef.current).forEach(audio => {
-                if (!audio.paused) audio.pause();
-            });
-
-            // Pause all secondary videos
-            Object.values(videoElementsRef.current).forEach(video => {
-                if (!video.paused) video.pause();
-            });
-        }
-
-        return () => cancelAnimationFrame(animationFrameId);
-    }, [isPlaying, trimRange.end, tracks, isVideo, mediaElementRef]);
+    }, [currentTime, isPlaying, tracks]);
 
     // Canvas Interaction State
     const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
@@ -713,75 +565,291 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const canvas = canvasRef.current;
         if (!canvas) return { x: 0, y: 0 };
         const rect = canvas.getBoundingClientRect();
+        const scaleX = canvasDimensions.width / rect.width;
+        const scaleY = canvasDimensions.height / rect.height;
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
         };
     };
 
-    const handleCanvasMouseDown = (e) => {
-        if (!selectedClipId || !canvasRef.current) return;
+    const handleCanvasPointerDown = (e) => {
+        if (!canvasRef.current) return;
 
         const { x, y } = getCanvasCoordinates(e);
-        const activeItem = getActiveItem();
-        if (!activeItem) return;
 
-        // Simple hit testing (approximate for now)
-        // Ideally we should project the click into the transformed space of the clip
-        // For now, let's just assume if we click, we are interacting with the selected clip
-        // We need to determine if we hit a handle or the body.
+        // 1. Check for Handles on Selected Clip first
+        if (selectedClipId) {
+            // Find the selected clip/text object
+            let selectedItem = null;
+            let isText = false;
 
-        // TODO: Implement precise hit testing for handles vs body
-        // For this iteration, let's assume:
-        // - Click near center -> Move
-        // - Click near corners -> Scale (simplified)
-        // - Right click -> Rotate? No, let's use a modifier or specific handle area.
+            // Check text tracks
+            for (const track of tracks) {
+                if (track.type === 'text') {
+                    const clip = track.clips.find(c => c.id === selectedClipId);
+                    if (clip) {
+                        selectedItem = clip;
+                        isText = true;
+                        break;
+                    }
+                } else {
+                    const clip = track.clips.find(c => c.id === selectedClipId);
+                    if (clip) {
+                        selectedItem = clip;
+                        break;
+                    }
+                }
+            }
 
-        // Let's implement a basic "Move" for now to verify propagation
-        setDragAction('move');
-        setDragStart({ x, y });
-        setInitialTransform(activeItem.transform || {});
-        setIsDraggingCanvas(true);
+            if (selectedItem) {
+                // Check if we hit a handle
+                // For text, we need to construct the overlay object expected by utils
+                const itemForHitTest = isText ? {
+                    type: 'text',
+                    x: selectedItem.style?.x || 50,
+                    y: selectedItem.style?.y || 50,
+                    fontSize: selectedItem.style?.fontSize || 48,
+                    fontFamily: selectedItem.style?.fontFamily || 'Arial',
+                    fontWeight: selectedItem.style?.fontWeight || 'bold',
+                    text: selectedItem.text,
+                    rotation: selectedItem.style?.rotation || 0
+                } : {
+                    type: 'media',
+                    transform: selectedItem.transform || {}
+                };
+
+                // Get real media dimensions for accurate handle positioning
+                let mediaDims = { width: 100, height: 100 };
+                if (!isText) {
+                    const track = tracks.find(t => t.clips.some(c => c.id === selectedClipId));
+                    if (track?.id === 'track-main') {
+                        if (mediaElementRef.current) {
+                            mediaDims = {
+                                width: mediaElementRef.current.videoWidth || mediaElementRef.current.width,
+                                height: mediaElementRef.current.videoHeight || mediaElementRef.current.height
+                            };
+                        }
+                    } else {
+                        const el = videoElementsRef.current[selectedClipId] || imageElementsRef.current[selectedClipId];
+                        if (el) {
+                            mediaDims = {
+                                width: el.videoWidth || el.width,
+                                height: el.videoHeight || el.height
+                            };
+                        }
+                    }
+                }
+
+                const handle = getHandleAtPoint(x, y, itemForHitTest, canvasDimensions,
+                    isText ? null : mediaDims
+                );
+
+                if (handle) {
+                    setIsDraggingCanvas(true);
+                    setDragAction(handle.name === 'rot' ? 'rotate' : 'scale');
+                    setActiveHandle(handle.name);
+
+                    // Calculate Center for precise math
+                    let cx, cy;
+                    if (isText) {
+                        cx = ((selectedItem.style?.x || 50) / 100) * canvasDimensions.width;
+                        cy = ((selectedItem.style?.y || 50) / 100) * canvasDimensions.height;
+                    } else {
+                        cx = canvasDimensions.width / 2 + (selectedItem.transform?.x || 0);
+                        cy = canvasDimensions.height / 2 + (selectedItem.transform?.y || 0);
+                    }
+
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const angle = Math.atan2(dy, dx);
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    setDragStart({
+                        x, y,
+                        cx, cy,
+                        initialAngle: angle,
+                        initialDistance: distance,
+                        initialRotation: (isText ? selectedItem.style?.rotation : selectedItem.transform?.rotation) || 0,
+                        initialScale: isText ? (selectedItem.style?.fontSize || 48) : (selectedItem.transform?.scale || 100)
+                    });
+                    setInitialTransform(isText ? { ...selectedItem.style } : { ...selectedItem.transform });
+                    return;
+                }
+            }
+        }
+
+        // 2. Hit Test for Selection (Reverse render order: Top to Bottom)
+        // Gather all visible items in Z-order
+        const visibleItems = [];
+        tracks.forEach((track, index) => {
+            track.clips.forEach(clip => {
+                if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
+                    visibleItems.push({ ...clip, trackType: track.type, zIndex: index });
+                }
+            });
+        });
+
+        // Iterate reverse (Top to Bottom)
+        for (let i = visibleItems.length - 1; i >= 0; i--) {
+            const item = visibleItems[i];
+            let isHit = false;
+
+            if (item.trackType === 'text') {
+                const textOverlay = {
+                    x: item.style?.x || 50,
+                    y: item.style?.y || 50,
+                    fontSize: item.style?.fontSize || 48,
+                    fontFamily: item.style?.fontFamily || 'Arial',
+                    fontWeight: item.style?.fontWeight || 'bold',
+                    text: item.text,
+                    rotation: item.style?.rotation || 0
+                };
+                isHit = isPointInText(x, y, textOverlay, canvasDimensions);
+            } else {
+                // Media, Sticker, Image
+                // Need dimensions for aspect ratio calculation in isPointInClip
+                let mediaDims = { width: 100, height: 100 };
+
+                if (item.trackType === 'sticker') {
+                    // Estimate or use default for stickers if image not available
+                    // TODO: Get actual sticker dims
+                    mediaDims = { width: 100, height: 100 };
+                } else {
+                    // Video/Image
+                    const mainTrack = tracks.find(t => t.id === 'track-main');
+                    const activeMainClip = mainTrack?.clips.find(c =>
+                        currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+                    );
+
+                    if (item.id === activeMainClip?.id && item.trackType === 'video' && tracks.find(t => t.id === 'track-main')?.clips.includes(item)) {
+                        // Main video
+                        if (mediaElementRef.current) {
+                            mediaDims = {
+                                width: mediaElementRef.current.videoWidth || mediaElementRef.current.width,
+                                height: mediaElementRef.current.videoHeight || mediaElementRef.current.height
+                            };
+                        }
+                    } else {
+                        // Secondary
+                        const el = videoElementsRef.current[item.id] || imageElementsRef.current[item.id];
+                        if (el) {
+                            mediaDims = {
+                                width: el.videoWidth || el.width,
+                                height: el.videoHeight || el.height
+                            };
+                        }
+                    }
+                }
+
+                isHit = isPointInClip(x, y, item, canvasDimensions, mediaDims);
+            }
+
+            if (isHit) {
+                handleClipSelect(item.id);
+                setIsDraggingCanvas(true);
+                setDragAction('move');
+                setDragStart({ x, y });
+                setInitialTransform(item.trackType === 'text' ? { ...item.style } : { ...item.transform });
+                return;
+            }
+        }
+
+        // If clicked on nothing, deselect?
+        // setSelectedClipId(null);
     };
 
-    const handleCanvasMouseMove = (e) => {
+    const handleCanvasPointerMove = (e) => {
         if (!isDraggingCanvas || !selectedClipId || !dragAction) return;
 
         const { x, y } = getCanvasCoordinates(e);
         const dx = x - dragStart.x;
         const dy = y - dragStart.y;
 
+        // Find the track/clip to update
+        const track = tracks.find(t => t.clips.some(c => c.id === selectedClipId));
+        if (!track) return;
+        const clip = track.clips.find(c => c.id === selectedClipId);
+        if (!clip) return;
+
+        const isText = track.type === 'text';
+
         if (dragAction === 'move') {
-            handleUpdateActiveItem({
-                transform: {
-                    ...initialTransform,
+            // Convert px delta to % delta
+            const dxPercent = (dx / canvasDimensions.width) * 100;
+            const dyPercent = (dy / canvasDimensions.height) * 100;
+
+            if (isText) {
+                const newStyle = {
+                    ...clip.style,
+                    x: (initialTransform.x || 50) + dxPercent,
+                    y: (initialTransform.y || 50) + dyPercent
+                };
+                updateClip(selectedClipId, { style: newStyle });
+            } else {
+                // Media/Sticker
+                const newTransform = {
+                    ...clip.transform,
+                    x: (initialTransform.x || 0) + dx, // Media uses px offset usually? No, let's stick to consistent units.
+                    // Wait, drawMediaToCanvas uses x as offset in pixels?
+                    // Let's check drawMediaToCanvas:
+                    // const centerX = logicalWidth / 2 + x;
+                    // So x is in pixels from center.
+                    // But text uses % from top-left.
+                    // This inconsistency is annoying.
+                    // Let's assume media transform x/y is in pixels for now as per previous code.
                     x: (initialTransform.x || 0) + dx,
                     y: (initialTransform.y || 0) + dy
-                }
-            });
+                };
+                updateClip(selectedClipId, { transform: newTransform });
+            }
+        } else if (dragAction === 'scale') {
+            const { cx, cy, initialDistance, initialScale } = dragStart;
+            const dx = x - cx;
+            const dy = y - cy;
+            const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+            // Prevent division by zero or negative scale
+            if (initialDistance < 1) return;
+
+            const scaleFactor = currentDistance / initialDistance;
+            const newScaleVal = Math.max(1, initialScale * scaleFactor);
+
+            if (isText) {
+                updateClip(selectedClipId, {
+                    style: { ...clip.style, fontSize: newScaleVal }
+                });
+            } else {
+                updateClip(selectedClipId, {
+                    transform: { ...clip.transform, scale: newScaleVal }
+                });
+            }
+        } else if (dragAction === 'rotate') {
+            const { cx, cy, initialAngle, initialRotation } = dragStart;
+            const dx = x - cx;
+            const dy = y - cy;
+            const currentAngle = Math.atan2(dy, dx);
+            const deltaAngle = (currentAngle - initialAngle) * (180 / Math.PI);
+            const newRotation = initialRotation + deltaAngle;
+
+            if (isText) {
+                updateClip(selectedClipId, {
+                    style: { ...clip.style, rotation: newRotation }
+                });
+            } else {
+                updateClip(selectedClipId, {
+                    transform: { ...clip.transform, rotation: newRotation }
+                });
+            }
         }
     };
 
-    const handleCanvasMouseUp = () => {
+    const handleCanvasPointerUp = () => {
         setIsDraggingCanvas(false);
         setDragAction(null);
     };
 
-    // Attach listeners to canvas
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
 
-        canvas.addEventListener('mousedown', handleCanvasMouseDown);
-        window.addEventListener('mousemove', handleCanvasMouseMove);
-        window.addEventListener('mouseup', handleCanvasMouseUp);
-
-        return () => {
-            canvas.removeEventListener('mousedown', handleCanvasMouseDown);
-            window.removeEventListener('mousemove', handleCanvasMouseMove);
-            window.removeEventListener('mouseup', handleCanvasMouseUp);
-        };
-    }, [canvasRef, selectedClipId, isDraggingCanvas, dragStart, dragAction, initialTransform]);
 
     // Handlers
     const handleFileSelect = (e) => {
@@ -790,18 +858,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     };
 
     const handlePlayPause = () => {
-        if (mediaElementRef.current) {
-            if (isPlaying) {
-                mediaElementRef.current.pause();
-            } else {
-                mediaElementRef.current.play();
-            }
-            setIsPlaying(!isPlaying);
-        }
+        togglePlay();
     };
 
     const handleSeek = (time) => {
-        setCurrentTime(time);
+        seek(time);
 
         // Sync video element immediately for preview
         if (mediaElementRef.current && isVideo) {
@@ -816,8 +877,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     mediaElementRef.current.currentTime = sourceTime;
                 }
             }
-            // If in gap, we don't strictly need to seek, but maybe pause?
-            // The render loop will handle the black screen.
         }
 
         // Sync secondary videos
@@ -960,16 +1019,34 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             };
         }
 
-        // Handle Style Merging (Legacy for text/stickers)
-        if (updates.x !== undefined || updates.color !== undefined || updates.text !== undefined) {
+        // Handle Style Merging
+        // If updates has a style object, merge it with current style
+        if (updates.style) {
             finalUpdates.style = {
                 ...(current.style || {}),
-                ...updates
+                ...updates.style
             };
-            // Clean up top-level props that are now in style
-            delete finalUpdates.x;
-            delete finalUpdates.color;
-            delete finalUpdates.text;
+        }
+
+        // Legacy support: if x/y/color are passed at top level, move them to style
+        // But DO NOT move 'text' to style, as it lives at top level.
+        if (updates.x !== undefined || updates.y !== undefined || updates.color !== undefined) {
+            finalUpdates.style = {
+                ...(finalUpdates.style || current.style || {}),
+            };
+
+            if (updates.x !== undefined) {
+                finalUpdates.style.x = updates.x;
+                delete finalUpdates.x;
+            }
+            if (updates.y !== undefined) {
+                finalUpdates.style.y = updates.y;
+                delete finalUpdates.y;
+            }
+            if (updates.color !== undefined) {
+                finalUpdates.style.color = updates.color;
+                delete finalUpdates.color;
+            }
         }
 
         updateClip(selectedClipId, finalUpdates);
@@ -982,13 +1059,49 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     };
 
     const handleDrop = (trackId, asset, time) => {
-        addClip(trackId, {
+        const clipData = {
             type: asset.type,
             source: asset.url,
             startTime: time,
             duration: asset.duration || 5, // Default duration
             name: asset.name
-        });
+        };
+
+        if (!trackId) {
+            // Auto-create new track
+            addClipToNewTrack(asset.type, clipData);
+        } else {
+            // Add to existing track with "Connect" logic (Snap to end if close)
+            // We need to find the track to check for collisions/snapping
+            const track = tracks.find(t => t.id === trackId);
+            if (track) {
+                // Find if we are dropping near the end of another clip
+                // Simple logic: if time is within 0.5s of a clip end, snap to it.
+                // Or if we are dropping "over" a clip, maybe insert?
+                // The user said "connect the existing media".
+                // Let's try to find the closest clip end before the drop time.
+
+                let closestEnd = -1;
+                let minDiff = Infinity;
+
+                track.clips.forEach(c => {
+                    const end = c.startTime + c.duration;
+                    const diff = Math.abs(time - end);
+                    if (diff < 1.0) { // Snap threshold 1s
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closestEnd = end;
+                        }
+                    }
+                });
+
+                if (closestEnd !== -1) {
+                    clipData.startTime = closestEnd;
+                }
+            }
+
+            addClip(trackId, clipData);
+        }
     };
 
     // Render upload screen if no media
@@ -1013,6 +1126,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setSelectedClipId(clipId);
         setActiveTab('transitions');
     };
+
+
 
     return (
         <EditorLayout
@@ -1072,6 +1187,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     cropPreset={cropPreset}
                     activeTab={activeTab}
                     buildFilterString={buildFilterString}
+                    onCanvasPointerDown={handleCanvasPointerDown}
+                    onCanvasPointerMove={handleCanvasPointerMove}
+                    onCanvasPointerUp={handleCanvasPointerUp}
                 />
             }
             rightPanel={

@@ -18,7 +18,10 @@ export const PreviewPlayer = ({
     setCropData,
     cropPreset,
     activeTab,
-    buildFilterString
+    buildFilterString,
+    onCanvasPointerDown,
+    onCanvasPointerMove,
+    onCanvasPointerUp
 }) => {
     return (
         <div className="relative w-full h-full flex items-center justify-center bg-[#0f0f12] overflow-hidden">
@@ -38,6 +41,9 @@ export const PreviewPlayer = ({
                     onDeleteOverlay={deleteOverlay}
                     onBackgroundClick={() => setActiveOverlayId(null)}
                     filterString={buildFilterString(adjustments)}
+                    onCanvasPointerDown={onCanvasPointerDown}
+                    onCanvasPointerMove={onCanvasPointerMove}
+                    onCanvasPointerUp={onCanvasPointerUp}
                 />
                 <CropOverlay
                     canvasRef={canvasRef}

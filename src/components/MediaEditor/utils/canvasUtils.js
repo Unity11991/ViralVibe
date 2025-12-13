@@ -12,6 +12,41 @@
  * @param {Object} canvasDimensions - Logical canvas dimensions
  */
 
+/**
+ * Canvas Pool to reduce GC pressure
+ */
+const CanvasPool = {
+    pool: [],
+    get(width, height) {
+        let canvas = this.pool.pop();
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+        }
+        canvas.width = width;
+        canvas.height = height;
+        return canvas;
+    },
+    release(canvas) {
+        if (this.pool.length < 10) { // Limit pool size
+            this.pool.push(canvas);
+        }
+    }
+};
+
+/**
+ * Get a cached canvas (wrapper for pool)
+ */
+const getCachedCanvas = (width, height) => {
+    return CanvasPool.get(width, height);
+};
+
+/**
+ * Release a cached canvas
+ */
+const releaseCanvas = (canvas) => {
+    CanvasPool.release(canvas);
+};
+
 
 /**
  * Cubic Bezier Easing Helper
@@ -180,6 +215,9 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             tempCtx.filter = 'none';
 
             ctx.drawImage(tempCanvas, 0, 0);
+
+            // Release temp canvas
+            releaseCanvas(tempCanvas);
         } else {
             // Hard Masking
             ctx.save();
@@ -530,195 +568,208 @@ export const applyColorGrade = (ctx, filterId, width, height) => {
  * @param {HTMLImageElement|HTMLVideoElement} media - Media element
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
-export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
-    const { adjustments, vignette, grain, textOverlays, stickers, stickerImages, transform, canvasDimensions, memePadding, activeEffectId, effectIntensity = 50, activeFilterId, visibleClips } = state;
+/**
+ * Render a single layer (clip, text, sticker)
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {Object} layer 
+ * @param {Object} globalState 
+ */
+const renderLayer = (ctx, layer, globalState) => {
+    const { canvasDimensions, memePadding } = globalState;
+    const {
+        type,
+        media,
+        text,
+        image,
+        transform = {},
+        adjustments = {},
+        filter = 'normal',
+        effect = null,
+        mask = null,
+        opacity = 100,
+        blendMode = 'normal',
+        transition = null
+    } = layer;
 
-    // Use provided logical dimensions or fallback to physical dimensions (not recommended for high DPI)
-    const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
+    // 1. Setup Context State
+    ctx.save();
+    ctx.globalAlpha = opacity / 100;
+    ctx.globalCompositeOperation = blendMode;
 
-    // Clear canvas first
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+    // 2. Calculate Transform
+    // We need to handle transition transforms here if they exist and aren't pre-calculated
+    // But ideally, the layer object passed here already has the *current* frame's transform properties
+    // (interpolated by the caller or MediaEditor).
+    // Assuming 'transform' contains the final draw properties (x, y, scale, rotation).
 
-    if (visibleClips && visibleClips.length > 0) {
-        // Multi-track rendering
-        visibleClips.forEach((clip, index) => {
-            // Prepare clip-specific state
-            const clipAdjustments = clip.adjustments || adjustments;
-            const clipFilterId = clip.filter || activeFilterId;
-            const clipEffectId = clip.effect || activeEffectId;
-            const clipTransform = clip.transform || transform;
+    // 3. Draw Content
+    if (transition) {
+        // Handle Transition Rendering (Complex)
+        // This logic is similar to the previous implementation but wrapped for layers
+        // We might need a temp canvas if the transition involves masking/compositing
+        const { width, height } = canvasDimensions;
+        const tempCanvas = getCachedCanvas(width, height);
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.clearRect(0, 0, width, height);
 
-            // Handle Transition Logic
-            let drawTransform = { ...clipTransform };
-            let transitionMask = null;
+        // Draw base content to temp
+        if (type === 'video' || type === 'image') {
+            drawMediaToCanvas(tempCtx, media, adjustments, transform, canvasDimensions, memePadding, {
+                applyFiltersToContext: true,
+                clearCanvas: false,
+                mask: mask
+            });
+        } else if (type === 'text') {
+            // Adapt text overlay to drawTextOverlay signature
+            drawTextOverlay(tempCtx, layer, width, height);
+        } else if (type === 'sticker') {
+            drawStickerOverlay(tempCtx, layer, image, width, height);
+        }
 
-            if (clip.transition && clip.transition.type !== 'none') {
-                const { type, progress } = clip.transition;
+        // Apply Transition FX & Mask
+        applyTransitionFX(tempCtx, transition, width, height, media);
+        applyTransitionMask(tempCtx, transition, width, height);
 
-                // Apply Easing (CSS-style)
-                // Default to ease-in-out for smooth transitions
-                const easeFunc = EASING.easeInOut;
-                const p = easeFunc(progress);
+        // Draw Temp to Main
+        ctx.drawImage(tempCanvas, 0, 0);
+        releaseCanvas(tempCanvas);
 
-                // Create local transition object with eased progress
-                transitionMask = { ...clip.transition, progress: p };
-
-                const w = dimensions.width;
-                const h = dimensions.height;
-
-                // Transform-based Transitions (Slide, Zoom)
-                if (type.startsWith('slide_') || type.startsWith('cover_') || type.startsWith('reveal_')) {
-                    // Map reveal/cover to slide for now (simplified)
-                    // TODO: Implement true reveal (requires modifying prevClip)
-                    const direction = type.split('_')[1];
-                    if (direction === 'left') drawTransform.x = (drawTransform.x || 0) + (1 - p) * w;
-                    else if (direction === 'right') drawTransform.x = (drawTransform.x || 0) - (1 - p) * w;
-                    else if (direction === 'up') drawTransform.y = (drawTransform.y || 0) + (1 - p) * h;
-                    else if (direction === 'down') drawTransform.y = (drawTransform.y || 0) - (1 - p) * h;
-                } else if (type.startsWith('zoom_')) {
-                    if (type === 'zoom_in') drawTransform.scale = (drawTransform.scale || 100) * p;
-                    else if (type === 'zoom_out') drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
-                    else if (type === 'zoom_rotate_in') {
-                        drawTransform.scale = (drawTransform.scale || 100) * p;
-                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 360;
-                    }
-                    else if (type === 'zoom_rotate_out') {
-                        drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
-                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 360;
-                    }
-                } else if (type.startsWith('swirl_')) {
-                    if (type === 'swirl_in') {
-                        drawTransform.scale = (drawTransform.scale || 100) * p;
-                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 720;
-                    } else {
-                        drawTransform.scale = (drawTransform.scale || 100) * (2 - p);
-                        drawTransform.rotation = (drawTransform.rotation || 0) + (1 - p) * 720;
-                    }
-                } else if (type.startsWith('bounce_')) {
-                    // Simple bounce effect
-                    const bounce = (t) => {
-                        if (t < 1 / 2.75) return 7.5625 * t * t;
-                        if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
-                        if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
-                        return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
-                    };
-                    if (type === 'bounce_in') {
-                        drawTransform.scale = (drawTransform.scale || 100) * bounce(p);
-                    } else {
-                        drawTransform.scale = (drawTransform.scale || 100) * (2 - bounce(p));
-                    }
-                }
-
-                transitionMask = clip.transition;
-            }
-
-            // Draw Logic
-            if (transitionMask) {
-                // Use Temp Canvas for Transition Masking
-                const tempCanvas = getCachedCanvas(dimensions.width, dimensions.height);
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.clearRect(0, 0, dimensions.width, dimensions.height);
-
-                drawMediaToCanvas(tempCtx, clip.media, clipAdjustments, drawTransform, dimensions, memePadding, {
-                    applyFiltersToContext: options.applyFiltersToContext,
-                    clearCanvas: false,
-                    mask: clip.mask
-                });
-
-                // Apply Transition FX (Glitch, Blur, Color, Light)
-                applyTransitionFX(tempCtx, transitionMask, dimensions.width, dimensions.height, clip.media);
-
-                // Apply Transition Mask (Alpha/Composite)
-                applyTransitionMask(tempCtx, transitionMask, dimensions.width, dimensions.height);
-
-                // Draw Temp to Main with Blend Mode if needed
-                ctx.save();
-                const tType = transitionMask.type;
-                if (tType === 'additive') ctx.globalCompositeOperation = 'lighter';
-                else if (tType === 'multiply') ctx.globalCompositeOperation = 'multiply';
-                else if (tType === 'screen') ctx.globalCompositeOperation = 'screen';
-                else if (tType === 'overlay') ctx.globalCompositeOperation = 'overlay';
-
-                ctx.drawImage(tempCanvas, 0, 0);
-                ctx.restore();
-            } else {
-                // Normal Draw
-                drawMediaToCanvas(ctx, clip.media, clipAdjustments, drawTransform, dimensions, memePadding, {
-                    applyFiltersToContext: options.applyFiltersToContext,
-                    clearCanvas: false,
-                    mask: clip.mask
-                });
-            }
-
-            // Apply Clip Filters (Color Grade)
-            if (clipFilterId && clipFilterId !== 'normal') {
-                applyColorGrade(ctx, clipFilterId, dimensions.width, dimensions.height);
-            }
-
-            // Apply Clip Effects
-            if (clipEffectId) {
-                const intensity = effectIntensity;
-                applyEffectToCanvas(ctx, clipEffectId, intensity, dimensions.width, dimensions.height, clip.media);
-            }
-
-            // Draw Selection Box if active
-            if (state.activeOverlayId === clip.id) {
-                const mediaWidth = clip.media.videoWidth || clip.media.width;
-                const mediaHeight = clip.media.videoHeight || clip.media.height;
-                drawSelectionBox(ctx, drawTransform, dimensions, { width: mediaWidth, height: mediaHeight });
-            }
-        });
-    } else if (state.hasActiveClip !== false) {
-        // Legacy Single Track Fallback
-        drawMediaToCanvas(ctx, media, adjustments, transform, dimensions, memePadding, { applyFiltersToContext: options.applyFiltersToContext });
-
-        if (activeFilterId && activeFilterId !== 'normal') {
-            applyColorGrade(ctx, activeFilterId, dimensions.width, dimensions.height);
+    } else {
+        // Standard Draw
+        if (type === 'video' || type === 'image') {
+            drawMediaToCanvas(ctx, media, adjustments, transform, canvasDimensions, memePadding, {
+                applyFiltersToContext: true,
+                clearCanvas: false,
+                mask: mask
+            });
+        } else if (type === 'text') {
+            drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
+        } else if (type === 'sticker') {
+            drawStickerOverlay(ctx, layer, image, canvasDimensions.width, canvasDimensions.height);
         }
     }
 
-    // Apply Effects (Global or Last Clip?)
-    if (activeEffectId) {
-        applyEffectToCanvas(ctx, activeEffectId, effectIntensity, dimensions.width, dimensions.height, media);
+    // 4. Apply Per-Layer Color Grade / Effects (if not handled inside drawMedia)
+    // drawMediaToCanvas handles filters/adjustments for media.
+    // But for text/stickers, we might want to apply them too?
+    // Currently drawTextOverlay doesn't support filters.
+    // If we want to support filters on text, we'd need to apply them to ctx before drawing text.
+
+    // Apply Clip Filters (Color Grade) - mostly for media
+    if (filter && filter !== 'normal' && (type === 'video' || type === 'image')) {
+        applyColorGrade(ctx, filter, canvasDimensions.width, canvasDimensions.height);
     }
 
-    // Draw text overlays
-    if (textOverlays && textOverlays.length > 0) {
-        textOverlays.forEach(textOverlay => {
-            let overlayToDraw = { ...textOverlay };
-
-            // Adjust for crop if active (using global transform for now)
-            if (transform.crop) {
-                const { x, y, width, height } = transform.crop;
-                const scaleX = 100 / width;
-                const scaleY = 100 / height;
-                overlayToDraw.x = (textOverlay.x - x) * scaleX;
-                overlayToDraw.y = (textOverlay.y - y) * scaleY;
-                overlayToDraw.fontSize = textOverlay.fontSize * scaleY;
-            }
-
-            drawTextOverlay(ctx, overlayToDraw, dimensions.width, dimensions.height);
-        });
+    // Apply Clip Effects
+    if (effect) {
+        const intensity = globalState.effectIntensity || 50; // Or layer specific
+        applyEffectToCanvas(ctx, effect, intensity, canvasDimensions.width, canvasDimensions.height, media);
     }
 
-    // Draw stickers
-    if (stickers && stickers.length > 0) {
-        stickers.forEach((sticker, index) => {
-            const img = sticker.image;
-            if (img) {
-                let stickerToDraw = { ...sticker };
-                if (transform.crop) {
-                    const { x, y, width, height } = transform.crop;
-                    const scaleX = 100 / width;
-                    const scaleY = 100 / height;
-                    stickerToDraw.x = (sticker.x - x) * scaleX;
-                    stickerToDraw.y = (sticker.y - y) * scaleY;
-                    stickerToDraw.scale = sticker.scale * scaleY;
-                }
-                drawStickerOverlay(ctx, stickerToDraw, img, dimensions.width, dimensions.height);
-            }
+    // 5. Draw Selection Box (if active)
+    if (globalState.activeOverlayId === layer.id) {
+        if (type === 'text') {
+            drawTextSelectionBox(ctx, layer, canvasDimensions);
+        } else {
+            // Media/Sticker
+            const mediaW = media?.videoWidth || media?.width || 100;
+            const mediaH = media?.videoHeight || media?.height || 100;
+            // For stickers, we might need image dims
+            const dims = (type === 'sticker' && image) ? { width: image.width, height: image.height } : { width: mediaW, height: mediaH };
+
+            // Re-calculate draw transform for selection box if needed
+            // But drawSelectionBox expects the transform object.
+            drawSelectionBox(ctx, transform, canvasDimensions, dims);
+        }
+    }
+
+    ctx.restore();
+};
+
+/**
+ * Render complete frame with all effects and overlays
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {HTMLImageElement|HTMLVideoElement} media - Media element
+ * @param {Object} state - Editor state (filters, overlays, etc.)
+ */
+export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
+    const {
+        adjustments,
+        transform,
+        canvasDimensions,
+        memePadding,
+        activeEffectId,
+        effectIntensity = 50,
+        activeFilterId,
+        visibleClips,
+        textOverlays,
+        stickers,
+        visibleLayers // New unified property
+    } = state;
+
+    // Use provided logical dimensions or fallback to physical dimensions
+    const dimensions = canvasDimensions || { width: ctx.canvas.width, height: ctx.canvas.height };
+
+    // Clear canvas
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+    // Prepare Layers
+    let layers = [];
+
+    if (visibleLayers) {
+        // Use the new unified list if available
+        layers = visibleLayers;
+    } else {
+        // Backward compatibility: Merge existing lists
+        // 1. Clips (Background/Main)
+        if (visibleClips) {
+            layers.push(...visibleClips.map(c => ({ ...c, type: c.type || 'video' })));
+        } else if (state.hasActiveClip !== false) {
+            // Legacy single clip
+            layers.push({
+                id: 'main',
+                type: 'video',
+                media: media,
+                adjustments,
+                transform,
+                filter: activeFilterId,
+                effect: activeEffectId
+            });
+        }
+
+        // 2. Stickers
+        if (stickers) {
+            layers.push(...stickers.map(s => ({ ...s, type: 'sticker' })));
+        }
+
+        // 3. Text (Top)
+        if (textOverlays) {
+            layers.push(...textOverlays.map(t => ({ ...t, type: 'text' })));
+        }
+    }
+
+    // Sort Layers by Z-Index (if present)
+    // If zIndex is not present, we assume the array order is correct (bottom to top)
+    layers.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+
+    // Render Layers
+    layers.forEach(layer => {
+        renderLayer(ctx, layer, {
+            canvasDimensions: dimensions,
+            memePadding,
+            activeOverlayId: state.activeOverlayId,
+            effectIntensity
         });
+    });
+
+    // Apply Global Effects (Post-Processing)
+    if (activeEffectId && !visibleLayers) {
+        // Only apply global effect if we are in legacy mode or if explicitly requested as global
+        // In multi-track, effects are usually per-clip.
+        // But if we have a "Master Track" effect, apply it here.
+        // For now, let's assume activeEffectId in state is a global override if not handled per clip
+        // applyEffectToCanvas(ctx, activeEffectId, effectIntensity, dimensions.width, dimensions.height, null);
     }
 };
 
@@ -891,94 +942,11 @@ export const applyEffectToCanvas = (ctx, effectId, intensityValue, width, height
     ctx.restore();
 };
 
-/**
- * Draw selection box with handles around a transformed clip
- * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {Object} transform - Clip transform properties (x, y, scale, rotation)
- * @param {Object} dimensions - Canvas dimensions
- * @param {Object} mediaDimensions - Original media dimensions
- */
-export const drawSelectionBox = (ctx, transform, dimensions, mediaDimensions) => {
-    const { width, height } = dimensions;
-    const { x = 0, y = 0, scale = 100, rotation = 0 } = transform;
-
-    // Calculate base dimensions (similar to drawMediaToCanvas logic)
-    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
-    const canvasAspect = width / height;
-
-    let baseWidth, baseHeight;
-    if (mediaAspect > canvasAspect) {
-        baseWidth = width;
-        baseHeight = width / mediaAspect;
-    } else {
-        baseHeight = height;
-        baseWidth = height * mediaAspect;
-    }
-
-    const scaleFactor = scale / 100;
-    const drawWidth = baseWidth * scaleFactor;
-    const drawHeight = baseHeight * scaleFactor;
-    const centerX = width / 2 + x;
-    const centerY = height / 2 + y;
-
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate((rotation * Math.PI) / 180);
-
-    // Draw Border
-    ctx.strokeStyle = '#3b82f6'; // Blue-500
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-
-    // Draw Handles
-    const handleSize = 8;
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1;
-
-    const handles = [
-        { x: -drawWidth / 2, y: -drawHeight / 2 }, // Top-left
-        { x: drawWidth / 2, y: -drawHeight / 2 },  // Top-right
-        { x: -drawWidth / 2, y: drawHeight / 2 },  // Bottom-left
-        { x: drawWidth / 2, y: drawHeight / 2 },   // Bottom-right
-    ];
-
-    handles.forEach(handle => {
-        ctx.beginPath();
-        ctx.arc(handle.x, handle.y, handleSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    });
-
-    // Rotation Handle (Top Center extended)
-    ctx.beginPath();
-    ctx.moveTo(0, -drawHeight / 2);
-    ctx.lineTo(0, -drawHeight / 2 - 20);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(0, -drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.restore();
-};
 
 
 
-// Cached canvas for soft masking to avoid garbage collection
-let cachedMaskCanvas = null;
 
-const getCachedCanvas = (width, height) => {
-    if (!cachedMaskCanvas) {
-        cachedMaskCanvas = document.createElement('canvas');
-    }
-    if (cachedMaskCanvas.width !== width || cachedMaskCanvas.height !== height) {
-        cachedMaskCanvas.width = width;
-        cachedMaskCanvas.height = height;
-    }
-    return cachedMaskCanvas;
-};
+
 
 /**
  * Apply mask clipping path or draw mask shape
@@ -1336,4 +1304,312 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
     }
 
     ctx.restore();
+};
+
+/**
+ * Draw selection box with handles
+ */
+export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensions) => {
+    const { width, height } = canvasDimensions;
+    const { x = 0, y = 0, scale = 100, rotation = 0 } = transform;
+
+    // Calculate drawn dimensions
+    // Note: This logic must match drawMediaToCanvas positioning logic
+    // We assume "contain" logic or explicit transform
+    // For now, let's replicate the basic transform logic
+
+    // Base dimensions (assuming contain logic from drawMediaToCanvas)
+    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+    const canvasAspect = width / height;
+
+    let baseWidth, baseHeight;
+    if (mediaAspect > canvasAspect) {
+        baseWidth = width;
+        baseHeight = width / mediaAspect;
+    } else {
+        baseHeight = height;
+        baseWidth = height * mediaAspect;
+    }
+
+    const scaleFactor = scale / 100;
+    const drawWidth = baseWidth * scaleFactor;
+    const drawHeight = baseHeight * scaleFactor;
+
+    const centerX = width / 2 + x;
+    const centerY = height / 2 + y;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((rotation * Math.PI) / 180);
+
+    // Draw Border
+    ctx.strokeStyle = '#00a8ff'; // Selection Blue
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+    // Draw Handles
+    const handleSize = 6;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#00a8ff';
+    ctx.lineWidth = 1;
+
+    const handles = [
+        { x: -drawWidth / 2, y: -drawHeight / 2 }, // Top-Left
+        { x: drawWidth / 2, y: -drawHeight / 2 },  // Top-Right
+        { x: drawWidth / 2, y: drawHeight / 2 },   // Bottom-Right
+        { x: -drawWidth / 2, y: drawHeight / 2 },  // Bottom-Left
+    ];
+
+    handles.forEach(h => {
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, handleSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+
+    // Rotation Handle (Top Center + Offset)
+    ctx.beginPath();
+    ctx.moveTo(0, -drawHeight / 2);
+    ctx.lineTo(0, -drawHeight / 2 - 20);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, -drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+};
+
+/**
+ * Draw selection box for text
+ */
+export const drawTextSelectionBox = (ctx, textOverlay, canvasDimensions) => {
+    const { width, height } = canvasDimensions;
+    const { x: tx, y: ty, fontSize, fontFamily, fontWeight, text, rotation } = textOverlay;
+
+    // Convert % position to px
+    const centerX = (tx / 100) * width;
+    const centerY = (ty / 100) * height;
+
+    // Measure text
+    const scaleFactor = height / 600;
+    const scaledFontSize = fontSize * scaleFactor;
+    ctx.font = `${fontWeight} ${scaledFontSize}px ${fontFamily}`;
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = scaledFontSize; // Approximation
+
+    const drawWidth = textWidth + 20; // Padding
+    const drawHeight = textHeight + 20; // Padding
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((rotation * Math.PI) / 180);
+
+    // Draw Border
+    ctx.strokeStyle = '#00a8ff'; // Selection Blue
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
+    // Draw Handles
+    const handleSize = 6;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#00a8ff';
+    ctx.lineWidth = 1;
+
+    const handles = [
+        { x: -drawWidth / 2, y: -drawHeight / 2 }, // Top-Left
+        { x: drawWidth / 2, y: -drawHeight / 2 },  // Top-Right
+        { x: drawWidth / 2, y: drawHeight / 2 },   // Bottom-Right
+        { x: -drawWidth / 2, y: drawHeight / 2 },  // Bottom-Left
+    ];
+
+    handles.forEach(h => {
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, handleSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+
+    // Rotation Handle (Top Center + Offset)
+    ctx.beginPath();
+    ctx.moveTo(0, -drawHeight / 2);
+    ctx.lineTo(0, -drawHeight / 2 - 20);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, -drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+};
+
+/**
+ * Check if a point is inside a clip's bounding box
+ */
+export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => {
+    const { width, height } = canvasDimensions;
+    const transform = clip.transform || {};
+    const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0 } = transform;
+
+    // Calculate clip dimensions (similar to drawSelectionBox)
+    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+    const canvasAspect = width / height;
+
+    let baseWidth, baseHeight;
+    if (mediaAspect > canvasAspect) {
+        baseWidth = width;
+        baseHeight = width / mediaAspect;
+    } else {
+        baseHeight = height;
+        baseWidth = height * mediaAspect;
+    }
+
+    const scaleFactor = scale / 100;
+    const drawWidth = baseWidth * scaleFactor;
+    const drawHeight = baseHeight * scaleFactor;
+    const centerX = width / 2 + cx;
+    const centerY = height / 2 + cy;
+
+    // Rotate point around center to align with unrotated box
+    const rad = -rotation * Math.PI / 180; // Negative for reverse rotation
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    // Check bounds
+    const halfWidth = drawWidth / 2;
+    const halfHeight = drawHeight / 2;
+
+    return (
+        rotatedX >= -halfWidth &&
+        rotatedX <= halfWidth &&
+        rotatedY >= -halfHeight &&
+        rotatedY <= halfHeight
+    );
+};
+
+/**
+ * Check if a point is inside a text overlay's bounding box
+ */
+export const isPointInText = (x, y, textOverlay, canvasDimensions) => {
+    const { width, height } = canvasDimensions;
+    const { x: tx, y: ty, fontSize, fontFamily, fontWeight, text, rotation } = textOverlay;
+
+    // Convert % position to px
+    const centerX = (tx / 100) * width;
+    const centerY = (ty / 100) * height;
+
+    // Measure text
+    const scaleFactor = height / 600;
+    const scaledFontSize = fontSize * scaleFactor;
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = `${fontWeight} ${scaledFontSize}px ${fontFamily}`;
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = scaledFontSize; // Approximation, or use metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent
+
+    // Rotate point around center
+    const rad = -rotation * Math.PI / 180;
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    // Check bounds (with some padding)
+    const padding = 10;
+    const halfWidth = textWidth / 2 + padding;
+    const halfHeight = textHeight / 2 + padding;
+
+    return (
+        rotatedX >= -halfWidth &&
+        rotatedX <= halfWidth &&
+        rotatedY >= -halfHeight &&
+        rotatedY <= halfHeight
+    );
+};
+
+/**
+ * Get handle at point for text/media
+ */
+export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) => {
+    const { width, height } = canvasDimensions;
+    const transform = clip.transform || {}; // For media
+    // For text, clip is the text object itself, so we need to normalize properties
+    const isText = clip.type === 'text';
+
+    let cx, cy, scale, rotation, drawWidth, drawHeight;
+
+    if (isText) {
+        cx = (clip.x / 100) * width;
+        cy = (clip.y / 100) * height;
+        scale = 100; // Text scale handled by fontSize
+        rotation = clip.rotation || 0;
+
+        // Measure text
+        const scaleFactor = height / 600;
+        const scaledFontSize = clip.fontSize * scaleFactor;
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.font = `${clip.fontWeight} ${scaledFontSize}px ${clip.fontFamily}`;
+        const metrics = ctx.measureText(clip.text);
+        drawWidth = metrics.width + 20;
+        drawHeight = scaledFontSize + 20;
+    } else {
+        const { x: tx = 0, y: ty = 0, scale: s = 100, rotation: r = 0 } = transform;
+        cx = width / 2 + tx;
+        cy = height / 2 + ty;
+        scale = s;
+        rotation = r;
+
+        // Calculate media dimensions
+        const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+        const canvasAspect = width / height;
+        let baseWidth, baseHeight;
+        if (mediaAspect > canvasAspect) {
+            baseWidth = width;
+            baseHeight = width / mediaAspect;
+        } else {
+            baseHeight = height;
+            baseWidth = height * mediaAspect;
+        }
+        const scaleFactor = scale / 100;
+        drawWidth = baseWidth * scaleFactor;
+        drawHeight = baseHeight * scaleFactor;
+    }
+
+    // Rotate point around center to align with unrotated box
+    const rad = -rotation * Math.PI / 180;
+    const dx = x - cx;
+    const dy = y - cy;
+    const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const handleSize = 10; // Hit area size
+    const halfWidth = drawWidth / 2;
+    const halfHeight = drawHeight / 2;
+
+    // Check handles
+    const handles = [
+        { name: 'tl', x: -halfWidth, y: -halfHeight },
+        { name: 'tr', x: halfWidth, y: -halfHeight },
+        { name: 'br', x: halfWidth, y: halfHeight },
+        { name: 'bl', x: -halfWidth, y: halfHeight },
+        { name: 'rot', x: 0, y: -halfHeight - 20 }
+    ];
+
+    for (const h of handles) {
+        if (
+            rotatedX >= h.x - handleSize &&
+            rotatedX <= h.x + handleSize &&
+            rotatedY >= h.y - handleSize &&
+            rotatedY <= h.y + handleSize
+        ) {
+            return h;
+        }
+    }
+
+    return null;
 };
