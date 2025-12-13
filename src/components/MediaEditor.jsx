@@ -91,7 +91,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         canRedo,
         addTrack,
         reorderTracks,
-        updateTrackHeight
+        updateTrackHeight,
+        detachAudio
     } = useTimelineState();
 
     // Editor State
@@ -277,19 +278,44 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     }, [initialMediaFile, loadMedia]);
 
     // Initialize canvas when media loads
+    // Initialize canvas when media loads
     useEffect(() => {
-        if (!mediaUrl || !mediaElementRef.current) return;
+        if (!mediaUrl || !mediaElementRef.current || !containerRef.current) return;
 
-        // Simple initialization for now, will be optimized in resize observer
-        const mediaAspect = mediaElementRef.current.videoWidth
-            ? mediaElementRef.current.videoWidth / mediaElementRef.current.videoHeight
-            : mediaElementRef.current.width / mediaElementRef.current.height;
+        const updateCanvasSize = () => {
+            const container = containerRef.current;
+            if (!container) return;
 
-        initializeCanvas(800, 600, mediaAspect, memeMode ? 0.3 : 0);
+            // Get container dimensions
+            const { clientWidth, clientHeight } = container;
+            if (clientWidth === 0 || clientHeight === 0) return;
+
+            const mediaAspect = mediaElementRef.current.videoWidth
+                ? mediaElementRef.current.videoWidth / mediaElementRef.current.videoHeight
+                : mediaElementRef.current.width / mediaElementRef.current.height;
+
+            // Initialize with full container size
+            initializeCanvas(clientWidth, clientHeight, mediaAspect, memeMode ? 0.3 : 0);
+        };
+
+        // Initial sizing
+        updateCanvasSize();
+
+        // Handle resize
+        const resizeObserver = new ResizeObserver(() => {
+            // Request animation frame to debounce and ensure layout is settled
+            requestAnimationFrame(() => updateCanvasSize());
+        });
+
+        resizeObserver.observe(containerRef.current);
 
         if (isVideo) {
             setTrimRange({ start: 0, end: videoDuration });
         }
+
+        return () => {
+            resizeObserver.disconnect();
+        };
     }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration, memeMode]);
 
     // Generate Thumbnail for Filters
@@ -553,7 +579,33 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         });
 
-    }, [currentTime, isPlaying, tracks]);
+        // Sync Main Media Mute State
+        // Find the main video track (usually the first one) and check active clip's muted status
+        const mainVideoTrack = tracks.find(t => t.type === 'video'); // Get first video track
+        if (mainVideoTrack && mediaElementRef.current) {
+            const activeMainClip = mainVideoTrack.clips.find(c => currentTime >= c.startTime && currentTime < (c.startTime + c.duration));
+            if (activeMainClip) {
+                mediaElementRef.current.muted = !!activeMainClip.muted;
+            }
+        }
+
+    }, [currentTime, isPlaying, tracks, mediaElementRef]);
+
+    // Force pause all elements when isPlaying becomes false
+    useEffect(() => {
+        if (!isPlaying) {
+            Object.values(audioElementsRef.current).forEach(audio => {
+                if (!audio.paused) audio.pause();
+            });
+            Object.values(videoElementsRef.current).forEach(video => {
+                if (!video.paused) video.pause();
+            });
+            // Main media is handled by usePlayback usually, but let's be safe if it's exposed
+            if (mediaElementRef.current && !mediaElementRef.current.paused) {
+                mediaElementRef.current.pause();
+            }
+        }
+    }, [isPlaying, mediaElementRef]);
 
     // Canvas Interaction State
     const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
@@ -977,24 +1029,46 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     };
 
-    const handleAddToLibrary = (file) => {
+    const handleAddToLibrary = async (file) => {
         const url = URL.createObjectURL(file);
         const type = file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'image';
+        let duration = 5; // Default for images
 
-        // For video/audio, we might want to get duration. 
-        // For now, simple add.
+        if (type === 'video' || type === 'audio') {
+            const element = type === 'video' ? document.createElement('video') : document.createElement('audio');
+            element.preload = 'metadata';
+            element.src = url;
+
+            try {
+                await new Promise((resolve, reject) => {
+                    element.onloadedmetadata = () => {
+                        if (isFinite(element.duration)) {
+                            duration = element.duration;
+                        }
+                        resolve();
+                    };
+                    element.onerror = () => {
+                        console.warn("Failed to load media metadata");
+                        resolve(); // Resolve anyway to allow adding
+                    };
+                    // Timeout safety
+                    setTimeout(resolve, 1000);
+                });
+            } catch (e) {
+                console.warn("Error getting duration", e);
+            }
+        }
+
         const newItem = {
             id: `asset-${Date.now()}`,
             file,
             url,
             type,
-            name: file.name
+            name: file.name,
+            duration: duration
         };
 
         setMediaLibrary(prev => [...prev, newItem]);
-
-        // If it's the first media, maybe load it as main?
-        // Only if timeline is empty?
     };
 
     const getActiveItem = () => {
@@ -1170,27 +1244,29 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 />
             }
             centerPanel={
-                <PreviewPlayer
-                    canvasRef={canvasRef}
-                    overlayRef={overlayRef}
-                    textOverlays={renderStateRef.current.textOverlays || []}
-                    stickers={renderStateRef.current.stickers || []}
-                    stickerImages={[]} // Handled internally now
-                    activeOverlayId={selectedClipId}
-                    startDragging={() => { }} // Disabled for now
-                    updateTextOverlay={() => { }}
-                    deleteOverlay={handleDelete}
-                    setActiveOverlayId={setSelectedClipId}
-                    adjustments={adjustments}
-                    cropData={cropData}
-                    setCropData={setCropData}
-                    cropPreset={cropPreset}
-                    activeTab={activeTab}
-                    buildFilterString={buildFilterString}
-                    onCanvasPointerDown={handleCanvasPointerDown}
-                    onCanvasPointerMove={handleCanvasPointerMove}
-                    onCanvasPointerUp={handleCanvasPointerUp}
-                />
+                <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PreviewPlayer
+                        canvasRef={canvasRef}
+                        overlayRef={overlayRef}
+                        textOverlays={renderStateRef.current.textOverlays || []}
+                        stickers={renderStateRef.current.stickers || []}
+                        stickerImages={[]} // Handled internally now
+                        activeOverlayId={selectedClipId}
+                        startDragging={() => { }} // Disabled for now
+                        updateTextOverlay={() => { }}
+                        deleteOverlay={handleDelete}
+                        setActiveOverlayId={setSelectedClipId}
+                        adjustments={adjustments}
+                        cropData={cropData}
+                        setCropData={setCropData}
+                        cropPreset={cropPreset}
+                        activeTab={activeTab}
+                        buildFilterString={buildFilterString}
+                        onCanvasPointerDown={handleCanvasPointerDown}
+                        onCanvasPointerMove={handleCanvasPointerMove}
+                        onCanvasPointerUp={handleCanvasPointerUp}
+                    />
+                </div>
             }
             rightPanel={
                 <PropertiesPanel
@@ -1225,6 +1301,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     onDrop={handleDrop}
                     onReorderTrack={reorderTracks}
                     onResizeTrack={updateTrackHeight}
+                    onDetachAudio={detachAudio}
                 />
             }
         />
