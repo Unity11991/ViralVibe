@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { VideoThumbnails } from './VideoThumbnails';
 
 export const Clip = ({
     clip,
@@ -14,6 +15,7 @@ export const Clip = ({
     const [isTrimming, setIsTrimming] = useState(null); // 'start', 'end', or 'move'
     const startXRef = useRef(0);
     const initialValuesRef = useRef(null);
+    const clipRef = useRef(null);
 
     const handleDragStart = (e, type) => {
         e.stopPropagation();
@@ -102,6 +104,7 @@ export const Clip = ({
 
     return (
         <div
+            ref={clipRef}
             className={`timeline-clip absolute top-1 bottom-1 rounded-md cursor-pointer border-2 transition-all ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
                 } ${clip.type === 'video' ? 'bg-blue-500/20' :
                     clip.type === 'audio' ? 'bg-green-500/20' :
@@ -122,15 +125,19 @@ export const Clip = ({
             }}
         >
             {/* Clip Content Preview */}
-            <div className="w-full h-full flex items-center px-2 overflow-hidden select-none rounded-sm">
-                {clip.type === 'video' && (
-                    <div className="flex gap-1 opacity-50">
-                        {/* Mock filmstrip */}
-                        {Array.from({ length: Math.ceil(width / 50) }).map((_, i) => (
-                            <div key={i} className="w-10 h-8 bg-white/10 rounded-sm" />
-                        ))}
-                    </div>
+            <div className="w-full h-full flex items-center px-2 overflow-hidden select-none rounded-sm relative">
+                {clip.type === 'video' && clip.source && (
+                    <VideoThumbnails
+                        source={clip.source}
+                        duration={clip.duration} // We should use source duration for spread, but clip duration works for now
+                        width={width}
+                        visibleWidth={width}
+                        height={clipRef.current?.offsetHeight || 40}
+                        startOffset={clip.startOffset || 0}
+                    />
                 )}
+
+                {/* Fallback mock if no source or not video (handled by VideoThumbnails logic somewhat) */}
 
                 <span className="text-xs font-medium text-white/90 truncate relative z-10 ml-1 shadow-black drop-shadow-md">
                     {clip.name || 'Clip'}
