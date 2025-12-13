@@ -1,6 +1,6 @@
 import React from 'react';
 import { Clip } from './Clip';
-import { Video, Music, Type, Sticker } from 'lucide-react';
+import { Video, Music, Type, Sticker, GripVertical } from 'lucide-react';
 
 export const Track = ({
     track,
@@ -50,14 +50,17 @@ export const Track = ({
     return (
         <div className="flex mb-2 group" style={{ height: `${track.height || 80}px` }}>
             {/* Track Header */}
-            <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-3 z-40 sticky left-0 relative">
+            <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-2 z-40 sticky left-0 relative group/header">
                 <div className="flex items-center gap-2 text-white/70 mb-1">
+                    <div className="cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50">
+                        <GripVertical size={12} />
+                    </div>
                     {getIcon()}
-                    <span className="text-xs font-medium uppercase tracking-wider truncate">{track.type}</span>
+                    <span className="text-xs font-medium uppercase tracking-wider truncate flex-1">{track.type}</span>
                 </div>
-                <div className="flex gap-1">
-                    <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white">M</button>
-                    <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white">S</button>
+                <div className="flex gap-1 pl-5">
+                    <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white" title="Mute">M</button>
+                    <button className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-white" title="Solo">S</button>
                 </div>
 
                 {/* Resize Handle */}

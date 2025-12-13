@@ -391,6 +391,82 @@ export const useTimelineState = () => {
         if (selectedClipId === clipId) setSelectedClipId(null);
     }, [selectedClipId, addToHistory]);
 
+    // Detach audio from a video clip
+    const detachAudio = useCallback((clipId) => {
+        setTracks(prev => {
+            let clipToDetach = null;
+            let tracksChanged = false;
+
+            // 1. Find and Update Video Clip (Mute it)
+            const newTracks = prev.map(track => {
+                const clipIndex = track.clips.findIndex(c => c.id === clipId);
+                if (clipIndex === -1) return track;
+
+                const clip = track.clips[clipIndex];
+                if (track.type !== 'video' && clip.type !== 'video') return track; // Only video
+                if (clip.audioDetached) return track; // Already detached
+
+                clipToDetach = clip;
+                tracksChanged = true;
+
+                // Mute the video clip and mark as detached
+                const updatedClip = { ...clip, muted: true, audioDetached: true };
+                const newClips = [...track.clips];
+                newClips[clipIndex] = updatedClip;
+
+                return { ...track, clips: newClips };
+            });
+
+            if (!tracksChanged || !clipToDetach) return prev;
+
+            // 2. Create new Audio Clip
+            const audioClip = {
+                ...clipToDetach,
+                id: `clip-audio-${Date.now()}`,
+                type: 'audio',
+                muted: false, // Ensure audio is not muted
+                // Keep same timing
+                // Remove visual properties if any
+                style: undefined,
+                transform: undefined,
+                filter: undefined,
+                effect: undefined,
+                mask: undefined
+            };
+
+            // 3. Add to new Audio Track (Insert at top of audio tracks? or just new track)
+            // User asked: "add that audio on by adding new audio track on first of audio track"
+            // We'll create a new audio track and insert it after the visual tracks but before other audio tracks?
+            // Or just allow `addTrack` logic.
+            // Let's create a new specific audio track.
+
+            const audioTrackCount = prev.filter(t => t.type === 'audio').length;
+            const newAudioTrack = {
+                id: `track-audio-${audioTrackCount + 1}-${Date.now()}`,
+                type: 'audio',
+                height: 48,
+                clips: [audioClip]
+            };
+
+            // Insert mainly for logic. Audio tracks are usually at the bottom.
+            // If we want "first of audio track", we should insert it right after the last visual track?
+            // Find last visual track index
+            // But our track list is mixed.
+
+            // Let's just append it for now, usually "New Track" is good enough.
+            // If we want "First Audio Track", we could try to splice it in.
+            const firstAudioIndex = newTracks.findIndex(t => t.type === 'audio');
+            if (firstAudioIndex !== -1) {
+                newTracks.splice(firstAudioIndex, 0, newAudioTrack);
+            } else {
+                newTracks.push(newAudioTrack);
+            }
+
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
     return {
         tracks,
         setTracks,
@@ -409,6 +485,7 @@ export const useTimelineState = () => {
         moveClip,
         commitUpdate,
         deleteClip,
+        detachAudio,
         undo,
         redo,
         canUndo: historyIndex > 0,

@@ -90,14 +90,14 @@ export const AssetsPanel = ({
                                     <div
                                         key={item.id}
                                         className="aspect-square bg-black/50 rounded-lg overflow-hidden relative group cursor-pointer border border-white/5 hover:border-blue-500"
-                                        onClick={() => onAddAsset(item.type, { file: item.file, url: item.url, duration: 10 })}
+                                        onClick={() => onAddAsset(item.type, { file: item.file, url: item.url, duration: item.duration || 10 })}
                                         draggable="true"
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData('application/json', JSON.stringify({
                                                 type: item.type,
                                                 url: item.url,
                                                 name: item.name,
-                                                duration: 10 // Mock duration
+                                                duration: item.duration || 10
                                             }));
                                         }}
                                     >
@@ -109,6 +109,17 @@ export const AssetsPanel = ({
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                             <span className="text-xs font-bold text-white">+ Add</span>
                                         </div>
+                                        {/* Duration badge for video */}
+                                        {item.type === 'video' && (
+                                            <div className="absolute bottom-1 right-1 bg-black/70 px-1 rounded text-[10px] text-white">
+                                                {(() => {
+                                                    const d = item.duration || 0;
+                                                    const m = Math.floor(d / 60);
+                                                    const s = Math.floor(d % 60);
+                                                    return `${m}:${s.toString().padStart(2, '0')}`;
+                                                })()}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -137,14 +148,14 @@ export const AssetsPanel = ({
                                     <div
                                         key={item.id}
                                         className="p-3 bg-white/5 rounded-lg flex items-center gap-3 hover:bg-white/10 cursor-pointer group"
-                                        onClick={() => onAddAsset('audio', { file: item.file, url: item.url, duration: 30 })}
+                                        onClick={() => onAddAsset('audio', { file: item.file, url: item.url, duration: item.duration || 10 })}
                                         draggable="true"
                                         onDragStart={(e) => {
                                             e.dataTransfer.setData('application/json', JSON.stringify({
                                                 type: 'audio',
                                                 url: item.url,
                                                 name: item.name,
-                                                duration: 30 // Mock duration
+                                                duration: item.duration || 10
                                             }));
                                         }}
                                     >
@@ -153,7 +164,14 @@ export const AssetsPanel = ({
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="text-sm font-medium truncate text-white">{item.name}</div>
-                                            <div className="text-xs text-white/40">0:30</div>
+                                            <div className="text-xs text-white/40">
+                                                {(() => {
+                                                    const d = item.duration || 0;
+                                                    const m = Math.floor(d / 60);
+                                                    const s = Math.floor(d % 60);
+                                                    return `${m}:${s.toString().padStart(2, '0')}`;
+                                                })()}
+                                            </div>
                                         </div>
                                         <button className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/10 rounded text-white transition-opacity">
                                             <span className="text-xs font-bold">+ Add</span>

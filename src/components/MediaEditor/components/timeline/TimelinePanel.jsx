@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -27,7 +27,8 @@ export const TimelinePanel = ({
     onAddTrack,
     onDrop,
     onReorderTrack,
-    onResizeTrack
+    onResizeTrack,
+    onDetachAudio
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -115,11 +116,11 @@ export const TimelinePanel = ({
     };
 
     // Split tracks for display
-    // Visual Tracks: Reversed (Top of list = Top Z-Index/Foreground)
+    // Visual Tracks: Render in order (Top of list = Index 0 = Bottom Z-Index/Background)
     const visualTracks = tracks
         .map((t, i) => ({ ...t, originalIndex: i }))
-        .filter(t => t.type !== 'audio')
-        .reverse();
+        .filter(t => t.type !== 'audio');
+    // .reverse(); // Removed reverse to keep Video (Index 0) at top of list
 
     // Audio Tracks: Normal Order
     const audioTracks = tracks
@@ -154,6 +155,25 @@ export const TimelinePanel = ({
                     <button onClick={onDelete} className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-red-400" title="Delete (Del)">
                         <Trash2 size={16} />
                     </button>
+                    {(() => {
+                        const selectedTrack = tracks.find(t => t.clips.some(c => c.id === selectedClipId));
+                        const selectedClip = selectedTrack?.clips.find(c => c.id === selectedClipId);
+                        if (selectedClip &&
+                            (selectedClip.type === 'video' || (selectedTrack?.type === 'video' && selectedClip.type !== 'audio')) &&
+                            !selectedClip.audioDetached
+                        ) {
+                            return (
+                                <button
+                                    onClick={() => onDetachAudio && onDetachAudio(selectedClipId)}
+                                    className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-blue-400"
+                                    title="Detach Audio"
+                                >
+                                    <FileAudio size={16} />
+                                </button>
+                            );
+                        }
+                        return null;
+                    })()}
                     <div className="w-px h-4 bg-white/10 mx-2" />
                     <button className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white">
                         <SkipBack size={16} />
