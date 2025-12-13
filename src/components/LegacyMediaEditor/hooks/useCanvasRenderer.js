@@ -54,7 +54,8 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
 
         // Scale context to match
         const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
-        ctx.scale(finalWidth / width, finalHeight / height);
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to identity instead of scaling
+
 
         setCanvasDimensions({ width: finalWidth, height: finalHeight });
     }, []);
