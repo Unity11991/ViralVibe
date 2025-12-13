@@ -277,10 +277,10 @@ const CollabFinder = () => {
                         <Instagram size={18} /> Search Instagram
                     </button>
                     <button
-                        onClick={() => handleExternalSearch('tiktok')}
+                        onClick={() => handleExternalSearch('facebook')}
                         className="p-4 bg-black border border-white/20 rounded-xl font-bold text-white hover:bg-slate-900 transition-colors flex items-center justify-center gap-2"
                     >
-                        <Video size={18} /> Search TikTok
+                        <Video size={18} /> Search Facebook
                     </button>
                     <button
                         onClick={() => handleExternalSearch('youtube')}

@@ -1,6 +1,7 @@
 import Groq from "groq-sdk";
+import { supabase } from '../lib/supabase';
 
-export const analyzeImage = async (file, settings) => {
+export const analyzeImage = async (fileOrBase64, settings) => {
     const { apiKey, platform, tone, model: modelName } = settings;
 
     if (!apiKey) {
@@ -10,8 +11,13 @@ export const analyzeImage = async (file, settings) => {
     const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
     const model = modelName || "llama-3.2-11b-vision-preview";
 
-    // Convert file to base64 data URL
-    const base64DataUrl = await fileToBase64(file);
+    // Handle File object or Base64 string
+    let base64DataUrl;
+    if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
+        base64DataUrl = fileOrBase64;
+    } else {
+        base64DataUrl = await fileToBase64(fileOrBase64);
+    }
 
     const prompt = `
     You are a social media expert. Analyze this image and generate content for ${platform} with a ${tone} tone.
@@ -32,7 +38,23 @@ export const analyzeImage = async (file, settings) => {
       ],
       "roast": "A spicy, one-sentence roast of the image. Be funny but not mean.",
       "scores": { "lighting": 8, "composition": 7, "creativity": 9 },
-      "improvements": ["Tip 1", "Tip 2", "Tip 3"]
+      "improvements": ["Tip 1", "Tip 2", "Tip 3"],
+      "adjustments": { 
+        "brightness": 1.0, "contrast": 1.0, "saturation": 1.0, "warmth": 1.0, "tint": 1.0, 
+        "exposure": 1.0, "highlights": 1.0, "shadows": 1.0, "vibrance": 1.0, 
+        "sharpen": 0.0, "blur": 0.0, "vignette": 0.0, "fade": 0.0 
+      }, // Suggested edit values. 1.0 is neutral for multipliers, 0.0 is neutral for additives.
+      "suggestedFilter": "FILTER_ID" // CRITICAL: Analyze the image mood/lighting and choose the ONE best matching filter ID from the list below. Do NOT default to the first one.
+      // Available Filters:
+      // Cinematic: cinematic-1 (Teal & Orange), cinematic-2 (Noir), cinematic-3 (Blockbuster), cinematic-4 (Dramatic), cinematic-5 (Moody)
+      // Film: film-1 (Kodak Gold), film-2 (Fuji Velvia), film-3 (Portra 400), film-4 (CineStyle), film-5 (Technicolor)
+      // Mood: mood-1 (Melancholy), mood-2 (Euphoria), mood-3 (Tension), mood-4 (Dream), mood-5 (Ethereal)
+      // Genre: genre-1 (Horror), genre-2 (Sci-Fi), genre-3 (Western), genre-4 (Romance), genre-5 (Action), genre-6 (Cyberpunk)
+      // Vintage: vintage-1 (1920s), vintage-2 (1950s), vintage-3 (1970s), vintage-4 (1980s), vintage-5 (1990s)
+      // Nature: nature-1 (Golden Hour), nature-2 (Blue Hour), nature-3 (Forest), nature-4 (Ocean), nature-5 (Desert)
+      // Urban: urban-1 (Urban), urban-2 (Night City), urban-3 (Street)
+      // Lifestyle: life-1 (Indoor), life-2 (Studio), life-3 (Fashion), life-4 (Food), life-5 (Travel)
+      // Artistic: art-1 (Minimal), art-2 (Matte), art-3 (HDR), art-4 (Lomo), art-5 (Cross Process)
     }
   `;
 
@@ -64,6 +86,114 @@ export const analyzeImage = async (file, settings) => {
         console.error("Groq API Error:", error);
         throw new Error(`Failed to analyze image. Error: ${error.message}`);
     }
+};
+
+export const aggregateVideoInsights = (results) => {
+    if (!results || results.length === 0) return null;
+
+    // 1. Average Viral Potential
+    const totalPotential = results.reduce((sum, r) => sum + (r.viralPotential || 0), 0);
+    const avgPotential = Math.round(totalPotential / results.length);
+
+    // 2. Combine Captions (Take top 2 from each)
+    const allCaptions = results.flatMap(r => r.captions ? r.captions.slice(0, 2) : []);
+    const uniqueCaptions = [...new Set(allCaptions)].slice(0, 5);
+
+    // 3. Combine Hashtags (Take top 5 from each, unique)
+    const allHashtags = results.flatMap(r => r.hashtags || []);
+    const uniqueHashtags = [...new Set(allHashtags)].slice(0, 30);
+
+    // 4. Best Time (Take the first one or most common)
+    const bestTime = results[0]?.bestTime || "Best time depends on your audience.";
+
+    // 5. Music (Combine unique songs)
+    const allMusic = results.flatMap(r => r.musicRecommendations || []);
+    const uniqueMusic = [];
+    const seenSongs = new Set();
+    for (const m of allMusic) {
+        if (!seenSongs.has(m.song)) {
+            seenSongs.add(m.song);
+            uniqueMusic.push(m);
+        }
+    }
+    const finalMusic = uniqueMusic.slice(0, 5);
+
+    // 6. Roast (Combine or pick random)
+    const roasts = results.map(r => r.roast).filter(Boolean);
+    const combinedRoast = roasts.join(" Also: ");
+
+    // 7. Scores (Average)
+    const avgScores = {
+        lighting: 0,
+        composition: 0,
+        creativity: 0
+    };
+    results.forEach(r => {
+        if (r.scores) {
+            avgScores.lighting += r.scores.lighting || 0;
+            avgScores.composition += r.scores.composition || 0;
+            avgScores.creativity += r.scores.creativity || 0;
+        }
+    });
+    avgScores.lighting = Math.round(avgScores.lighting / results.length);
+    avgScores.composition = Math.round(avgScores.composition / results.length);
+    avgScores.creativity = Math.round(avgScores.creativity / results.length);
+
+    // 8. Improvements (Combine unique)
+    const allImprovements = results.flatMap(r => r.improvements || []);
+    const uniqueImprovements = [...new Set(allImprovements)].slice(0, 5);
+
+    // 9. Adjustments (Average)
+    const avgAdjustments = {};
+    const adjustmentKeys = [
+        "brightness", "contrast", "saturation", "warmth", "tint",
+        "exposure", "highlights", "shadows", "vibrance",
+        "sharpen", "blur", "vignette", "fade"
+    ];
+
+    if (results[0]?.adjustments) {
+        adjustmentKeys.forEach(key => {
+            let sum = 0;
+            let count = 0;
+            results.forEach(r => {
+                if (r.adjustments && typeof r.adjustments[key] === 'number') {
+                    sum += r.adjustments[key];
+                    count++;
+                }
+            });
+            if (count > 0) {
+                avgAdjustments[key] = Number((sum / count).toFixed(2));
+            }
+        });
+    }
+
+    // 10. Suggested Filter (Most frequent)
+    const filterCounts = {};
+    let suggestedFilter = null;
+    let maxCount = 0;
+    results.forEach(r => {
+        if (r.suggestedFilter && r.suggestedFilter !== "FILTER_ID") {
+            filterCounts[r.suggestedFilter] = (filterCounts[r.suggestedFilter] || 0) + 1;
+            if (filterCounts[r.suggestedFilter] > maxCount) {
+                maxCount = filterCounts[r.suggestedFilter];
+                suggestedFilter = r.suggestedFilter;
+            }
+        }
+    });
+
+    return {
+        viralPotential: avgPotential,
+        captions: uniqueCaptions,
+        hashtags: uniqueHashtags,
+        bestTime: bestTime,
+        musicRecommendations: finalMusic,
+        roast: combinedRoast,
+        scores: avgScores,
+        improvements: uniqueImprovements,
+        adjustments: avgAdjustments,
+        suggestedFilter: suggestedFilter,
+        isVideoAnalysis: true // Flag to indicate this is a video result
+    };
 };
 
 export const generatePremiumContent = async (type, data, settings) => {
@@ -291,6 +421,147 @@ export const generatePremiumContent = async (type, data, settings) => {
             `;
             break;
 
+        case 'meme-maker':
+            systemRole = "You are a professional meme creator.";
+            prompt = `
+                Generate 5 viral meme concepts for the topic: "${input}".
+                For each, specify the popular template to use (e.g., 'Distracted Boyfriend', 'Drake Hotline Bling', 'Woman Yelling at Cat'), the Top Text, the Bottom Text, and a brief visual description.
+            `;
+            jsonStructure = `
+                {
+                    "memes": [
+                        { "template": "Template Name", "topText": "Top Text", "bottomText": "Bottom Text", "description": "Visual description" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'storyboarder':
+            systemRole = "You are a professional film director and storyboard artist.";
+            prompt = `
+                Create a detailed visual storyboard for the following video idea/script: "${input}".
+                Break it down into 4-6 key scenes.
+                For each scene, describe the Visual (what we see), the Audio (what we hear), and the estimated Duration.
+            `;
+            jsonStructure = `
+                {
+                    "scenes": [
+                        { "visual": "Visual description", "audio": "Audio description", "duration": "5s" }
+                    ]
+                }
+            `;
+            break;
+
+        // VIP Features
+        case 'trend-alerts':
+            // 1. Fetch Real Trends from Edge Function
+            let realTrends = [];
+            try {
+                const { data, error } = await supabase.functions.invoke('fetch-trends');
+                if (!error && data?.trends) {
+                    realTrends = data.trends;
+                }
+            } catch (err) {
+                console.warn("Failed to fetch real trends, falling back to AI knowledge:", err);
+            }
+
+            const trendsContext = realTrends.length > 0
+                ? `Here are the top trending searches right now: ${realTrends.map(t => `${t.title} (${t.traffic})`).join(', ')}.`
+                : "Analyze general current social media trends.";
+
+            systemRole = "You are a viral trend analyst.";
+            prompt = `
+                ${trendsContext}
+                
+                Identify 3 currently exploding viral trends relevant to the niche: "${input}".
+                Use the provided trending searches if they are relevant to the niche. If not, find creative ways to bridge the trending topics to this niche (e.g., "How to use [Trend] for [Niche]").
+                
+                For each trend, provide:
+                1. Trend Name (Catchy title)
+                2. Why it's viral (The psychology/reason)
+                3. Viral Audio (A specific song or sound name currently trending)
+                4. The Hook (The exact text to put on screen or say in first 3 seconds)
+                5. Content Idea (How to execute it)
+            `;
+            jsonStructure = `
+                {
+                    "trends": [
+                        {
+                            "name": "Trend Name",
+                            "why_viral": "Explanation",
+                            "audio": "Song Name - Artist",
+                            "hook": "POV: You realized...",
+                            "idea": "Filming instructions..."
+                        }
+                    ]
+                }
+            `;
+            break;
+
+        case 'smart-scheduler':
+            systemRole = "You are a social media data scientist.";
+            prompt = `
+                Analyze the audience behavior for a "${input}" account.
+                Provide the 3 best times to post this week for maximum engagement.
+                ALSO generate 5 engaging captions, 15-20 optimized hashtags, and 3 trending audio recommendations for this niche.
+            `;
+            jsonStructure = `
+                {
+                    "slots": [
+                        { "day": "Monday", "time": "10:00 AM", "reason": "High commute engagement" },
+                        { "day": "Wednesday", "time": "6:00 PM", "reason": "Post-work scrolling" },
+                        { "day": "Friday", "time": "12:00 PM", "reason": "Lunch break peak" }
+                    ],
+                    "captions": ["Caption 1", "Caption 2", "Caption 3", "Caption 4", "Caption 5"],
+                    "hashtags": ["#tag1", "#tag2", "#tag3", ...],
+                    "musicRecommendations": [
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" },
+                        { "song": "Song Name", "artist": "Artist Name" }
+                    ]
+                }
+            `;
+            break;
+
+        case 'script-generator':
+            systemRole = "You are a professional screenwriter for short-form video.";
+            prompt = `
+                Write a 30-60 second Reel/Facebook Video script about: "${input}".
+                Include Hook, Body (3 points), and Call to Action.
+                Include visual cues in brackets.
+            `;
+            jsonStructure = `
+                {
+                    "title": "Script Title",
+                    "hook": "Visual/Audio Hook",
+                    "body": "Main script content with cues",
+                    "cta": "Call to action"
+                }
+            `;
+            break;
+
+        case 'analytics':
+            systemRole = "You are a social media analytics expert.";
+            prompt = `
+                Simulate a detailed performance report for a profile in the "${input}" niche.
+                Provide growth metrics, engagement rates, and 3 actionable insights for improvement.
+            `;
+            jsonStructure = `
+                {
+                    "metrics": {
+                        "growth": "+15%",
+                        "engagement": "4.8%",
+                        "reach": "12.5k"
+                    },
+                    "insights": [
+                        "Insight 1",
+                        "Insight 2",
+                        "Insight 3"
+                    ]
+                }
+            `;
+            break;
+
         default:
             throw new Error("Unknown feature type");
     }
@@ -333,3 +604,95 @@ async function fileToBase64(file) {
         reader.readAsDataURL(file);
     });
 }
+
+export const generateTrendInsights = async (trends, apiKey) => {
+    if (!apiKey) throw new Error("API Key is required");
+
+    const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+
+    // Simplified trend list for the prompt
+    const trendList = trends.slice(0, 5).map(t => `${t.name}: ${t.description}`).join('\n');
+
+    const prompt = `
+        You are a viral content strategist. Based on the following current real-world trends, generate a cohesive content strategy for a creator.
+
+        TRENDS:
+        ${trendList}
+
+        Generate a JSON object with:
+        1. "ideas": 3 specific video ideas (title, description, format like 'Facebook Video' or 'Reel').
+        2. "audio": 3 recommended trending audio tracks or vibes (title, artist, reason).
+        3. "keywords": 10 high-traffic keywords/hashtags to use right now.
+
+        Return ONLY raw JSON:
+        {
+            "ideas": [
+                { "title": "...", "description": "...", "format": "..." }
+            ],
+            "audio": [
+                { "title": "...", "artist": "...", "reason": "..." }
+            ],
+            "keywords": ["...", "..."]
+        }
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1000,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) throw new Error("No content generated");
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Trend Insight Error:", error);
+        throw error;
+    }
+};
+
+export const analyzeTrend = async (query, apiKey) => {
+    if (!apiKey) throw new Error("API Key is required");
+
+    const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+
+    const prompt = `
+        You are "Viral Intelligence", an advanced AI trend analyst for content creators.
+        
+        User Query: "${query}"
+
+        Analyze this query and provide a comprehensive trend report.
+        If the user asks about a specific topic (e.g., "AI Agents"), analyze its current viral status.
+        If the user asks "What is trending?", provide a summary of the hottest current topics in tech/social media.
+
+        Return a JSON object with this EXACT structure:
+        {
+            "summary": "A concise, 2-3 sentence executive summary of the trend/answer.",
+            "sources": ["Source 1", "Source 2", "Source 3"], // e.g., "Twitter", "Google Trends", "TechCrunch"
+            "related": ["#Tag1", "#Tag2", "#Tag3"], // Related hashtags or topics
+            "sentiment": "Positive" | "Neutral" | "Negative",
+            "content_angle": "A specific angle for creators to take (e.g., 'Focus on the efficiency gains...')",
+            "viral_score": 85 // 0-100
+        }
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1000,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        if (!content) throw new Error("No content generated");
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Trend Analysis Error:", error);
+        throw error;
+    }
+};

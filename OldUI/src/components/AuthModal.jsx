@@ -24,7 +24,23 @@ const AuthModal = ({ isOpen, onClose }) => {
                 console.log('SignIn Result:', data, error);
                 if (error) throw error;
             } else {
-                const { data, error } = await signUp({ email, password });
+                const referralCode = localStorage.getItem('referral_code');
+                const options = {
+                    data: {
+                        full_name: email.split('@')[0], // Default name from email
+                        avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}` // Default avatar
+                    }
+                };
+
+                if (referralCode) {
+                    options.data.referral_code = referralCode;
+                }
+
+                const { data, error } = await signUp({
+                    email,
+                    password,
+                    options
+                });
                 console.log('SignUp Result:', data, error);
                 if (error) throw error;
                 alert('Check your email for the confirmation link!');

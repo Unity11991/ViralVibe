@@ -6,12 +6,16 @@ import App from './App.jsx'
 
 import { AuthProvider } from './context/AuthContext'
 
+import { BrowserRouter } from 'react-router-dom'
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HelmetProvider>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
     </HelmetProvider>
   </StrictMode>,
 )

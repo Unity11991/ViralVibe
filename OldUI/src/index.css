@@ -71,9 +71,7 @@ h6 {
 
 #root {
   width: 100%;
-  height: 100vh;
-  overflow: hidden;
-  /* Prevent body scroll, handle in containers */
+  min-height: 100vh;
 }
 
 /* --- Utilities --- */

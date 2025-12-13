@@ -1,0 +1,56 @@
+[33m1d72f93[m[33m ([m[1;36mHEAD[m[33m)[m fixed Premium feature scrolling issue in mobile
+[33m3509cf2[m Trying Optimization for mobile device
+[33m0f1d014[m Added thumnails on the filters
+[33m15ceac0[m Applied More Robust Color Grading for filter to make more Nature looks filter on photo
+[33m5d5dbea[m Added Dynamic Effects
+[33me55da6a[m fixing Adjustment issue for IOS Browser
+[33mdb1f001[m Added Apply AI ColorGrading and Adjustemnt Feature in media Editor
+[33m183b610[m added trend time trend analysis
+[33m0b4304e[m Viral Inteligence Real-time Signals issue solved
+[33mf5814cb[m Viral Inteligence (Kaito type Inteligence for trend analysis)
+[33m9327325[m Added Meme make AI, Storyboarder and create Unlock premium button on the top of the main page(In Navbar)\
+[33m142a53c[m fixed Video Exported Video Quality same like CapCut, Added 4k export for Premium users, Added Audio in the exported video
+[33mcf1326f[m Removed Tiktok for now, Omptimed SEO same like APPLE site
+[33ma747ef9[m fixed visibility of trend button in mobile view
+[33m94143e6[m added Meme creator, Viral Trend in main scene, Social Preview and Vivibe battle in tool section where user can get the best photo from two by battling
+[33m7c36f1f[m Added share AI Raost Audit Card fixes some bugs, applied Is pro for premium user
+[33m2c8f126[m added Share Model (share Viral Audit Card)
+[33mefd8348[m Fixing Google AdSense
+[33mea4e328[m Added Smart Schedular, Currently in testing phase
+[33m5b95ccd[m Fixing Mobile Adjustment not working
+[33m470ed7e[m Fixing Mobile Adjustment not working
+[33m7bf5507[m Fixing Mobile Adjustment not working
+[33m6f11cfb[m fixed text, stickers, Content Miss Alignment in the canvas and cropping functionality
+[33mdcf57b8[m Added New Media Architacture and UI
+[33ma2ef55b[m index AdSense Verification
+[33m68a26b2[m added ads.txt for AdSense Verification
+[33md4c7628[m Applied Live RazorPay ENV
+[33me44a619[m fixed the auto scroll to result section after content generation
+[33m6c6efa1[m fixed added new cropping system, fixed background flickerining error
+[33m0b463fc[m fixed image video upload issue on main page
+[33m9797b8c[m fixed Media UI for Mobile and Fixed Image Exporting Error
+[33m2f2c73a[m Added policy pages
+[33mabda938[m Video Editor UI correction for Mobile and added cencel option while exporting video
+[33m7dbfb25[m Added Video Editor in tool section
+[33md1cb4ca[m added Video Analysis, Video and image editor in the result section
+[33m0b212c4[m added Google Auth and Collab Finder
+[33mb0b8f48[m fixed AdSense
+[33m618f63f[m fixed AdSense
+[33m4023efc[m fixed AdSense
+[33ma826d38[m Fixed Google AdSense Verification error
+[33m6780c66[m Updated Localhost redirect url to Govyral URL for Uthentication Confirmation
+[33mcca4773[m added free 3 gen per day for non registered user
+[33m509fa02[m Added Check for dashboard opening before login
+[33m1e4d1c3[m added Authentication System with Supdabase auth & Database
+[33mab3a283[m Change ViralVIbe to GoVyral and fixed Histroy Scroll and Weekly Activity Plot problem
+[33ma0f3e1a[m Change ViralVIbe to GoVyral and fixed Histroy Scroll and Weekly Activity Plot problem
+[33m1743515[m Update index.html
+[33ma135e12[m Update .env
+[33m56ce4c7[m added ads.txt
+[33m3bc0520[m Update Ads Modal with Google AdSense
+[33m9f58f4b[m Update Dashboard.jsx
+[33mf1d515e[m added RazorPay Gateway, added Google AdSense
+[33m2bbcac3[m added more extra permium features
+[33m509c6c0[m added premium features
+[33me16a162[m fixed light theme font color
+[33m29a3455[m Initial commit
