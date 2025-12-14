@@ -1352,6 +1352,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 isExporting={isExporting}
                 progress={exportProgress}
                 onExport={() => {
+                    pause(); // Stop playback before exporting
                     const globalState = {
                         canvasDimensions,
                         rotation,

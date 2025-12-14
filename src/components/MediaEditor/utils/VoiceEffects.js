@@ -245,6 +245,34 @@ class VoiceEffectsManager {
             }
         });
     }
+
+    /**
+     * Mute speakers (disconnect from destination) while keeping other connections (taps) active
+     */
+    muteSpeakers() {
+        if (!this.ctx) return;
+        this.sources.forEach(conn => {
+            try {
+                conn.output.disconnect(this.ctx.destination);
+            } catch (e) {
+                // Ignore if already disconnected
+            }
+        });
+    }
+
+    /**
+     * Unmute speakers (reconnect to destination)
+     */
+    unmuteSpeakers() {
+        if (!this.ctx) return;
+        this.sources.forEach(conn => {
+            try {
+                conn.output.connect(this.ctx.destination);
+            } catch (e) {
+                // Ignore if already connected
+            }
+        });
+    }
 }
 
 export const voiceEffects = new VoiceEffectsManager();

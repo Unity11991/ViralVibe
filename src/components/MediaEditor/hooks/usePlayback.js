@@ -72,7 +72,13 @@ export const usePlayback = (duration, onTick) => {
 
             // Play all registered media
             mediaElementsRef.current.forEach(el => {
-                if (el.paused) el.play().catch(e => console.warn("Auto-play failed", e));
+                if (el.paused) {
+                    el.play().catch(e => {
+                        if (e.name !== 'AbortError') {
+                            console.warn("Auto-play failed", e);
+                        }
+                    });
+                }
             });
         } else {
             if (requestRef.current) {
