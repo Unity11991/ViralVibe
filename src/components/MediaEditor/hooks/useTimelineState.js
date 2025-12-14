@@ -2,11 +2,14 @@ import { useState, useCallback, useRef } from 'react';
 
 /**
  * Custom hook for managing timeline state (Tracks & Clips)
+ * Includes History, Selection, and Magnetic Timeline logic.
  */
 export const useTimelineState = () => {
     // State
     const [tracks, setTracks] = useState([]);
-    const [selectedClipId, setSelectedClipId] = useState(null);
+    const [selectedClipId, setSelectedClipId] = useState(null); // Legacy (Primary)
+    const [selectedClipIds, setSelectedClipIds] = useState(new Set()); // Multi-select
+    const [magneticMode, setMagneticMode] = useState(false);
 
     // History Management
     const [history, setHistory] = useState([]);
@@ -24,11 +27,94 @@ export const useTimelineState = () => {
         setHistoryIndex(prev => prev + 1);
     }, [historyIndex]);
 
+    // Selection Logic
+    const selectClip = useCallback((clipId, isMulti = false) => {
+        setSelectedClipIds(prev => {
+            const newSet = new Set(isMulti ? prev : []);
+            if (newSet.has(clipId)) {
+                if (isMulti) newSet.delete(clipId);
+            } else {
+                newSet.add(clipId);
+
+                // If this clip is part of a group, select all group members
+                // We need access to tracks here. 
+                // Since setState updater doesn't give us tracks, we rely on the `tracks` closure variable.
+                // Assuming `tracks` is fresh enough or included in dependency? 
+                // Ideally we should pass tracks to this function or use a ref for tracks if needed inside setState?
+                // But `useCallback` has `[tracks]` dependency, so it's fine.
+                const groupMembers = [];
+                tracks.forEach(track => {
+                    track.clips.forEach(c => {
+                        if (c.id === clipId && c.groupId) {
+                            // Found the clip, now find others with same groupId
+                            tracks.forEach(t2 => {
+                                t2.clips.forEach(c2 => {
+                                    if (c2.groupId === c.groupId) groupMembers.push(c2.id);
+                                });
+                            });
+                        }
+                    });
+                });
+                groupMembers.forEach(id => newSet.add(id));
+            }
+
+            // Sync legacy state (first item or null)
+            const firstId = newSet.size > 0 ? Array.from(newSet)[0] : null;
+            setSelectedClipId(firstId);
+
+            return newSet;
+        });
+    }, [tracks]);
+
+    const selectAll = useCallback(() => {
+        const allIds = new Set();
+        tracks.forEach(t => t.clips.forEach(c => allIds.add(c.id)));
+        setSelectedClipIds(allIds);
+        setSelectedClipId(allIds.size > 0 ? Array.from(allIds)[0] : null);
+    }, [tracks]);
+
+    const deselectAll = useCallback(() => {
+        setSelectedClipIds(new Set());
+        setSelectedClipId(null);
+    }, []);
+
+    // Toggle Magnetic Mode
+    const toggleMagneticMode = useCallback(() => {
+        setMagneticMode(prev => !prev);
+    }, []);
+
+    // Grouping
+    const groupSelectedClips = useCallback(() => {
+        setTracks(prev => {
+            if (selectedClipIds.size < 2) return prev; // Need 2+ to group
+
+            const groupId = `group-${Date.now()}`;
+            const newTracks = prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip =>
+                    selectedClipIds.has(clip.id) ? { ...clip, groupId } : clip
+                )
+            }));
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [selectedClipIds, addToHistory]);
+
+    const ungroupSelectedClips = useCallback(() => {
+        setTracks(prev => {
+            const newTracks = prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip =>
+                    selectedClipIds.has(clip.id) ? { ...clip, groupId: undefined } : clip
+                )
+            }));
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [selectedClipIds, addToHistory]);
+
     // Initialize timeline with a main media file
     const initializeTimeline = useCallback((mediaFile, mediaType, duration) => {
-        // If we already have tracks, don't overwrite unless empty? 
-        // For now, we assume this is called on first load.
-
         const initialTrack = {
             id: 'track-main',
             type: mediaType === 'video' ? 'video' : 'image',
@@ -39,21 +125,24 @@ export const useTimelineState = () => {
                 name: 'Main Media',
                 startTime: 0,
                 duration: duration || 10,
-                startOffset: 0, // Where in the source file this clip starts
-                source: mediaFile, // Reference to the actual file/url
-                sourceDuration: duration || 10 // Store max duration for constraints
+                startOffset: 0,
+                source: mediaFile,
+                sourceDuration: duration || 10
             }]
         };
 
-        // Initialize with one text track, one sticker track, and one audio track
+        const adjustmentTrack = {
+            id: 'track-adjustment-1',
+            type: 'adjustment',
+            height: 32,
+            clips: []
+        };
         const textTrack = { id: 'track-text-1', type: 'text', height: 64, clips: [] };
         const stickerTrack = { id: 'track-sticker-1', type: 'sticker', height: 64, clips: [] };
         const audioTrack = { id: 'track-audio-1', type: 'audio', height: 48, clips: [] };
 
-        const newTracks = [initialTrack, textTrack, stickerTrack, audioTrack];
+        const newTracks = [adjustmentTrack, initialTrack, audioTrack, textTrack, stickerTrack];
         setTracks(newTracks);
-
-        // Reset history
         setHistory([newTracks]);
         setHistoryIndex(0);
     }, []);
@@ -83,7 +172,6 @@ export const useTimelineState = () => {
     // Add a new track
     const addTrack = useCallback((type) => {
         setTracks(prev => {
-            // Count existing tracks of this type to generate a nice ID
             const count = prev.filter(t => t.type === type).length;
             const newTrack = {
                 id: `track-${type}-${count + 1}-${Date.now()}`,
@@ -114,7 +202,6 @@ export const useTimelineState = () => {
             const newTracks = prev.map(track =>
                 track.id === trackId ? { ...track, height: Math.max(32, newHeight) } : track
             );
-            // Don't add to history for resizing to avoid spamming undo stack
             return newTracks;
         });
     }, []);
@@ -159,7 +246,7 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
-    // Update a clip's properties (e.g., filters, effects, text content)
+    // Update a clip's properties
     const updateClip = useCallback((clipId, updates) => {
         setTracks(prev => {
             const newTracks = prev.map(track => ({
@@ -168,14 +255,12 @@ export const useTimelineState = () => {
                     clip.id === clipId ? { ...clip, ...updates } : clip
                 )
             }));
-            // Only add to history if meaningful change (optimization)
-            // For now, add to history
             addToHistory(newTracks);
             return newTracks;
         });
     }, [addToHistory]);
 
-    // Add a transition to a clip (start of clip)
+    // Add a transition
     const addTransition = useCallback((clipId, transitionType, duration = 1.0) => {
         setTracks(prev => {
             const newTracks = prev.map(track => ({
@@ -192,7 +277,7 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
-    // Split a clip at a specific time
+    // Split a clip
     const splitClip = useCallback((clipId, splitTime) => {
         setTracks(prev => {
             let tracksChanged = false;
@@ -201,42 +286,29 @@ export const useTimelineState = () => {
                 if (clipIndex === -1) return track;
 
                 const clip = track.clips[clipIndex];
-
-                // Calculate relative split point within the clip
                 const relativeSplit = splitTime - clip.startTime;
 
-                // Validation
                 if (relativeSplit <= 0.1 || relativeSplit >= clip.duration - 0.1) return track;
 
                 tracksChanged = true;
 
-                // Create two new clips
-                const firstClip = {
-                    ...clip,
-                    duration: relativeSplit
-                };
-
+                const firstClip = { ...clip, duration: relativeSplit };
                 const secondClip = {
                     ...clip,
                     id: `clip-${Date.now()}`,
                     startTime: splitTime,
                     duration: clip.duration - relativeSplit,
                     startOffset: clip.startOffset + relativeSplit,
-                    // Copy over effects/filters
                     filter: clip.filter,
                     effect: clip.effect,
                     adjustments: clip.adjustments,
-                    // Text/Sticker props
                     text: clip.text,
                     style: clip.style,
                     sticker: clip.sticker
                 };
 
-                // Replace original clip with new ones
                 const newClips = [...track.clips];
                 newClips.splice(clipIndex, 1, firstClip, secondClip);
-
-                // Sort clips by start time just in case
                 newClips.sort((a, b) => a.startTime - b.startTime);
 
                 return { ...track, clips: newClips };
@@ -261,18 +333,14 @@ export const useTimelineState = () => {
                 const prevClip = clipIndex > 0 ? track.clips[clipIndex - 1] : null;
                 const nextClip = clipIndex < track.clips.length - 1 ? track.clips[clipIndex + 1] : null;
 
-                // 1. Constrain Start Time (Collision with Prev Clip)
                 let validatedStartTime = newStartTime;
                 if (prevClip) {
                     const minStartTime = prevClip.startTime + prevClip.duration;
-                    if (validatedStartTime < minStartTime) {
-                        validatedStartTime = minStartTime;
-                    }
+                    if (validatedStartTime < minStartTime) validatedStartTime = minStartTime;
                 } else {
                     if (validatedStartTime < 0) validatedStartTime = 0;
                 }
 
-                // 2. Constrain Duration/End Time (Collision with Next Clip)
                 let validatedDuration = newDuration;
                 if (nextClip) {
                     const maxEndTime = nextClip.startTime;
@@ -281,24 +349,18 @@ export const useTimelineState = () => {
                     }
                 }
 
-                // 3. Constrain by Source Duration
                 if (clip.sourceDuration) {
                     let validatedStartOffset = newStartOffset;
                     if (validatedStartOffset < 0) validatedStartOffset = 0;
-
-                    // Check if end of clip exceeds source
                     if (validatedStartOffset + validatedDuration > clip.sourceDuration) {
                         validatedDuration = clip.sourceDuration - validatedStartOffset;
                     }
-
                     newDuration = validatedDuration;
                     newStartOffset = validatedStartOffset;
                 }
 
-                // Final safety check for min duration
                 if (validatedDuration < 0.1) validatedDuration = 0.1;
 
-                // Update clip
                 const updatedClip = {
                     ...clip,
                     startTime: validatedStartTime,
@@ -319,8 +381,40 @@ export const useTimelineState = () => {
     // Move a clip
     const moveClip = useCallback((clipId, newStartTime) => {
         setTracks(prev => {
+            // Find the moving clip and its group
+            let groupId = null;
+            let originalClip = null;
+            prev.forEach(t => {
+                const c = t.clips.find(clip => clip.id === clipId);
+                if (c) {
+                    groupId = c.groupId;
+                    originalClip = c;
+                }
+            });
+
+            // Calculate delta
+            let delta = 0;
+            if (originalClip) {
+                // Determine potential new time (constrained) before applying delta to group?
+                // This is hard to constraint-check a whole group at once.
+                // Simplified: Calculate desired delta, then try to apply it.
+                delta = newStartTime - originalClip.startTime;
+            }
+
             const newTracks = prev.map(track => {
-                const clipIndex = track.clips.findIndex(c => c.id === clipId);
+                // Logic: 
+                // 1. Identify clips to move: either just clipId, or all with same groupId
+                // 2. For each moving clip, validation check against collision on THAT track.
+
+                // This gets complex. For MVP Group Move:
+                // We just update the start times. If constraints hit, we might let them overlap or stop?
+                // Let's implement individual move first, which was working.
+
+                // TODO: Group Moving Logic (Iterate all tracks, check all members)
+                // For now, let's keep it safe: Only move the target clip, ignoring group for move (unless we fix it).
+                // Actually, let's try to support it.
+
+                const clipIndex = track.clips.findIndex(c => c.id === clipId); // Only primary
                 if (clipIndex === -1) return track;
 
                 const clip = track.clips[clipIndex];
@@ -329,10 +423,8 @@ export const useTimelineState = () => {
 
                 let validatedStartTime = newStartTime;
 
-                // Collision with Prev Clip
                 if (prevClip) {
                     const minStartTime = prevClip.startTime + prevClip.duration;
-                    // Snap if close enough (e.g., within 0.1s)
                     if (Math.abs(validatedStartTime - minStartTime) < 0.1 || validatedStartTime < minStartTime) {
                         validatedStartTime = minStartTime;
                     }
@@ -340,21 +432,14 @@ export const useTimelineState = () => {
                     if (validatedStartTime < 0) validatedStartTime = 0;
                 }
 
-                // Collision with Next Clip
                 if (nextClip) {
                     const maxEndTime = nextClip.startTime;
-                    // Snap if close enough
                     if (Math.abs((validatedStartTime + clip.duration) - maxEndTime) < 0.1 || validatedStartTime + clip.duration > maxEndTime) {
                         validatedStartTime = maxEndTime - clip.duration;
                     }
                 }
 
-                // Update clip
-                const updatedClip = {
-                    ...clip,
-                    startTime: validatedStartTime
-                };
-
+                const updatedClip = { ...clip, startTime: validatedStartTime };
                 const newClips = [...track.clips];
                 newClips[clipIndex] = updatedClip;
 
@@ -365,7 +450,6 @@ export const useTimelineState = () => {
         });
     }, []);
 
-    // Commit trim/move to history (call this on drag end)
     const commitUpdate = useCallback(() => {
         setTracks(currentTracks => {
             addToHistory(currentTracks);
@@ -373,67 +457,85 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
-    // Delete a clip
-    const deleteClip = useCallback((clipId) => {
+    // Delete a clip (Ripple Aware)
+    const deleteClip = useCallback((targetClipId) => {
         setTracks(prev => {
-            const newTracks = prev.map(track => ({
-                ...track,
-                clips: track.clips.filter(c => c.id !== clipId)
-            }));
+            let idsToDelete = new Set();
+            if (targetClipId && selectedClipIds.has(targetClipId)) {
+                idsToDelete = new Set(selectedClipIds);
+            } else if (targetClipId) {
+                idsToDelete.add(targetClipId);
+            } else {
+                idsToDelete = new Set(selectedClipIds);
+            }
+
+            if (idsToDelete.size === 0) return prev;
+
+            const newTracks = prev.map(track => {
+                const keptClips = track.clips.filter(c => !idsToDelete.has(c.id));
+                return { ...track, clips: keptClips };
+            });
+
+            // Post-process for Ripple if Magnetic is ON
+            if (magneticMode) {
+                newTracks.forEach(track => {
+                    const deletedClips = prev.find(t => t.id === track.id)?.clips.filter(c => idsToDelete.has(c.id)) || [];
+                    if (deletedClips.length === 0) return;
+
+                    deletedClips.sort((a, b) => a.startTime - b.startTime);
+
+                    deletedClips.forEach(deleted => {
+                        track.clips.forEach(clip => {
+                            if (clip.startTime > deleted.startTime) {
+                                clip.startTime = Math.max(deleted.startTime, clip.startTime - deleted.duration);
+                            }
+                        });
+                    });
+                });
+            }
+
             addToHistory(newTracks);
             return newTracks;
         });
-        if (selectedClipId === clipId) setSelectedClipId(null);
-    }, [selectedClipId, addToHistory]);
 
-    // Detach audio from a video clip
+        setSelectedClipId(null);
+        setSelectedClipIds(new Set());
+    }, [selectedClipIds, selectedClipId, addToHistory, magneticMode]);
+
+    // Detach audio
     const detachAudio = useCallback((clipId) => {
         setTracks(prev => {
             let clipToDetach = null;
             let tracksChanged = false;
 
-            // 1. Find and Update Video Clip (Mute it)
             const newTracks = prev.map(track => {
                 const clipIndex = track.clips.findIndex(c => c.id === clipId);
                 if (clipIndex === -1) return track;
-
                 const clip = track.clips[clipIndex];
-                if (track.type !== 'video' && clip.type !== 'video') return track; // Only video
-                if (clip.audioDetached) return track; // Already detached
+                if (track.type !== 'video' && clip.type !== 'video') return track;
+                if (clip.audioDetached) return track;
 
                 clipToDetach = clip;
                 tracksChanged = true;
-
-                // Mute the video clip and mark as detached
                 const updatedClip = { ...clip, muted: true, audioDetached: true };
                 const newClips = [...track.clips];
                 newClips[clipIndex] = updatedClip;
-
                 return { ...track, clips: newClips };
             });
 
             if (!tracksChanged || !clipToDetach) return prev;
 
-            // 2. Create new Audio Clip
             const audioClip = {
                 ...clipToDetach,
                 id: `clip-audio-${Date.now()}`,
                 type: 'audio',
-                muted: false, // Ensure audio is not muted
-                // Keep same timing
-                // Remove visual properties if any
+                muted: false,
                 style: undefined,
                 transform: undefined,
                 filter: undefined,
                 effect: undefined,
                 mask: undefined
             };
-
-            // 3. Add to new Audio Track (Insert at top of audio tracks? or just new track)
-            // User asked: "add that audio on by adding new audio track on first of audio track"
-            // We'll create a new audio track and insert it after the visual tracks but before other audio tracks?
-            // Or just allow `addTrack` logic.
-            // Let's create a new specific audio track.
 
             const audioTrackCount = prev.filter(t => t.type === 'audio').length;
             const newAudioTrack = {
@@ -443,13 +545,6 @@ export const useTimelineState = () => {
                 clips: [audioClip]
             };
 
-            // Insert mainly for logic. Audio tracks are usually at the bottom.
-            // If we want "first of audio track", we should insert it right after the last visual track?
-            // Find last visual track index
-            // But our track list is mixed.
-
-            // Let's just append it for now, usually "New Track" is good enough.
-            // If we want "First Audio Track", we could try to splice it in.
             const firstAudioIndex = newTracks.findIndex(t => t.type === 'audio');
             if (firstAudioIndex !== -1) {
                 newTracks.splice(firstAudioIndex, 0, newAudioTrack);
@@ -462,7 +557,7 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
-    // Add markers to a clip
+    // Add markers
     const addMarkersToClip = useCallback((clipId, markers) => {
         setTracks(prev => {
             const newTracks = prev.map(track => ({
@@ -480,7 +575,16 @@ export const useTimelineState = () => {
         tracks,
         setTracks,
         selectedClipId,
-        setSelectedClipId,
+        setSelectedClipId: (id) => selectClip(id, false),
+        selectedClipIds,
+        selectClip,
+        selectAll,
+        deselectAll,
+        magneticMode,
+        toggleMagneticMode,
+        groupSelectedClips,
+        ungroupSelectedClips,
+
         initializeTimeline,
         addTrack,
         reorderTracks,
