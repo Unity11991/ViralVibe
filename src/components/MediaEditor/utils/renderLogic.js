@@ -89,18 +89,63 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         baseLayer.opacity = activeOpacity;
 
         if (track.type === 'text') {
-            visibleLayers.push({
+            const textLayer = {
                 ...baseLayer,
                 type: 'text',
                 text: clip.text || 'Text',
                 x: getVal('x', clip.style?.x || 50),
                 y: getVal('y', clip.style?.y || 50),
-                fontSize: getVal('scale', clip.style?.fontSize || 48), // Text scale maps to fontSize? Or explicit scale? standardizing on fontSize for now
+                fontSize: getVal('scale', clip.style?.fontSize || 48),
                 fontFamily: clip.style?.fontFamily || 'Arial',
                 fontWeight: clip.style?.fontWeight || 'bold',
                 color: clip.style?.color || '#ffffff',
                 rotation: getVal('rotation', clip.style?.rotation || 0),
-            });
+            };
+
+            // Apply Text Animations
+            if (clip.animation && clip.animation.type !== 'none') {
+                const animDuration = clip.animation.duration || 1.0;
+                const progress = Math.min(1, Math.max(0, clipTime / animDuration));
+
+                switch (clip.animation.type) {
+                    case 'typewriter':
+                        textLayer.text = textLayer.text.substring(0, Math.floor(progress * textLayer.text.length));
+                        break;
+                    case 'fadeIn':
+                        textLayer.opacity = (textLayer.opacity / 100) * progress * 100;
+                        break;
+                    case 'slideIn': // From Left
+                        // Assuming 50 is center, 0 is left. Start from -50?
+                        // Let's assume standard percent coordinates.
+                        const startX = -20;
+                        textLayer.x = startX + (textLayer.x - startX) * (1 - Math.pow(1 - progress, 3)); // Ease Out Cubic
+                        textLayer.opacity = progress * 100;
+                        break;
+                    case 'slideUp': // From Bottom
+                        const startY = 120;
+                        textLayer.y = startY + (textLayer.y - startY) * (1 - Math.pow(1 - progress, 3));
+                        textLayer.opacity = progress * 100;
+                        break;
+                    case 'bounce':
+                        // Simple bounce effect scaling up
+                        const bounce = (t) => {
+                            if (t < (1 / 2.75)) return 7.5625 * t * t;
+                            else if (t < (2 / 2.75)) return 7.5625 * (t -= (1.5 / 2.75)) * t + 0.75;
+                            else if (t < (2.5 / 2.75)) return 7.5625 * (t -= (2.25 / 2.75)) * t + 0.9375;
+                            else return 7.5625 * (t -= (2.625 / 2.75)) * t + 0.984375;
+                        };
+                        // This is bounce ease out, typically used for falling.
+                        // For "Pop In" bounce:
+                        const elastic = (x) => {
+                            const c4 = (2 * Math.PI) / 3;
+                            return x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1;
+                        }
+                        textLayer.fontSize *= elastic(progress);
+                        break;
+                }
+            }
+
+            visibleLayers.push(textLayer);
         } else if (track.type === 'sticker') {
             // New Sticker Logic: Treat as Image/Video Layer
             let media = null;
