@@ -82,15 +82,46 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                 rotation: clip.style?.rotation || 0,
             });
         } else if (track.type === 'sticker') {
-            visibleLayers.push({
-                ...baseLayer,
-                type: 'sticker',
-                x: clip.sticker?.x || 50,
-                y: clip.sticker?.y || 50,
-                scale: clip.sticker?.scale || 1,
-                rotation: clip.sticker?.rotation || 0,
-                image: clip.sticker?.image
-            });
+            // New Sticker Logic: Treat as Image/Video Layer
+            let media = null;
+            const isAnimated = clip.isAnimated;
+
+            if (isAnimated) {
+                // Try video cache
+                media = videoElements && videoElements[clip.id];
+                if (!media && clip.source) {
+                    const v = document.createElement('video');
+                    v.src = clip.source;
+                    v.crossOrigin = 'anonymous';
+                    media = v;
+                }
+            } else {
+                // Try image cache
+                media = imageElements && imageElements[clip.id];
+                if (!media && (clip.source || clip.thumbnail)) {
+                    const img = new Image();
+                    img.src = clip.source || clip.thumbnail;
+                    media = img;
+                }
+            }
+
+            if (media) {
+                visibleLayers.push({
+                    ...baseLayer,
+                    type: isAnimated ? 'video' : 'image', // Use robust renderer
+                    media: media,
+                    adjustments: clip.adjustments || getInitialAdjustments(),
+                    filter: clip.filter || 'normal',
+                    effect: clip.effect || null,
+                    transform: {
+                        ...(clip.transform || {
+                            x: 0, y: 0, scale: 100, rotation: 0
+                        }),
+                        blendMode: clip.blendMode || 'normal'
+                    },
+                    mask: clip.mask || null
+                });
+            }
         } else if (track.type === 'adjustment') {
             visibleLayers.push({
                 ...baseLayer,

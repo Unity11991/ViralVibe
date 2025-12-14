@@ -266,7 +266,7 @@ export const useExport = (mediaElementRef, mediaType) => {
                 // 2. Sync Secondary Tracks (Video Elements)
                 if (tracks) {
                     tracks.forEach(track => {
-                        if (track.type === 'video' && track.id !== 'track-main') {
+                        if ((track.type === 'video' || track.type === 'sticker') && track.id !== 'track-main') {
                             track.clips.forEach(clip => {
                                 const el = mediaResources?.videoElements?.[clip.id];
                                 if (el) {

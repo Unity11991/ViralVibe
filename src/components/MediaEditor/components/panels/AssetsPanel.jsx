@@ -1,16 +1,17 @@
 import React from 'react';
-import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles, ArrowRightLeft } from 'lucide-react';
+import { StickerPanel } from '../StickerPanel'; // Check import path quality
+import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles, ArrowRightLeft, Smile, ScanFace } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { FilterPanel } from '../FilterPanel';
 import { EffectsPanel } from '../EffectsPanel';
 import { MaskPanel } from '../MaskPanel';
 import { TransitionsPanel } from './TransitionsPanel';
-import { ScanFace } from 'lucide-react';
 
 const TABS = [
     { id: 'media', icon: ImageIcon, label: 'Media' },
     { id: 'audio', icon: Music, label: 'Audio' },
     { id: 'text', icon: Type, label: 'Text' },
+    { id: 'stickers', icon: Smile, label: 'Stickers' },
     { id: 'adjust', icon: Sliders, label: 'Adjust' },
     { id: 'filters', icon: Wand2, label: 'Filters' },
     { id: 'effects', icon: Sparkles, label: 'Effects' },
@@ -40,7 +41,12 @@ export const AssetsPanel = ({
     mask,
     onUpdateMask,
     activeClip,
-    onUpdateClip
+    onUpdateClip,
+    // Sticker Props
+    stickers = [],
+    onUpdateSticker,
+    onDeleteSticker,
+    activeOverlayId
 }) => {
     return (
         <div className="flex h-full">
@@ -200,7 +206,6 @@ export const AssetsPanel = ({
                                 <span className="text-2xl font-bold">Add Heading</span>
                                 <span className="text-xs text-white/40">Click or Drag to add</span>
                             </button>
-
                             <button
                                 onClick={() => onAddAsset('text', { text: 'Add Subheading', fontSize: 40, fontWeight: 'semibold' })}
                                 className="w-full p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
@@ -216,7 +221,6 @@ export const AssetsPanel = ({
                             >
                                 <span className="text-lg font-semibold">Add Subheading</span>
                             </button>
-
                             <button
                                 onClick={() => onAddAsset('text', { text: 'Add Body Text', fontSize: 24, fontWeight: 'normal' })}
                                 className="w-full p-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
@@ -233,6 +237,17 @@ export const AssetsPanel = ({
                                 <span className="text-sm">Add Body Text</span>
                             </button>
                         </div>
+                    )}
+
+                    {activeTab === 'stickers' && (
+                        <StickerPanel
+                            stickers={stickers}
+                            activeOverlayId={activeOverlayId}
+                            onAddAsset={onAddAsset}
+                            onUpdateSticker={onUpdateSticker}
+                            onDeleteSticker={onDeleteSticker}
+                            onUploadSticker={(file) => onAddToLibrary(file)}
+                        />
                     )}
 
                     {activeTab === 'adjust' && (
@@ -253,9 +268,7 @@ export const AssetsPanel = ({
                                 <span className="font-bold">Add Adjustment Layer</span>
                                 <span className="text-xs text-white/40">Applies effects to tracks below</span>
                             </button>
-
                             <div className="w-full h-px bg-white/5 my-2" />
-
                             <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider">Global Preview</h4>
                             <AdjustPanel
                                 adjustments={adjustments}

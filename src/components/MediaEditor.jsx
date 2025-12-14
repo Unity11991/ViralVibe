@@ -495,9 +495,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         };
 
-        // Sync Secondary Videos
+        // Sync Secondary Videos (and Animated Stickers)
         tracks.forEach(track => {
-            if (track.type !== 'video' || track.id === 'track-main') return;
+            if ((track.type !== 'video' && track.type !== 'sticker') || track.id === 'track-main') return;
 
             const activeClip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
@@ -1076,6 +1076,33 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 addClip(track.id, newClip);
             } else {
                 addClipToNewTrack('adjustment', newClip);
+            }
+        } else if (type === 'sticker') {
+            // Handle Sticker
+            // Check if it's animated (Tenor usually is)
+            const isAnimated = data.isAnimated || data.url.endsWith('.mp4');
+
+            const newClip = {
+                id: `sticker-${Date.now()}`,
+                type: 'sticker',
+                name: 'Sticker',
+                startTime: currentTime,
+                duration: 5, // Default duration
+                startOffset: 0,
+                source: data.url,
+                isAnimated: isAnimated,
+                thumbnail: data.thumbnail,
+                transform: {
+                    x: 0, y: 0, scale: 100, rotation: 0
+                }
+            };
+
+            // Find sticker track or create
+            let track = tracks.find(t => t.type === 'sticker');
+            if (track) {
+                addClip(track.id, newClip);
+            } else {
+                addClipToNewTrack('sticker', newClip);
             }
         }
     };
