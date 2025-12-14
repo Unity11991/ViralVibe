@@ -271,12 +271,31 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
                 // Insert at start time (current time - duration)
                 const startTime = Math.max(0, currentTime - recordingTime);
+                const duration = audioAsset.duration;
 
-                // Add clip to new audio track
-                addClipToNewTrack('audio', {
-                    ...audioAsset,
-                    startTime
+                // Find an available audio track (no overlap)
+                const availableTrack = tracks.find(t => {
+                    if (t.type !== 'audio') return false;
+                    // Check for overlap
+                    const hasOverlap = t.clips.some(c => {
+                        const start = c.startTime;
+                        const end = c.startTime + c.duration;
+                        return (startTime < end && (startTime + duration) > start);
+                    });
+                    return !hasOverlap;
                 });
+
+                if (availableTrack) {
+                    addClip(availableTrack.id, {
+                        ...audioAsset,
+                        startTime
+                    });
+                } else {
+                    addClipToNewTrack('audio', {
+                        ...audioAsset,
+                        startTime
+                    });
+                }
             }
 
         } else {
