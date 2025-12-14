@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink, Mic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink, Mic, Camera } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -38,7 +38,9 @@ export const TimelinePanel = ({
     onGroup,
     onUngroup,
     isRecording,
-    onToggleRecording
+    onToggleRecording,
+    isRecordingVideo,
+    onToggleVideoRecording
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -241,6 +243,14 @@ export const TimelinePanel = ({
                         title="Voiceover Record"
                     >
                         <Mic size={16} fill={isRecording ? "currentColor" : "none"} />
+                    </button>
+
+                    <button
+                        onClick={onToggleVideoRecording}
+                        className={`p-1.5 rounded transition-colors ${isRecordingVideo ? 'bg-red-500 text-white animate-pulse' : 'hover:bg-white/10 text-white/70 hover:text-white'}`}
+                        title="Webcam Record"
+                    >
+                        <Camera size={16} fill={isRecordingVideo ? "currentColor" : "none"} />
                     </button>
 
                     <div className="w-px h-4 bg-white/10 mx-2" />
