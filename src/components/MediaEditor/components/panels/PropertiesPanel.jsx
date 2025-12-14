@@ -306,6 +306,13 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
 };
 
 export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
+    const [activeTab, setActiveTab] = useState('style'); // style, animation
+
+    // Reset tab when item changes
+    React.useEffect(() => {
+        setActiveTab('style');
+    }, [activeItem?.id]); // Safely access id
+
     if (!activeItem) {
         return (
             <div className="flex-1 flex items-center justify-center text-white/30 text-center p-8">
@@ -350,7 +357,7 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
         );
     }
 
-    // Fallback for Text/Other types (Simplified for now, can be expanded)
+    // Text Properties with Tabs
     const fonts = [
         'Arial', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald', 'Raleway', 'Merriweather',
         'Playfair Display', 'Nunito', 'Poppins', 'Ubuntu', 'Lobster', 'Pacifico', 'Dancing Script',
@@ -359,13 +366,36 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
         'Permanent Marker', 'Rock Salt', 'Shadows Into Light'
     ];
 
+    const animations = [
+        { id: 'none', label: 'None', icon: '⊘' },
+        { id: 'typewriter', label: 'Typewriter', icon: '⌨️' },
+        { id: 'fadeIn', label: 'Fade In', icon: '☁️' },
+        { id: 'slideIn', label: 'Slide Right', icon: '➡️' },
+        { id: 'slideUp', label: 'Slide Up', icon: '⬆️' },
+        { id: 'bounce', label: 'Bounce', icon: '🏀' },
+    ];
+
     return (
         <div className="flex flex-col h-full">
-            <div className="p-4 border-b border-white/5">
-                <h3 className="font-bold text-lg capitalize">{activeItem.type} Properties</h3>
+            <div className="border-b border-white/5">
+                <div className="flex">
+                    {['style', 'animation'].map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === tab
+                                ? 'text-white border-b-2 border-blue-500'
+                                : 'text-white/40 hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            {tab}
+                        </button>
+                    ))}
+                </div>
             </div>
-            <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar">
-                {activeItem.type === 'text' && (
+
+            <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+                {activeItem.type === 'text' && activeTab === 'style' && (
                     <div className="space-y-6">
                         {/* Text Content */}
                         <div className="space-y-2">
@@ -463,6 +493,53 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
                                 <span className="text-sm text-white/70 uppercase">{activeItem.style?.color || '#ffffff'}</span>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {activeItem.type === 'text' && activeTab === 'animation' && (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-3">
+                            {animations.map(anim => {
+                                const isActive = activeItem.animation?.type === anim.id || (!activeItem.animation?.type && anim.id === 'none');
+                                return (
+                                    <button
+                                        key={anim.id}
+                                        onClick={() => onUpdate({
+                                            ...activeItem,
+                                            animation: { type: anim.id, duration: activeItem.animation?.duration || 1.0 }
+                                        })}
+                                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${isActive
+                                                ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
+                                            }`}
+                                    >
+                                        <div className="text-2xl mb-1">{anim.icon}</div>
+                                        <span className="text-xs font-medium">{anim.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {activeItem.animation?.type && activeItem.animation?.type !== 'none' && (
+                            <div className="space-y-2 pt-4 border-t border-white/10">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-xs font-medium text-white/60">Duration</label>
+                                    <span className="text-xs text-white/40">{activeItem.animation.duration}s</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0.1"
+                                    max="5.0"
+                                    step="0.1"
+                                    value={activeItem.animation.duration}
+                                    onChange={(e) => onUpdate({
+                                        ...activeItem,
+                                        animation: { ...activeItem.animation, duration: parseFloat(e.target.value) }
+                                    })}
+                                    className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
