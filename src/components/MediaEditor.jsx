@@ -132,15 +132,24 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
     // Calculate total timeline duration dynamically
     const timelineDuration = React.useMemo(() => {
-        let maxDuration = videoDuration || 10;
-        (tracks || []).forEach(track => {
-            track.clips.forEach(clip => {
-                const end = clip.startTime + clip.duration;
-                if (end > maxDuration) maxDuration = end;
+        let maxDuration = 0;
+
+        if (tracks && tracks.length > 0) {
+            tracks.forEach(track => {
+                track.clips.forEach(clip => {
+                    const end = clip.startTime + clip.duration;
+                    if (end > maxDuration) maxDuration = end;
+                });
             });
-        });
-        // Add a little buffer (e.g., 5 seconds) for easier editing at the end
-        return Math.max(maxDuration, (videoDuration || 10));
+        }
+
+        // If we have clips, that's our duration (plus small buffer if needed? No, precise is better for export).
+        // If we have NO clips (e.g. just opened), use video duration.
+        if (maxDuration > 0) {
+            return maxDuration;
+        }
+
+        return videoDuration || 10;
     }, [tracks, videoDuration]);
 
     // Update trimRange when timeline duration changes
