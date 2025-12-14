@@ -225,12 +225,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             stickers,
             stickerImages,
             transform: { rotation, zoom },
-            transform: { rotation, zoom },
             canvasDimensions,
             activeOverlayId,
-            activeOverlayId,
-            memePadding: memeMode ? 0.3 : 0,
-            memePadding: memeMode ? 0.3 : 0,
             memePadding: memeMode ? 0.3 : 0,
             activeEffectId, // Pass effect ID
             effectIntensity, // Pass effect intensity
@@ -390,7 +386,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             stickers,
             stickerImages,
             transform: { crop: cropData, rotation, zoom },
-            memePadding: memeMode ? 0.3 : 0,
             memePadding: memeMode ? 0.3 : 0,
             activeEffectId, // Pass effect ID
             effectIntensity // Pass effect intensity

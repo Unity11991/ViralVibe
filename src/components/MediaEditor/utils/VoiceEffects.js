@@ -217,6 +217,34 @@ class VoiceEffectsManager {
             this.sources.delete(element);
         }
     }
+
+    /**
+     * Tap all active audio sources to a destination (for Export)
+     * @param {AudioNode} destination 
+     */
+    tap(destination) {
+        this.sources.forEach(conn => {
+            try {
+                conn.output.connect(destination);
+            } catch (e) {
+                console.warn('Failed to tap source:', e);
+            }
+        });
+    }
+
+    /**
+     * Untap all active audio sources from a destination
+     * @param {AudioNode} destination 
+     */
+    untap(destination) {
+        this.sources.forEach(conn => {
+            try {
+                conn.output.disconnect(destination);
+            } catch (e) {
+                // Ignore disconnect errors (e.g. if not connected)
+            }
+        });
+    }
 }
 
 export const voiceEffects = new VoiceEffectsManager();
