@@ -5,6 +5,7 @@ import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
 import { useExport } from './MediaEditor/hooks/useExport';
 import { useVoiceRecorder } from './MediaEditor/hooks/useVoiceRecorder';
+import { useVideoRecorder } from './MediaEditor/hooks/useVideoRecorder';
 
 import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
 import { usePlayback } from './MediaEditor/hooks/usePlayback';
@@ -302,6 +303,41 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             // Start Recording
             await startRecording();
             play(); // Start playback for context
+        }
+    };
+
+    // Video Recorder
+    const { isRecordingVideo, recordingVideoTime, startVideoRecording, stopVideoRecording } = useVideoRecorder();
+
+    const handleVideoOverToggle = async () => {
+        if (isRecordingVideo) {
+            // Stop Recording
+            const result = await stopVideoRecording();
+            pause();
+
+            if (result && result.blob) {
+                const videoAsset = {
+                    id: `videoover-${Date.now()}`,
+                    type: 'video',
+                    source: result.url,
+                    duration: result.blob.size > 0 ? recordingVideoTime : 1.0,
+                    name: `Camera ${new Date().toLocaleTimeString()}`,
+                    format: 'webm',
+                    transform: { scale: 50, x: 20, y: 20 }
+                };
+
+                const startTime = Math.max(0, currentTime - recordingVideoTime);
+
+                // Add to new video track for overlay
+                addClipToNewTrack('video', {
+                    ...videoAsset,
+                    startTime
+                });
+            }
+        } else {
+            // Start Recording
+            await startVideoRecording();
+            play();
         }
     };
 
@@ -1460,6 +1496,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onBeatDetect={handleBeatDetect}
                         isRecording={isRecording}
                         onToggleRecording={handleVoiceoverToggle}
+                        isRecordingVideo={isRecordingVideo}
+                        onToggleVideoRecording={handleVideoOverToggle}
                     />
                 }
             />
