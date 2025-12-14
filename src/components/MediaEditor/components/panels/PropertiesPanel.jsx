@@ -1,9 +1,47 @@
 import React, { useState } from 'react';
-import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay } from 'lucide-react';
+import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
 
-const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
+// Helper Component for Keyframe Button
+const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
+    // Calculate relative time
+    const relativeTime = Math.max(0, currentTime - (activeItem.startTime || 0));
+
+    // Check state
+    const keyframes = activeItem.keyframes?.[property] || [];
+    const hasKeyframes = keyframes.length > 0;
+
+    // Check if keyframe exists at current time
+    const activeKeyframe = keyframes.find(k => Math.abs(k.time - relativeTime) < 0.1);
+
+    const handleClick = () => {
+        if (activeKeyframe) {
+            onRemoveKeyframe(activeItem.id, property, activeKeyframe.id);
+        } else {
+            onAddKeyframe(activeItem.id, property, relativeTime, value);
+        }
+    };
+
+    return (
+        <button
+            onClick={handleClick}
+            className={`p-1 rounded-sm transition-all transform hover:scale-110 ${activeKeyframe
+                ? 'text-blue-500' // on keyframe
+                : hasKeyframes
+                    ? 'text-blue-500/50 hover:text-blue-500' // has keyframes elsewhere
+                    : 'text-white/20 hover:text-white/50' // no keyframes
+                }`}
+            title={activeKeyframe ? "Remove Keyframe" : "Add Keyframe"}
+        >
+            <div className="transform rotate-45">
+                <Square size={10} fill={activeKeyframe ? "currentColor" : "none"} strokeWidth={3} />
+            </div>
+        </button>
+    );
+};
+
+const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
 
@@ -19,7 +57,23 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                 [key]: value
             }
         });
+
+        // Auto-add keyframe if property is already keyed (Auto-Keyframe Mode simplified)
+        // If we want explicit only, remove this. But standard NLEs auto-keyframe if tracks are armed.
+        // For now, explicit on-click.
     };
+
+    // Helper to inject Keyframe Control
+    const KF = ({ prop, val }) => (
+        <KeyframeControl
+            property={prop}
+            value={val}
+            activeItem={activeItem}
+            currentTime={currentTime}
+            onAddKeyframe={onAddKeyframe}
+            onRemoveKeyframe={onRemoveKeyframe}
+        />
+    );
 
     return (
         <div className="flex flex-col h-full">
@@ -78,7 +132,10 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                                         {/* Scale */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-xs">
-                                                <span className="text-white/70">Scale</span>
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="scale" val={activeItem.transform?.scale || 100} />
+                                                    <span className="text-white/70">Scale</span>
+                                                </div>
                                                 <span className="text-white/40">{activeItem.transform?.scale || 100}%</span>
                                             </div>
                                             <input
@@ -94,10 +151,14 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                                         {/* Position */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-xs">
-                                                <span className="text-white/70">Position</span>
+                                                <div className="flex items-center gap-2">
+                                                    {/* Using separate keyframes for X and Y for precision */}
+                                                    <span className="text-white/70">Position</span>
+                                                </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div className="bg-white/5 rounded px-2 py-1 flex items-center gap-2">
+                                                    <KF prop="x" val={activeItem.transform?.x || 0} />
                                                     <span className="text-xs text-white/30">X</span>
                                                     <input
                                                         type="number"
@@ -107,6 +168,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                                                     />
                                                 </div>
                                                 <div className="bg-white/5 rounded px-2 py-1 flex items-center gap-2">
+                                                    <KF prop="y" val={activeItem.transform?.y || 0} />
                                                     <span className="text-xs text-white/30">Y</span>
                                                     <input
                                                         type="number"
@@ -121,7 +183,10 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                                         {/* Rotate */}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-xs">
-                                                <span className="text-white/70">Rotate</span>
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="rotation" val={activeItem.transform?.rotation || 0} />
+                                                    <span className="text-white/70">Rotate</span>
+                                                </div>
                                                 <span className="text-white/40">{activeItem.transform?.rotation || 0}°</span>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -161,7 +226,10 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
 
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-xs">
-                                                <span className="text-white/70">Opacity</span>
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="opacity" val={activeItem.opacity !== undefined ? activeItem.opacity : 100} />
+                                                    <span className="text-white/70">Opacity</span>
+                                                </div>
                                                 <span className="text-white/40">{activeItem.opacity !== undefined ? activeItem.opacity : 100}%</span>
                                             </div>
                                             <input
@@ -237,7 +305,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
     );
 };
 
-export const PropertiesPanel = ({ activeItem, onUpdate }) => {
+export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
     if (!activeItem) {
         return (
             <div className="flex-1 flex items-center justify-center text-white/30 text-center p-8">
@@ -249,9 +317,17 @@ export const PropertiesPanel = ({ activeItem, onUpdate }) => {
         );
     }
 
-    // If it's a video or image, use the new VideoPropertiesPanel
-    if (activeItem.type === 'video' || activeItem.type === 'image') {
-        return <VideoPropertiesPanel activeItem={activeItem} onUpdate={onUpdate} />;
+    // If it's a video, image, or sticker, use the new VideoPropertiesPanel
+    if (['video', 'image', 'sticker'].includes(activeItem.type)) {
+        return (
+            <VideoPropertiesPanel
+                activeItem={activeItem}
+                onUpdate={onUpdate}
+                currentTime={currentTime}
+                onAddKeyframe={onAddKeyframe}
+                onRemoveKeyframe={onRemoveKeyframe}
+            />
+        );
     }
 
     if (activeItem.type === 'audio') {

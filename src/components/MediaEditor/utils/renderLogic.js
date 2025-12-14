@@ -4,6 +4,7 @@
  */
 
 import { getInitialAdjustments } from './filterUtils';
+import { interpolateProperty } from './animationUtils';
 
 /**
  * Calculate the state of the current frame based on the timeline
@@ -68,18 +69,37 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
             duration: clip.duration
         };
 
+        // Calculate Animation State
+        const clipTime = currentTime - clip.startTime;
+        const keyframes = clip.keyframes || {};
+
+        // Helper to get animated value or fallback
+        const getVal = (prop, fallback) => {
+            if (keyframes[prop] && keyframes[prop].length > 0) {
+                return interpolateProperty(clipTime, keyframes[prop], fallback);
+            }
+            return fallback;
+        };
+
+        // Base Transform (Active Values for this Frame)
+        // These override static clip properties
+        const activeOpacity = getVal('opacity', baseLayer.opacity);
+
+        // Apply Opacity override
+        baseLayer.opacity = activeOpacity;
+
         if (track.type === 'text') {
             visibleLayers.push({
                 ...baseLayer,
                 type: 'text',
                 text: clip.text || 'Text',
-                x: clip.style?.x || 50,
-                y: clip.style?.y || 50,
-                fontSize: clip.style?.fontSize || 48,
+                x: getVal('x', clip.style?.x || 50),
+                y: getVal('y', clip.style?.y || 50),
+                fontSize: getVal('scale', clip.style?.fontSize || 48), // Text scale maps to fontSize? Or explicit scale? standardizing on fontSize for now
                 fontFamily: clip.style?.fontFamily || 'Arial',
                 fontWeight: clip.style?.fontWeight || 'bold',
                 color: clip.style?.color || '#ffffff',
-                rotation: clip.style?.rotation || 0,
+                rotation: getVal('rotation', clip.style?.rotation || 0),
             });
         } else if (track.type === 'sticker') {
             // New Sticker Logic: Treat as Image/Video Layer
@@ -184,6 +204,11 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     effect: clip.effect || null,
                     transform: {
                         ...(clip.transform || { rotation, zoom }),
+                        // Override with animated values
+                        x: getVal('x', clip.transform?.x || 0),
+                        y: getVal('y', clip.transform?.y || 0),
+                        scale: getVal('scale', clip.transform?.scale || 100),
+                        rotation: getVal('rotation', clip.transform?.rotation || 0),
                         blendMode: clip.blendMode || 'normal'
                     },
                     mask: clip.mask || null,
