@@ -327,12 +327,30 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 };
 
                 const startTime = Math.max(0, currentTime - recordingVideoTime);
+                const duration = videoAsset.duration;
 
-                // Add to new video track for overlay
-                addClipToNewTrack('video', {
-                    ...videoAsset,
-                    startTime
+                // Find available video track (no overlap)
+                const availableTrack = tracks.find(t => {
+                    if (t.type !== 'video') return false;
+                    const hasOverlap = t.clips.some(c => {
+                        const start = c.startTime;
+                        const end = c.startTime + c.duration;
+                        return (startTime < end && (startTime + duration) > start);
+                    });
+                    return !hasOverlap;
                 });
+
+                if (availableTrack) {
+                    addClip(availableTrack.id, {
+                        ...videoAsset,
+                        startTime
+                    });
+                } else {
+                    addClipToNewTrack('video', {
+                        ...videoAsset,
+                        startTime
+                    });
+                }
             }
         } else {
             // Start Recording
