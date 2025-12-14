@@ -4,6 +4,7 @@ import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
 import { useExport } from './MediaEditor/hooks/useExport';
+import { useVoiceRecorder } from './MediaEditor/hooks/useVoiceRecorder';
 
 import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
 import { usePlayback } from './MediaEditor/hooks/usePlayback';
@@ -246,6 +247,44 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             // For now, let's just keep whatever is there, or reset to global defaults if we had a global store.
         }
     }, [tracks, setSelectedClipId, setAdjustments, setActiveFilterId, setActiveEffectId]);
+
+    // Voice Recorder
+    const { isRecording, recordingTime, startRecording, stopRecording } = useVoiceRecorder();
+
+    const handleVoiceoverToggle = async () => {
+        if (isRecording) {
+            // Stop Recording
+            const result = await stopRecording();
+            pause(); // Pause timeline
+
+            if (result && result.blob) {
+                // Add to timeline on new audio track
+                // Create audio asset
+                const audioAsset = {
+                    id: `voiceover-${Date.now()}`, // temp id, addClip will generate real one
+                    type: 'audio',
+                    source: result.url,
+                    duration: result.blob.size > 0 ? recordingTime : 1.0,
+                    name: `Voiceover ${new Date().toLocaleTimeString()}`,
+                    format: 'webm'
+                };
+
+                // Insert at start time (current time - duration)
+                const startTime = Math.max(0, currentTime - recordingTime);
+
+                // Add clip to new audio track
+                addClipToNewTrack('audio', {
+                    ...audioAsset,
+                    startTime
+                });
+            }
+
+        } else {
+            // Start Recording
+            await startRecording();
+            play(); // Start playback for context
+        }
+    };
 
     // Wrappers for UI updates to target selected clip
     const handleSetAdjustments = (newAdjustments) => {
@@ -1400,6 +1439,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onResizeTrack={updateTrackHeight}
                         onDetachAudio={detachAudio}
                         onBeatDetect={handleBeatDetect}
+                        isRecording={isRecording}
+                        onToggleRecording={handleVoiceoverToggle}
                     />
                 }
             />

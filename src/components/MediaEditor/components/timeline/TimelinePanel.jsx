@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink, Mic } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -36,7 +36,9 @@ export const TimelinePanel = ({
     magneticMode,
     onToggleMagnetic,
     onGroup,
-    onUngroup
+    onUngroup,
+    isRecording,
+    onToggleRecording
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -229,6 +231,16 @@ export const TimelinePanel = ({
                         title="Ungroup Selected (Ctrl+Shift+G)"
                     >
                         <Unlink size={16} />
+                    </button>
+
+                    <div className="w-px h-4 bg-white/10 mx-2" />
+
+                    <button
+                        onClick={onToggleRecording}
+                        className={`p-1.5 rounded transition-colors ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'hover:bg-white/10 text-white/70 hover:text-white'}`}
+                        title="Voiceover Record"
+                    >
+                        <Mic size={16} fill={isRecording ? "currentColor" : "none"} />
                     </button>
 
                     <div className="w-px h-4 bg-white/10 mx-2" />
