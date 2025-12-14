@@ -28,7 +28,8 @@ export const TimelinePanel = ({
     onDrop,
     onReorderTrack,
     onResizeTrack,
-    onDetachAudio
+    onDetachAudio,
+    onBeatDetect
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -211,6 +212,56 @@ export const TimelinePanel = ({
                                     title="Detach Audio"
                                 >
                                     <FileAudio size={16} />
+                                </button>
+                            );
+                        }
+
+                        // Beat Detection Button (Audio)
+                        if (selectedClip && selectedClip.type === 'audio') {
+                            return (
+                                <button
+                                    onClick={async () => {
+                                        if (onBeatDetect) {
+                                            const beats = await onBeatDetect(selectedClip.source);
+                                            // onBeatDetect prop should probably handle the state update too?
+                                            // Or return beats and we call another prop?
+                                            // Let's assume onBeatDetect DOES EVERYTHING (detect + update).
+                                            // Wait, if onBeatDetect is passed from parent, parent does logic.
+                                            // If I want to do it here:
+                                            // onClick={() => { detectBeats(..).then(beats => onAddMarkers(id, beats)) }}
+                                            // Simpler: Just call `onBeatDetect(selectedClip.id, selectedClip.source)`
+                                            onBeatDetect(selectedClip.id, selectedClip.source);
+                                        }
+                                    }}
+                                    className="px-2 py-1.5 hover:bg-white/10 rounded text-white/70 hover:text-yellow-400 flex items-center gap-1 text-xs font-medium"
+                                    title="Auto-Detect Beats"
+                                >
+                                    <Music size={14} />
+                                    <span>Beat Detect</span>
+                                </button>
+                            );
+                        }
+
+                        // Beat Detection Button (Audio)
+                        if (selectedClip && selectedClip.type === 'audio') {
+                            return (
+                                <button
+                                    onClick={async () => {
+                                        // Dynamic import or passed prop for detection?
+                                        // Design: Passed prop onBeatDetect
+                                        // Parent will handle calling utils.
+                                        // Actually easier to do it here if we import utils?
+                                        // But TimelinePanel shouldn't know utils necessarily. 
+                                        // Let's assume onBeatDetect prop.
+                                        if (onBeatDetect) {
+                                            onBeatDetect(selectedClip.id, selectedClip.source);
+                                        }
+                                    }}
+                                    className="px-2 py-1.5 hover:bg-white/10 rounded text-white/70 hover:text-yellow-400 flex items-center gap-1 text-xs font-medium"
+                                    title="Auto-Detect Beats"
+                                >
+                                    <Music size={14} />
+                                    <span>Beat Detect</span>
                                 </button>
                             );
                         }

@@ -9,6 +9,7 @@ import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
 import { usePlayback } from './MediaEditor/hooks/usePlayback';
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
 import { buildFilterString, isPointInClip, isPointInText, getHandleAtPoint } from './MediaEditor/utils/canvasUtils';
+import { detectBeats } from './MediaEditor/utils/waveformUtils';
 import { Button } from './MediaEditor/components/UI';
 
 // New Layout Components
@@ -93,7 +94,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         addTrack,
         reorderTracks,
         updateTrackHeight,
-        detachAudio
+
+        detachAudio,
+        addMarkersToClip
     } = useTimelineState();
 
     // Editor State
@@ -128,7 +131,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // Calculate total timeline duration dynamically
     const timelineDuration = React.useMemo(() => {
         let maxDuration = videoDuration || 10;
-        tracks.forEach(track => {
+        (tracks || []).forEach(track => {
             track.clips.forEach(clip => {
                 const end = clip.startTime + clip.duration;
                 if (end > maxDuration) maxDuration = end;
@@ -522,6 +525,32 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // usePlayback handles registered elements.
     // For dynamic elements (secondary tracks), we should register them or sync them in an effect.
 
+    // Separate Cleanup Effect to avoid running on every frame
+    useEffect(() => {
+        const currentClipIds = new Set();
+        tracks.forEach(t => t.clips.forEach(c => currentClipIds.add(c.id)));
+
+        // Cleanup Audio Ref
+        Object.keys(audioElementsRef.current).forEach(clipId => {
+            if (!currentClipIds.has(clipId)) {
+                const audio = audioElementsRef.current[clipId];
+                if (!audio.paused) audio.pause();
+                audio.src = '';
+                delete audioElementsRef.current[clipId];
+            }
+        });
+
+        // Cleanup Video Ref
+        Object.keys(videoElementsRef.current).forEach(clipId => {
+            if (!currentClipIds.has(clipId)) {
+                const video = videoElementsRef.current[clipId];
+                if (!video.paused) video.pause();
+                video.src = '';
+                delete videoElementsRef.current[clipId];
+            }
+        });
+    }, [tracks]);
+
     useEffect(() => {
         // Helper to apply audio properties
         const applyAudioProps = (element, clip, time) => {
@@ -529,7 +558,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
             // Speed
             const speed = clip.speed || 1;
-            if (element.playbackRate !== speed) {
+            if (Math.abs(element.playbackRate - speed) > 0.01) {
                 element.playbackRate = speed;
             }
 
@@ -557,11 +586,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
             // Clamp and Apply
             volume = Math.max(0, Math.min(1, volume));
-            element.volume = volume;
+            if (Math.abs(element.volume - volume) > 0.01) {
+                element.volume = volume;
+            }
         };
 
         // Sync Secondary Videos
-        tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
+        tracks.forEach(track => {
+            if (track.type !== 'video' || track.id === 'track-main') return;
+
             const activeClip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
             );
@@ -570,16 +603,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (!videoElementsRef.current[activeClip.id]) {
                     const video = document.createElement('video');
                     video.src = activeClip.source;
-                    video.muted = true; // Use muted for video tracks unless detached? User might want audio from video tracks.
-                    // If audio is NOT detached, we should let it play? 
-                    // Current logic mutes secondary videos. 
-                    // Let's assume secondary videos are muted by default or use a specific flag.
-                    // Wait, property panel allows editing volume for videos.
-                    // So we should NOT mute it if we want volume control.
-                    // BUT, browsers might block autoplay unmuted.
-                    // Let's stick to muted=true for secondary visual tracks for now unless we implement full audio mixing.
-                    // Actually, if we are editing volume, we expect to hear it.
-                    // Let's UNMUTE but control volume.
+                    video.muted = true;
                     video.muted = false;
                     video.crossOrigin = 'anonymous';
                     videoElementsRef.current[activeClip.id] = video;
@@ -599,13 +623,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (activeClip.voiceEffect) {
                     voiceEffects.applyEffect(video, activeClip.voiceEffect);
                 } else {
-                    // Disconnect if none (or handle via applyEffect('none'))
                     voiceEffects.applyEffect(video, 'none');
                 }
 
-                if (activeClip.muted) video.muted = true;
-                if (!activeClip.muted) video.muted = false;
-
+                // Check Muted
+                const shouldMute = !!activeClip.muted;
+                if (video.muted !== shouldMute) video.muted = shouldMute;
 
                 if (isPlaying && video.paused) video.play().catch(() => { });
                 else if (!isPlaying && !video.paused) video.pause();
@@ -619,8 +642,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         });
 
+        // Cleanup Orphaned Elements (Deleted Clips)
+
+
         // Sync Audio
-        tracks.filter(t => t.type === 'audio').forEach(track => {
+        tracks.forEach(track => {
+            if (track.type !== 'audio') return;
+
             const activeClip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
             );
@@ -658,13 +686,34 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         });
 
-        // Sync Main Media Mute State
-        // Find the main video track (usually the first one) and check active clip's muted status
-        const mainVideoTrack = tracks.find(t => t.type === 'video'); // Get first video track
+        // Sync Main Media Mute State & Properties
+        const mainVideoTrack = tracks.find(t => t.type === 'video'); // Get first video track (usually main)
         if (mainVideoTrack && mediaElementRef.current) {
             const activeMainClip = mainVideoTrack.clips.find(c => currentTime >= c.startTime && currentTime < (c.startTime + c.duration));
             if (activeMainClip) {
-                mediaElementRef.current.muted = !!activeMainClip.muted;
+                // Apply Mute
+                const shouldMute = !!activeMainClip.muted;
+                if (mediaElementRef.current.muted !== shouldMute) {
+                    mediaElementRef.current.muted = shouldMute;
+                }
+
+                // Apply Speed/Pitch/Volume
+                applyAudioProps(mediaElementRef.current, activeMainClip, currentTime);
+
+                // Apply Voice Effect (Node connection if needed)
+                // Note: Main media connection might interfere with useMediaProcessor/Context?
+                // VoiceEffectsManager handles connection safely (singleton ctx).
+                if (activeMainClip.voiceEffect) {
+                    voiceEffects.applyEffect(mediaElementRef.current, activeMainClip.voiceEffect);
+                } else {
+                    voiceEffects.applyEffect(mediaElementRef.current, 'none');
+                }
+            } else {
+                // No active clip on main track? Maybe black screen or pause?
+                // Ensure default props
+                mediaElementRef.current.playbackRate = 1;
+                mediaElementRef.current.volume = 1;
+                voiceEffects.applyEffect(mediaElementRef.current, 'none');
             }
         }
 
@@ -1273,6 +1322,14 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     }, [addClipToNewTrack, tracks, addClip]);
 
+    const handleBeatDetect = useCallback(async (clipId, source) => {
+        if (!source || !clipId) return;
+        const beats = await detectBeats(source);
+        if (beats && beats.length > 0) {
+            addMarkersToClip(clipId, beats);
+        }
+    }, [addMarkersToClip]);
+
     // Render upload screen if no media
     if (!mediaUrl) {
         return (
@@ -1397,6 +1454,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     onReorderTrack={reorderTracks}
                     onResizeTrack={updateTrackHeight}
                     onDetachAudio={detachAudio}
+                    onBeatDetect={handleBeatDetect}
                 />
             }
         />

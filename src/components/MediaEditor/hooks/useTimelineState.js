@@ -462,6 +462,20 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
+    // Add markers to a clip
+    const addMarkersToClip = useCallback((clipId, markers) => {
+        setTracks(prev => {
+            const newTracks = prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip =>
+                    clip.id === clipId ? { ...clip, markers } : clip
+                )
+            }));
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
     return {
         tracks,
         setTracks,
@@ -481,6 +495,7 @@ export const useTimelineState = () => {
         commitUpdate,
         deleteClip,
         detachAudio,
+        addMarkersToClip,
         undo,
         redo,
         canUndo: historyIndex > 0,
