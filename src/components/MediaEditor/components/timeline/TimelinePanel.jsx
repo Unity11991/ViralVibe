@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -13,7 +13,8 @@ export const TimelinePanel = ({
     onDelete,
     zoom,
     onZoomChange,
-    selectedClipId,
+    selectedClipId, // Legacy
+    selectedClipIds, // Multi-select Set
     onClipSelect,
     onTrim,
     onTrimEnd,
@@ -29,7 +30,13 @@ export const TimelinePanel = ({
     onReorderTrack,
     onResizeTrack,
     onDetachAudio,
-    onBeatDetect
+    onBeatDetect,
+
+    // Advanced Features
+    magneticMode,
+    onToggleMagnetic,
+    onGroup,
+    onUngroup
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -152,9 +159,9 @@ export const TimelinePanel = ({
     // Unified sorted tracks
     const sortedTracks = React.useMemo(() => {
         const priority = {
-            'video': 0,
-            'audio': 1,
-            'adjustment': 2,
+            'adjustment': 0,
+            'video': 1,
+            'audio': 2,
             'text': 3,
             'sticker': 4
         };
@@ -192,6 +199,40 @@ export const TimelinePanel = ({
                         <Redo size={16} />
                     </button>
                     <div className="w-px h-4 bg-white/10 mx-2" />
+
+                    {/* Magnetic Mode Toggle */}
+                    <button
+                        onClick={onToggleMagnetic}
+                        className={`p-1.5 rounded transition-colors ${magneticMode ? 'bg-blue-500 text-white' : 'hover:bg-white/10 text-white/70 hover:text-white'}`}
+                        title="Magnetic Timeline (Close Gaps)"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 3v12" />
+                            <path d="M18 3v12" />
+                            <path d="M22 7v4" />
+                            <path d="M2 7v4" />
+                            <path d="M6 15a6 6 0 0 0 12 0" />
+                        </svg>
+                    </button>
+
+                    {/* Group/Ungroup */}
+                    <button
+                        onClick={onGroup}
+                        className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white"
+                        title="Group Selected (Ctrl+G)"
+                    >
+                        <Layers size={16} />
+                    </button>
+                    <button
+                        onClick={onUngroup}
+                        className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white"
+                        title="Ungroup Selected (Ctrl+Shift+G)"
+                    >
+                        <Unlink size={16} />
+                    </button>
+
+                    <div className="w-px h-4 bg-white/10 mx-2" />
+
                     <button onClick={onSplit} className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white" title="Split (B)">
                         <Scissors size={16} />
                     </button>
@@ -415,6 +456,7 @@ export const TimelinePanel = ({
                                     scale={scale}
                                     onClipSelect={onClipSelect}
                                     selectedClipId={selectedClipId}
+                                    selectedClipIds={selectedClipIds}
                                     onTrim={onTrim}
                                     onTrimEnd={onTrimEnd}
                                     onMove={onMove}

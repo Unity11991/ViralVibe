@@ -43,8 +43,11 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
     // Create Unified Layer List
     const visibleLayers = [];
 
-    // Iterate tracks in order (Bottom to Top)
-    tracks.forEach((track, trackIndex) => {
+    // Iterate tracks in Reverse Order (Draw Bottom Tracks first, Top Tracks last)
+    // Track 0 is Top (Adjustment), Track N is Bottom (Sticker)
+    // We want to draw Sticker -> Text -> Audio -> Video -> Adjustment
+    // So we iterate tracks backwards.
+    [...tracks].reverse().forEach((track, reverseIndex) => {
         // Find active clip in this track
         const clip = track.clips.find(c =>
             currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
@@ -53,9 +56,12 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         if (!clip) return;
 
         // Common Layer Properties
+        // Note: zIndex logic might need adjustment if used for sorting elsewhere, 
+        // but renderFrame uses array order.
         const baseLayer = {
             id: clip.id,
-            zIndex: trackIndex,
+            zIndex: track.id === 'track-adjustment-1' ? 999 : (tracks.length - 1 - reverseIndex),
+            // We keep original index semblance or just rely on array order.
             opacity: clip.opacity !== undefined ? clip.opacity : 100,
             blendMode: clip.blendMode || 'normal',
             startTime: clip.startTime,

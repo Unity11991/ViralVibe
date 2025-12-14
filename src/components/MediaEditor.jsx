@@ -98,7 +98,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         updateTrackHeight,
 
         detachAudio,
-        addMarkersToClip
+        addMarkersToClip,
+
+        // Advanced features
+        selectedClipIds,
+        selectClip,
+        magneticMode,
+        toggleMagneticMode,
+        groupSelectedClips,
+        ungroupSelectedClips
     } = useTimelineState();
 
     // Editor State
@@ -1335,7 +1343,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         zoom={timelineZoom}
                         onZoomChange={setTimelineZoom}
                         selectedClipId={selectedClipId}
-                        onClipSelect={handleClipSelect}
+                        selectedClipIds={selectedClipIds}
+                        onClipSelect={(id, event) => {
+                            // Support multi-select with Shift/Ctrl
+                            const isMulti = event?.shiftKey || event?.ctrlKey || event?.metaKey;
+                            selectClip(id, isMulti);
+                        }}
+                        magneticMode={magneticMode}
+                        onToggleMagnetic={toggleMagneticMode}
+                        onGroup={groupSelectedClips}
+                        onUngroup={ungroupSelectedClips}
                         onTrim={trimClip}
                         onTrimEnd={commitUpdate}
                         onMove={moveClip}

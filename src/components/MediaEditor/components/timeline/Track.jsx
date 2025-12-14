@@ -7,6 +7,7 @@ export const Track = React.memo(({
     scale,
     onClipSelect,
     selectedClipId,
+    selectedClipIds,
     onTrim,
     onTrimEnd,
     onMove,
@@ -104,7 +105,7 @@ export const Track = React.memo(({
                                 clip={clip}
                                 scale={scale}
                                 onSelect={onClipSelect}
-                                isSelected={selectedClipId === clip.id}
+                                isSelected={selectedClipId === clip.id || (selectedClipIds && selectedClipIds.has(clip.id))}
                                 onTrim={onTrim}
                                 onTrimEnd={onTrimEnd}
                                 onMove={onMove}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoThumbnails } from './VideoThumbnails';
 import { AudioWaveform } from './AudioWaveform';
+import { Link } from 'lucide-react';
 
 export const Clip = React.memo(({
     clip,
@@ -115,8 +116,9 @@ export const Clip = React.memo(({
             }}
             onMouseDown={(e) => {
                 // Select on mouse down to ensure immediate feedback
-                if (!isSelected) {
-                    onSelect(clip.id);
+                // Pass event for multi-select detection
+                if (!isSelected || e.shiftKey || e.ctrlKey || e.metaKey) {
+                    onSelect(clip.id, e);
                 }
                 // Start moving
                 handleDragStart(e, 'move');
@@ -193,7 +195,8 @@ export const Clip = React.memo(({
                     </div>
                 )}
 
-                <span className="text-xs font-medium text-white/90 truncate relative z-10 ml-1 shadow-black drop-shadow-md">
+                <span className="text-xs font-medium text-white/90 truncate relative z-10 ml-1 shadow-black drop-shadow-md flex items-center gap-1">
+                    {clip.groupId && <Link size={12} className="text-blue-300" />}
                     {clip.name || 'Clip'}
                 </span>
             </div>
