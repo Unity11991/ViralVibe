@@ -72,6 +72,13 @@ export const TimelinePanel = ({
         // Only seek if clicking on ruler or empty space, not on tracks
         if (e.target.closest('.track-container')) return;
 
+        // Check if click is on scrollbar (Horizontal or Vertical)
+        if (e.target === timelineRef.current) {
+            const isScrollbarX = e.nativeEvent.offsetY > e.target.clientHeight;
+            const isScrollbarY = e.nativeEvent.offsetX > e.target.clientWidth;
+            if (isScrollbarX || isScrollbarY) return;
+        }
+
         setIsDragging(true);
         handleTimelineClick(e);
     };
@@ -101,6 +108,31 @@ export const TimelinePanel = ({
         };
     }, [isDragging, duration, scale, onSeek]);
 
+    // Zoom with Ctrl + Scroll
+    useEffect(() => {
+        const container = timelineRef.current;
+        if (!container) return;
+
+        const handleWheel = (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY;
+                const zoomFactor = 0.1;
+                const newZoom = delta > 0
+                    ? Math.max(0.1, zoom - zoomFactor)
+                    : Math.min(10, zoom + zoomFactor);
+
+                onZoomChange(newZoom);
+            }
+        };
+
+        container.addEventListener('wheel', handleWheel, { passive: false });
+
+        return () => {
+            container.removeEventListener('wheel', handleWheel);
+        };
+    }, [zoom, onZoomChange]);
+
     // Track Reordering Logic
     const handleTrackDragStart = (e, index) => {
         setDraggedTrackIndex(index);
@@ -116,21 +148,31 @@ export const TimelinePanel = ({
     };
 
     // Split tracks for display
-    // Visual Tracks: Render in order (Top of list = Index 0 = Bottom Z-Index/Background)
-    const visualTracks = tracks
-        .map((t, i) => ({ ...t, originalIndex: i }))
-        .filter(t => t.type !== 'audio');
-    // .reverse(); // Removed reverse to keep Video (Index 0) at top of list
+    // Unified sorted tracks
+    const sortedTracks = React.useMemo(() => {
+        const priority = {
+            'video': 0,
+            'audio': 1,
+            'adjustment': 2,
+            'text': 3,
+            'sticker': 4
+        };
 
-    // Audio Tracks: Normal Order
-    const audioTracks = tracks
-        .map((t, i) => ({ ...t, originalIndex: i }))
-        .filter(t => t.type === 'audio');
+        return tracks
+            .map((t, i) => ({ ...t, originalIndex: i }))
+            .sort((a, b) => {
+                const typeA = priority[a.type] !== undefined ? priority[a.type] : 99;
+                const typeB = priority[b.type] !== undefined ? priority[b.type] : 99;
+                if (typeA !== typeB) return typeA - typeB;
+                return a.originalIndex - b.originalIndex; // Stable sort for same types
+            });
+    }, [tracks]);
 
     return (
         <div className="flex flex-col h-full">
             {/* Timeline Toolbar */}
             <div className="h-10 border-b border-white/5 flex items-center justify-between px-4 bg-[#1a1a1f]">
+                {/* ... existing toolbar ... */}
                 <div className="flex items-center gap-2">
                     <button
                         onClick={undo}
@@ -272,131 +314,67 @@ export const TimelinePanel = ({
                         <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-blue-500 transform rotate-45" />
                     </div>
 
-                    {/* Render Visual Tracks */}
-                    {visualTracks.length > 0 && (
-                        <div className="py-2">
-                            <div className="sticky left-0 z-10 px-4 py-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/30 font-semibold bg-[#0f0f12]/90 backdrop-blur-sm border-b border-white/5 mb-1">
-                                <Layers size={12} />
-                                <span>Visual Tracks</span>
-                            </div>
-                            {visualTracks.map((track) => (
-                                <div
-                                    key={track.id}
-                                    className="track-container"
-                                    draggable
-                                    onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
-                                    onDragEnd={() => setDraggedTrackIndex(null)}
-                                    onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
-                                    onDrop={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
+                    {/* Unified Tracks Rendering */}
+                    <div className="py-2">
+                        {sortedTracks.map((track) => (
+                            <div
+                                key={track.id}
+                                className="track-container"
+                                draggable
+                                onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
+                                onDragEnd={() => setDraggedTrackIndex(null)}
+                                onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
 
-                                        if (draggedTrackIndex !== null) {
-                                            if (draggedTrackIndex !== track.originalIndex) {
-                                                onReorderTrack(draggedTrackIndex, track.originalIndex);
-                                            }
-                                            setDraggedTrackIndex(null);
-                                        } else {
-                                            // External Drop
-                                            try {
-                                                const data = e.dataTransfer.getData('application/json');
-                                                if (data) {
-                                                    const asset = JSON.parse(data);
-                                                    const rect = timelineRef.current.getBoundingClientRect();
-                                                    const scrollLeft = timelineRef.current.scrollLeft;
-                                                    const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
-                                                    const time = Math.max(0, Math.min(duration, x / scale));
-
-                                                    if (track.type === asset.type || (track.type === 'video' && asset.type === 'image')) {
-                                                        onDrop(track.id, asset, time);
-                                                    }
-                                                }
-                                            } catch (err) {
-                                                console.error('Drop error', err);
-                                            }
+                                    if (draggedTrackIndex !== null) {
+                                        if (draggedTrackIndex !== track.originalIndex) {
+                                            onReorderTrack(draggedTrackIndex, track.originalIndex);
                                         }
-                                    }}
-                                >
-                                    <Track
-                                        track={track}
-                                        scale={scale}
-                                        onClipSelect={onClipSelect}
-                                        selectedClipId={selectedClipId}
-                                        onTrim={onTrim}
-                                        onTrimEnd={onTrimEnd}
-                                        onMove={onMove}
-                                        onAddTransition={onAddTransition}
-                                        onTransitionSelect={onTransitionSelect}
-                                        onDrop={onDrop}
-                                        onResize={(height) => onResizeTrack(track.id, height)}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                                        setDraggedTrackIndex(null);
+                                    } else {
+                                        // External Drop
+                                        try {
+                                            const data = e.dataTransfer.getData('application/json');
+                                            if (data) {
+                                                const asset = JSON.parse(data);
+                                                const rect = timelineRef.current.getBoundingClientRect();
+                                                const scrollLeft = timelineRef.current.scrollLeft;
+                                                const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
+                                                const time = Math.max(0, Math.min(duration, x / scale));
 
-                    {/* Render Audio Tracks */}
-                    {audioTracks.length > 0 && (
-                        <div className="py-2 border-t border-white/5 mt-2">
-                            <div className="sticky left-0 z-10 px-4 py-1 flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/30 font-semibold bg-[#0f0f12]/90 backdrop-blur-sm border-b border-white/5 mb-1">
-                                <Music size={12} />
-                                <span>Audio Tracks</span>
-                            </div>
-                            {audioTracks.map((track) => (
-                                <div
-                                    key={track.id}
-                                    className="track-container"
-                                    draggable
-                                    onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
-                                    onDragEnd={() => setDraggedTrackIndex(null)}
-                                    onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
-                                    onDrop={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
+                                                // Allow appropriate drops
+                                                let allowed = false;
+                                                if (track.type === asset.type) allowed = true;
+                                                if (track.type === 'video' && asset.type === 'image') allowed = true;
 
-                                        if (draggedTrackIndex !== null) {
-                                            if (draggedTrackIndex !== track.originalIndex) {
-                                                onReorderTrack(draggedTrackIndex, track.originalIndex);
-                                            }
-                                            setDraggedTrackIndex(null);
-                                        } else {
-                                            // External Drop
-                                            try {
-                                                const data = e.dataTransfer.getData('application/json');
-                                                if (data) {
-                                                    const asset = JSON.parse(data);
-                                                    const rect = timelineRef.current.getBoundingClientRect();
-                                                    const scrollLeft = timelineRef.current.scrollLeft;
-                                                    const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
-                                                    const time = Math.max(0, Math.min(duration, x / scale));
-
-                                                    if (track.type === asset.type) {
-                                                        onDrop(track.id, asset, time);
-                                                    }
+                                                if (allowed) {
+                                                    onDrop(track.id, asset, time);
                                                 }
-                                            } catch (err) {
-                                                console.error('Drop error', err);
                                             }
+                                        } catch (err) {
+                                            console.error('Drop error', err);
                                         }
-                                    }}
-                                >
-                                    <Track
-                                        track={track}
-                                        scale={scale}
-                                        onClipSelect={onClipSelect}
-                                        selectedClipId={selectedClipId}
-                                        onTrim={onTrim}
-                                        onTrimEnd={onTrimEnd}
-                                        onMove={onMove}
-                                        onAddTransition={onAddTransition}
-                                        onTransitionSelect={onTransitionSelect}
-                                        onDrop={onDrop}
-                                        onResize={(height) => onResizeTrack(track.id, height)}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                                    }
+                                }}
+                            >
+                                <Track
+                                    track={track}
+                                    scale={scale}
+                                    onClipSelect={onClipSelect}
+                                    selectedClipId={selectedClipId}
+                                    onTrim={onTrim}
+                                    onTrimEnd={onTrimEnd}
+                                    onMove={onMove}
+                                    onAddTransition={onAddTransition}
+                                    onTransitionSelect={onTransitionSelect}
+                                    onDrop={onDrop}
+                                    onResize={(height) => onResizeTrack(track.id, height)}
+                                />
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Add Track Button */}
@@ -413,6 +391,12 @@ export const TimelinePanel = ({
                             className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-colors"
                         >
                             + Add Audio Track
+                        </button>
+                        <button
+                            onClick={() => onAddTrack('adjustment')}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/70 hover:text-white transition-colors"
+                        >
+                            + Add Adjustment
                         </button>
                     </div>
                 </div>

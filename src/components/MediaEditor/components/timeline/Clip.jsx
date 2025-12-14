@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VideoThumbnails } from './VideoThumbnails';
+import { AudioWaveform } from './AudioWaveform';
 
-export const Clip = ({
+export const Clip = React.memo(({
     clip,
     scale,
     onSelect,
@@ -24,7 +25,7 @@ export const Clip = ({
         initialValuesRef.current = {
             startTime: clip.startTime,
             duration: clip.duration,
-            startOffset: clip.startOffset
+            startOffset: clip.startOffset || 0
         };
     };
 
@@ -38,7 +39,6 @@ export const Clip = ({
 
         if (isTrimming === 'start') {
             // Trimming start: increases startTime, decreases duration, increases startOffset
-
             let newStartTime = startTime + deltaTime;
             let newDuration = duration - deltaTime;
             let newStartOffset = startOffset + deltaTime;
@@ -64,8 +64,6 @@ export const Clip = ({
             let newDuration = duration + deltaTime;
 
             if (newDuration < 0.5) newDuration = 0.5;
-
-            // Note: Source duration check is handled in useTimelineState
 
             onTrim(clip.id, startTime, newDuration, startOffset);
 
@@ -129,7 +127,7 @@ export const Clip = ({
                 {clip.type === 'video' && clip.source && (
                     <VideoThumbnails
                         source={clip.source}
-                        duration={clip.duration} // We should use source duration for spread, but clip duration works for now
+                        duration={clip.duration}
                         width={width}
                         visibleWidth={width}
                         height={clipRef.current?.offsetHeight || 40}
@@ -137,7 +135,35 @@ export const Clip = ({
                     />
                 )}
 
-                {/* Fallback mock if no source or not video (handled by VideoThumbnails logic somewhat) */}
+                {/* Audio Waveform for Audio Clips */}
+                {clip.type === 'audio' && clip.source && (
+                    <div className="absolute inset-0 pointer-events-none opacity-80">
+                        <AudioWaveform
+                            source={clip.source}
+                            width={width}
+                            height={clipRef.current?.offsetHeight || 48}
+                            startOffset={clip.startOffset || 0}
+                            duration={clip.duration}
+                            sourceDuration={clip.sourceDuration || 100}
+                            color="#4fd1c5"
+                        />
+                    </div>
+                )}
+
+                {/* Audio Waveform for Video Clips (Overlay) */}
+                {clip.type === 'video' && clip.source && !clip.audioDetached && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1/3 pointer-events-none opacity-60">
+                        <AudioWaveform
+                            source={clip.source}
+                            width={width}
+                            height={(clipRef.current?.offsetHeight || 40) / 3}
+                            startOffset={clip.startOffset || 0}
+                            duration={clip.duration}
+                            sourceDuration={clip.sourceDuration || 100}
+                            color="rgba(255, 255, 255, 0.5)"
+                        />
+                    </div>
+                )}
 
                 <span className="text-xs font-medium text-white/90 truncate relative z-10 ml-1 shadow-black drop-shadow-md">
                     {clip.name || 'Clip'}
@@ -163,4 +189,11 @@ export const Clip = ({
             )}
         </div>
     );
-};
+}, (prev, next) => {
+    // Custom comparison
+    return (
+        prev.clip === next.clip &&
+        prev.scale === next.scale &&
+        prev.isSelected === next.isSelected
+    );
+});

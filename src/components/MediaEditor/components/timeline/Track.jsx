@@ -2,7 +2,7 @@ import React from 'react';
 import { Clip } from './Clip';
 import { Video, Music, Type, Sticker, GripVertical } from 'lucide-react';
 
-export const Track = ({
+export const Track = React.memo(({
     track,
     scale,
     onClipSelect,
@@ -145,4 +145,4 @@ export const Track = ({
             </div>
         </div>
     );
-};
+}); // End of React.memo

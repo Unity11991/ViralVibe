@@ -236,10 +236,32 @@ export const AssetsPanel = ({
                     )}
 
                     {activeTab === 'adjust' && (
-                        <AdjustPanel
-                            adjustments={adjustments}
-                            onUpdate={setAdjustments}
-                        />
+                        <div className="space-y-4">
+                            <button
+                                onClick={() => onAddAsset('adjustment', { name: 'Adjustment Layer', duration: 5 })}
+                                className="w-full p-4 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 flex flex-col items-center gap-2 transition-all"
+                                draggable="true"
+                                onDragStart={(e) => {
+                                    e.dataTransfer.setData('application/json', JSON.stringify({
+                                        type: 'adjustment',
+                                        name: 'Adjustment Layer',
+                                        duration: 5
+                                    }));
+                                }}
+                            >
+                                <Sliders size={24} className="text-blue-400" />
+                                <span className="font-bold">Add Adjustment Layer</span>
+                                <span className="text-xs text-white/40">Applies effects to tracks below</span>
+                            </button>
+
+                            <div className="w-full h-px bg-white/5 my-2" />
+
+                            <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider">Global Preview</h4>
+                            <AdjustPanel
+                                adjustments={adjustments}
+                                onUpdate={setAdjustments}
+                            />
+                        </div>
                     )}
 
                     {activeTab === 'filters' && (
