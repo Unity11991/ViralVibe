@@ -11,6 +11,7 @@ import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/fi
 import { buildFilterString, isPointInClip, isPointInText, getHandleAtPoint } from './MediaEditor/utils/canvasUtils';
 import { detectBeats } from './MediaEditor/utils/waveformUtils';
 import { Button } from './MediaEditor/components/UI';
+import { getFrameState } from './MediaEditor/utils/renderLogic';
 
 // New Layout Components
 import { EditorLayout } from './MediaEditor/components/layout/EditorLayout';
@@ -21,6 +22,7 @@ import { PropertiesPanel } from './MediaEditor/components/panels/PropertiesPanel
 import { TimelinePanel } from './MediaEditor/components/timeline/TimelinePanel';
 import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
 import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
+import ExportModal from './MediaEditor/components/modals/ExportModal';
 
 /**
  * MediaEditor - Professional Video & Image Editor
@@ -161,10 +163,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
     // Register Main Media Element
     useEffect(() => {
-        if (mediaElementRef.current && isVideo) {
+        if (mediaElementRef.current && isVideo && !isExporting) {
             return registerMedia(mediaElementRef.current);
         }
-    }, [mediaElementRef, isVideo, registerMedia]);
+    }, [mediaElementRef, isVideo, registerMedia, isExporting]);
 
     // Initialize Timeline when media loads
     useEffect(() => {
@@ -376,142 +378,27 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         if (!mediaUrl || !canvasRef.current) return;
 
         const mainTrack = tracks.find(t => t.id === 'track-main');
-        const activeClip = mainTrack?.clips.find(c =>
-            currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
-        );
-        const hasActiveClip = !!activeClip;
-
-        // Create Unified Layer List
-        const visibleLayers = [];
-
-        // Iterate tracks in order (Bottom to Top)
-        tracks.forEach((track, trackIndex) => {
-            // Find active clip in this track
-            const clip = track.clips.find(c =>
-                currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
-            );
-
-            if (!clip) return;
-
-            // Common Layer Properties
-            const baseLayer = {
-                id: clip.id,
-                zIndex: trackIndex, // Use track index as Z-index
-                opacity: clip.opacity !== undefined ? clip.opacity : 100,
-                blendMode: clip.blendMode || 'normal',
-                startTime: clip.startTime,
-                duration: clip.duration
-            };
-
-            if (track.type === 'text') {
-                visibleLayers.push({
-                    ...baseLayer,
-                    type: 'text',
-                    text: clip.text || 'Text',
-                    x: clip.style?.x || 50,
-                    y: clip.style?.y || 50,
-                    fontSize: clip.style?.fontSize || 48,
-                    fontFamily: clip.style?.fontFamily || 'Arial',
-                    fontWeight: clip.style?.fontWeight || 'bold',
-                    color: clip.style?.color || '#ffffff',
-                    rotation: clip.style?.rotation || 0,
-                    // Pass style as top-level properties for renderLayer convenience or keep in style object?
-                    // renderLayer expects top level props for text currently in my refactor
-                    // Let's map them to top level
-                });
-            } else if (track.type === 'sticker') {
-                visibleLayers.push({
-                    ...baseLayer,
-                    type: 'sticker',
-                    x: clip.sticker?.x || 50,
-                    y: clip.sticker?.y || 50,
-                    scale: clip.sticker?.scale || 1,
-                    rotation: clip.sticker?.rotation || 0,
-                    image: clip.sticker?.image
-                });
-            } else if (track.type === 'adjustment') {
-                visibleLayers.push({
-                    ...baseLayer,
-                    type: 'adjustment',
-                    adjustments: clip.adjustments || {}
-                });
-            } else if (track.type === 'video' || track.type === 'image') {
-                // Resolve Media Element
-                let media = null;
-                const isMainSource = clip.source === mediaUrl;
-
-                if (isMainSource && isVideo && clip.id === activeClip?.id) {
-                    // Use the main shared element ONLY if it's the active clip and matches source
-                    media = mediaElementRef.current;
-                }
-
-                if (!media) {
-                    // Fallback to individual element (for background clips OR non-main sources)
-                    if (clip.type === 'image') {
-                        if (!imageElementsRef.current[clip.id]) {
-                            const img = new Image();
-                            img.src = clip.source;
-                            imageElementsRef.current[clip.id] = img;
-                        }
-                        media = imageElementsRef.current[clip.id];
-                    } else {
-                        // Video
-                        if (!videoElementsRef.current[clip.id]) {
-                            const v = document.createElement('video');
-                            v.src = clip.source;
-                            v.muted = true;
-                            v.crossOrigin = 'anonymous';
-                            videoElementsRef.current[clip.id] = v;
-                        }
-                        media = videoElementsRef.current[clip.id];
-                    }
-                }
-
-                if (media) {
-                    // Calculate Transition
-                    let transition = null;
-                    if (clip.transition && clip.transition.type !== 'none') {
-                        const tDur = clip.transition.duration || 1.0;
-                        const tTime = currentTime - clip.startTime;
-                        if (tTime < tDur) {
-                            transition = { ...clip.transition, progress: tTime / tDur };
-                        }
-                    }
-
-                    visibleLayers.push({
-                        ...baseLayer,
-                        type: clip.type || 'video',
-                        media: media,
-                        adjustments: clip.adjustments || getInitialAdjustments(),
-                        filter: clip.filter || 'normal',
-                        effect: clip.effect || null,
-                        transform: {
-                            ...(clip.transform || { rotation, zoom }),
-                            blendMode: clip.blendMode || 'normal'
-                        },
-                        mask: clip.mask || null,
-                        transition: transition
-                    });
-                }
-            }
-        });
-
-        const newState = {
-            visibleLayers, // Unified List
-            // Legacy props for fallback (can be empty or derived)
-            visibleClips: [],
-            textOverlays: [],
-            stickers: [],
-            adjustments: activeClip?.adjustments || initialAdjustments,
-            transform: { rotation, zoom },
+        const globalState = {
             canvasDimensions,
-            activeOverlayId: selectedClipId,
-            memePadding: memeMode ? 0.3 : 0,
-            activeEffectId: activeClip?.effect || null,
+            rotation,
+            zoom,
+            memeMode,
+            selectedClipId,
+            initialAdjustments,
             effectIntensity,
-            activeFilterId: activeClip?.filter || 'normal',
-            hasActiveClip: visibleLayers.length > 0
+            activeEffectId,
+            activeFilterId
         };
+
+        const mediaResources = {
+            mediaElement: mediaElementRef.current,
+            videoElements: videoElementsRef.current,
+            imageElements: imageElementsRef.current,
+            mediaUrl,
+            isVideo
+        };
+
+        const newState = getFrameState(currentTime, tracks, mediaResources, globalState);
 
         renderStateRef.current = newState;
 
@@ -970,7 +857,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 // Media/Sticker
                 const newTransform = {
                     ...clip.transform,
-                    x: (initialTransform.x || 0) + dx, // Media uses px offset usually? No, let's stick to consistent units.
                     // Wait, drawMediaToCanvas uses x as offset in pixels?
                     // Let's check drawMediaToCanvas:
                     // const centerX = logicalWidth / 2 + x;
@@ -1356,108 +1242,142 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
 
     return (
-        <EditorLayout
-            header={
-                <div className="flex items-center justify-between px-4 h-full">
-                    <div className="flex items-center gap-3">
-                        <Video size={20} className="text-blue-500" />
-                        <h2 className="text-lg font-bold text-white">Media Editor</h2>
+        <>
+            <EditorLayout
+                header={
+                    <div className="flex items-center justify-between px-4 h-full">
+                        <div className="flex items-center gap-3">
+                            <Video size={20} className="text-blue-500" />
+                            <h2 className="text-lg font-bold text-white">Media Editor</h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button onClick={() => setShowExportModal(true)} variant="primary" size="sm" icon={Download}>Export</Button>
+                            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Button onClick={() => setShowExportModal(true)} variant="primary" size="sm" icon={Download}>Export</Button>
-                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors">
-                            <X size={20} />
-                        </button>
-                    </div>
-                </div>
-            }
-            leftPanel={
-                <AssetsPanel
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                    onAddAsset={handleAddAsset}
-                    adjustments={adjustments}
-                    setAdjustments={handleSetAdjustments}
-                    activeFilterId={activeFilterId}
-                    setActiveFilterId={handleSetFilter}
-                    activeEffectId={activeEffectId}
-                    setActiveEffectId={handleSetEffect}
-                    effectIntensity={effectIntensity}
-                    setEffectIntensity={handleSetEffectIntensity}
-                    mediaUrl={mediaUrl}
-                    thumbnailUrl={thumbnailUrl}
-                    suggestedFilter={suggestedFilter}
-                    mediaLibrary={mediaLibrary}
-                    onAddToLibrary={handleAddToLibrary}
-                    mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
-                    onUpdateMask={handleSetMask}
-                    activeClip={getActiveItem()}
-                    onUpdateClip={handleUpdateActiveItem}
-                />
-            }
-            centerPanel={
-                <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <PreviewPlayer
-                        canvasRef={canvasRef}
-                        overlayRef={overlayRef}
-                        textOverlays={renderStateRef.current.textOverlays || []}
-                        stickers={renderStateRef.current.stickers || []}
-                        stickerImages={[]} // Handled internally now
-                        activeOverlayId={selectedClipId}
-                        startDragging={() => { }} // Disabled for now
-                        updateTextOverlay={() => { }}
-                        deleteOverlay={handleDelete}
-                        setActiveOverlayId={setSelectedClipId}
-                        adjustments={adjustments}
-                        cropData={cropData}
-                        setCropData={setCropData}
-                        cropPreset={cropPreset}
+                }
+                leftPanel={
+                    <AssetsPanel
                         activeTab={activeTab}
-                        buildFilterString={buildFilterString}
-                        onCanvasPointerDown={handleCanvasPointerDown}
-                        onCanvasPointerMove={handleCanvasPointerMove}
-                        onCanvasPointerUp={handleCanvasPointerUp}
+                        setActiveTab={setActiveTab}
+                        onAddAsset={handleAddAsset}
+                        adjustments={adjustments}
+                        setAdjustments={handleSetAdjustments}
+                        activeFilterId={activeFilterId}
+                        setActiveFilterId={handleSetFilter}
+                        activeEffectId={activeEffectId}
+                        setActiveEffectId={handleSetEffect}
+                        effectIntensity={effectIntensity}
+                        setEffectIntensity={handleSetEffectIntensity}
+                        mediaUrl={mediaUrl}
+                        thumbnailUrl={thumbnailUrl}
+                        suggestedFilter={suggestedFilter}
+                        mediaLibrary={mediaLibrary}
+                        onAddToLibrary={handleAddToLibrary}
+                        mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
+                        onUpdateMask={handleSetMask}
+                        activeClip={getActiveItem()}
+                        onUpdateClip={handleUpdateActiveItem}
                     />
-                </div>
-            }
-            rightPanel={
-                <PropertiesPanel
-                    activeItem={getActiveItem()}
-                    onUpdate={handleUpdateActiveItem}
-                />
-            }
-            bottomPanel={
-                <TimelinePanel
-                    tracks={visualizationTracks}
-                    isPlaying={isPlaying}
-                    onPlayPause={handlePlayPause}
-                    currentTime={currentTime}
-                    duration={timelineDuration}
-                    onSeek={handleSeek}
-                    onSplit={handleSplit}
-                    onDelete={handleDelete}
-                    zoom={timelineZoom}
-                    onZoomChange={setTimelineZoom}
-                    selectedClipId={selectedClipId}
-                    onClipSelect={handleClipSelect}
-                    onTrim={trimClip}
-                    onTrimEnd={commitUpdate}
-                    onMove={moveClip}
-                    undo={undo}
-                    redo={redo}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                    onAddTransition={addTransition}
-                    onTransitionSelect={handleTransitionSelect}
-                    onAddTrack={addTrack}
-                    onDrop={handleDrop}
-                    onReorderTrack={reorderTracks}
-                    onResizeTrack={updateTrackHeight}
-                    onDetachAudio={detachAudio}
-                    onBeatDetect={handleBeatDetect}
-                />
-            }
-        />
+                }
+                centerPanel={
+                    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <PreviewPlayer
+                            canvasRef={canvasRef}
+                            overlayRef={overlayRef}
+                            textOverlays={renderStateRef.current.textOverlays || []}
+                            stickers={renderStateRef.current.stickers || []}
+                            stickerImages={[]} // Handled internally now
+                            activeOverlayId={selectedClipId}
+                            startDragging={() => { }} // Disabled for now
+                            updateTextOverlay={() => { }}
+                            deleteOverlay={handleDelete}
+                            setActiveOverlayId={setSelectedClipId}
+                            adjustments={adjustments}
+                            cropData={cropData}
+                            setCropData={setCropData}
+                            cropPreset={cropPreset}
+                            activeTab={activeTab}
+                            buildFilterString={buildFilterString}
+                            onCanvasPointerDown={handleCanvasPointerDown}
+                            onCanvasPointerMove={handleCanvasPointerMove}
+                            onCanvasPointerUp={handleCanvasPointerUp}
+                        />
+                    </div>
+                }
+                rightPanel={
+                    <PropertiesPanel
+                        activeItem={getActiveItem()}
+                        onUpdate={handleUpdateActiveItem}
+                    />
+                }
+                bottomPanel={
+                    <TimelinePanel
+                        tracks={visualizationTracks}
+                        isPlaying={isPlaying}
+                        onPlayPause={handlePlayPause}
+                        currentTime={currentTime}
+                        duration={timelineDuration}
+                        onSeek={handleSeek}
+                        onSplit={handleSplit}
+                        onDelete={handleDelete}
+                        zoom={timelineZoom}
+                        onZoomChange={setTimelineZoom}
+                        selectedClipId={selectedClipId}
+                        onClipSelect={handleClipSelect}
+                        onTrim={trimClip}
+                        onTrimEnd={commitUpdate}
+                        onMove={moveClip}
+                        undo={undo}
+                        redo={redo}
+                        canUndo={canUndo}
+                        canRedo={canRedo}
+                        onAddTransition={addTransition}
+                        onTransitionSelect={handleTransitionSelect}
+                        onAddTrack={addTrack}
+                        onDrop={handleDrop}
+                        onReorderTrack={reorderTracks}
+                        onResizeTrack={updateTrackHeight}
+                        onDetachAudio={detachAudio}
+                        onBeatDetect={handleBeatDetect}
+                    />
+                }
+            />
+
+            <ExportModal
+                show={showExportModal}
+                onClose={() => setShowExportModal(false)}
+                isExporting={isExporting}
+                progress={exportProgress}
+                onExport={() => {
+                    const globalState = {
+                        canvasDimensions,
+                        rotation,
+                        zoom,
+                        memeMode,
+                        selectedClipId,
+                        initialAdjustments,
+                        effectIntensity,
+                        activeEffectId,
+                        activeFilterId
+                    };
+                    const mediaResources = {
+                        mediaElement: mediaElementRef.current,
+                        videoElements: videoElementsRef.current,
+                        imageElements: imageElementsRef.current,
+                        audioElements: audioElementsRef.current,
+                        mediaUrl,
+                        isVideo
+                    };
+                    handleExport(canvasRef, renderStateRef.current, trimRange, tracks, mediaResources, globalState);
+                }}
+                settings={exportSettings}
+                onSettingsChange={setExportSettings}
+                onCancel={cancelExport}
+            />
+        </>
     );
 };
 

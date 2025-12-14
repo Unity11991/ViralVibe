@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { renderFrame } from '../utils/canvasUtils';
+import { getFrameState } from '../utils/renderLogic';
+import { voiceEffects } from '../utils/VoiceEffects';
 import {
     canvasToBlob,
     downloadBlob,
@@ -83,14 +85,12 @@ export const useExport = (mediaElementRef, mediaType) => {
     /**
      * Export video
      */
-    const audioContextRef = useRef(null);
-    const sourceNodeRef = useRef(null);
     const destinationNodeRef = useRef(null);
 
     /**
      * Export video
      */
-    const exportVideo = useCallback(async (canvasRef, state, trimRange) => {
+    const exportVideo = useCallback(async (canvasRef, state, trimRange, tracks, mediaResources, globalState) => {
         try {
             setIsExporting(true);
             isExportingRef.current = true;
@@ -99,7 +99,7 @@ export const useExport = (mediaElementRef, mediaType) => {
             // Create export canvas
             const exportCanvas = document.createElement('canvas');
             const ctx = exportCanvas.getContext('2d');
-            const video = mediaElementRef.current;
+            const video = mediaElementRef.current; // Main Video
 
             // Set dimensions
             // Calculate dimensions based on crop and resolution
@@ -137,38 +137,34 @@ export const useExport = (mediaElementRef, mediaType) => {
             exportCanvas.width = Math.round(exportWidth);
             exportCanvas.height = Math.round(exportHeight);
 
-            // --- Audio Handling (Silent Export) ---
+            // Override global state with export dimensions?
+            // getFrameState uses canvasDimensions for aspect ratio logic mostly,
+            // but we need to ensure it renders at high res.
+            // We pass the EXPORT canvas dimensions to getFrameState via a modified globalState
+            const exportGlobalState = {
+                ...globalState,
+                canvasDimensions: { width: exportCanvas.width, height: exportCanvas.height },
+                // Ensure adjustments are passed if not present in globalState
+                initialAdjustments: globalState.initialAdjustments || state.adjustments // Fallback
+            };
+
+            // --- Audio Handling (Multi-track Master Bus) ---
             let audioTrack = null;
+            let destNode = null;
+
             try {
-                // Initialize AudioContext if needed
-                if (!audioContextRef.current) {
-                    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                const actx = audioContextRef.current;
+                // 1. Get Audio Context from VoiceEffects (centralized)
+                const actx = voiceEffects.getContext();
 
-                // Create source node if needed
-                if (!sourceNodeRef.current) {
-                    sourceNodeRef.current = actx.createMediaElementSource(video);
-                }
+                // 2. Create Destination for Recording
+                destNode = actx.createMediaStreamDestination();
+                destinationNodeRef.current = destNode;
 
-                // Create destination for recording
-                if (!destinationNodeRef.current) {
-                    destinationNodeRef.current = actx.createMediaStreamDestination();
-                }
+                // 3. Tap ALL audio sources (Main video, effects, overlays) into this destination
+                voiceEffects.tap(destNode);
 
-                // Connect source to recording destination
-                sourceNodeRef.current.connect(destinationNodeRef.current);
-
-                // Disconnect from speakers (audioContext.destination) to silence it
-                // We try-catch this because it might not be connected or might throw if already disconnected
-                try {
-                    sourceNodeRef.current.disconnect(actx.destination);
-                } catch (e) {
-                    // Ignore if already disconnected
-                }
-
-                // Get the audio track from the destination stream
-                const stream = destinationNodeRef.current.stream;
+                // 4. Get the mixed audio track
+                const stream = destNode.stream;
                 if (stream) {
                     const audioTracks = stream.getAudioTracks();
                     if (audioTracks.length > 0) {
@@ -182,19 +178,7 @@ export const useExport = (mediaElementRef, mediaType) => {
                 }
 
             } catch (e) {
-                console.warn('Failed to setup silent audio export:', e);
-                // Fallback to captureStream if Web Audio fails (might play sound though)
-                try {
-                    const stream = video.captureStream ? video.captureStream() : video.mozCaptureStream ? video.mozCaptureStream() : null;
-                    if (stream) {
-                        const audioTracks = stream.getAudioTracks();
-                        if (audioTracks.length > 0) {
-                            audioTrack = audioTracks[0];
-                        }
-                    }
-                } catch (err) {
-                    console.warn('Fallback audio capture failed:', err);
-                }
+                console.warn('Failed to setup master audio export:', e);
             }
 
             // Setup MediaRecorder
@@ -211,21 +195,31 @@ export const useExport = (mediaElementRef, mediaType) => {
                 if (e.data.size > 0) chunks.push(e.data);
             };
 
-            const cleanupAudio = () => {
+            const cleanupExport = () => {
                 try {
-                    if (sourceNodeRef.current && audioContextRef.current) {
-                        // Disconnect from recording destination
-                        sourceNodeRef.current.disconnect(destinationNodeRef.current);
-                        // Reconnect to speakers
-                        sourceNodeRef.current.connect(audioContextRef.current.destination);
+                    if (destinationNodeRef.current) {
+                        voiceEffects.untap(destinationNodeRef.current);
+                        destinationNodeRef.current = null;
                     }
+
+                    // Pause Forcefully all media
+                    video.pause();
+                    if (mediaResources.videoElements) {
+                        Object.values(mediaResources.videoElements).forEach(v => v.pause());
+                    }
+                    if (mediaResources.audioElements) {
+                        // Object.values(mediaResources.audioElements).forEach(a => a.pause()); 
+                        // Note: audioElements might not be passed in mediaResources?
+                        // We need to add audioElements to mediaResources in calling site!
+                    }
+
                 } catch (e) {
-                    console.warn('Error restoring audio:', e);
+                    console.warn('Error cleaning up cleanupexport:', e);
                 }
             };
 
             mediaRecorder.onstop = () => {
-                cleanupAudio();
+                cleanupExport();
                 if (!isExportingRef.current) return;
 
                 const blob = new Blob(chunks, { type: 'video/webm' });
@@ -239,24 +233,121 @@ export const useExport = (mediaElementRef, mediaType) => {
 
             mediaRecorder.start();
 
-            // Playback and record
-            video.currentTime = trimRange.start;
-            video.play();
+            // Prepare for Playback
+            const startTime = trimRange.start;
+            const endTime = trimRange.end;
+
+            // Seek Main Video and Wait
+            video.currentTime = startTime;
+
+            // Wait for seek to complete on main video
+            await new Promise(resolve => {
+                const onSeeked = () => {
+                    video.removeEventListener('seeked', onSeeked);
+                    resolve();
+                };
+                // If already sufficient
+                if (Math.abs(video.currentTime - startTime) < 0.1) {
+                    resolve();
+                } else {
+                    video.addEventListener('seeked', onSeeked);
+                    // Timeout fallback
+                    setTimeout(resolve, 500);
+                }
+            });
+
+            // Ensure secondary media are also ready/paused at their correct times?
+            // For now, allow them to drift-correct in the loop.
+
+            try {
+                await video.play();
+            } catch (e) {
+                console.warn("Play interrupted or failed, retrying play in loop", e);
+            }
 
             const processFrame = () => {
-                if (video.currentTime >= trimRange.end || video.paused || !isExportingRef.current) {
+                if (!isExportingRef.current) {
                     mediaRecorder.stop();
                     video.pause();
                     return;
                 }
 
+                // End Condition
+                if (video.currentTime >= endTime || video.ended) {
+                    mediaRecorder.stop();
+                    video.pause();
+                    return;
+                }
+
+                // If paused unexpectedly, resume
+                if (video.paused && isExportingRef.current) {
+                    video.play().catch(e => console.warn('Resume failed', e));
+                }
+
+                const currentTime = video.currentTime;
+
+                // --- Sync Secondary Media ---
+                // We must manually sync them because the main React loop might rely on 'isPlaying' state 
+                // which might be false during export modal (or we don't want to depend on it).
+
+                // Helper to sync element
+                const syncElement = (element, clip) => {
+                    if (!element || !clip) return;
+
+                    const expectedTime = clip.startOffset + (currentTime - clip.startTime);
+
+                    // Check if should be playing
+                    if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
+                        // Drift Correction
+                        const drift = Math.abs(element.currentTime - expectedTime);
+                        if (drift > 0.2) {
+                            element.currentTime = expectedTime;
+                        }
+
+                        if (element.paused) {
+                            element.play().catch(e => { /* ignore play promise errors */ });
+                        }
+
+                        // Volume/Mute (Simple apply)
+                        element.volume = (clip.volume !== undefined ? clip.volume : 100) / 100;
+                        element.muted = !!clip.muted;
+
+                    } else {
+                        if (!element.paused) element.pause();
+                    }
+                };
+
+                // Sync Videos
+                tracks.forEach(track => {
+                    if (track.type === 'video' && track.id !== 'track-main') {
+                        track.clips.forEach(clip => {
+                            const params = mediaResources.videoElements[clip.id];
+                            if (params) syncElement(params, clip);
+                        });
+                    }
+                    if (track.type === 'audio') {
+                        // We need access to audio elements too! Use mediaResources.
+                        // We will assume `audioElements` is passed in mediaResources
+                        if (mediaResources.audioElements) {
+                            track.clips.forEach(clip => {
+                                const params = mediaResources.audioElements[clip.id];
+                                if (params) syncElement(params, clip);
+                            });
+                        }
+                    }
+                });
+
+
+                // Calculate State
+                const frameState = getFrameState(currentTime, tracks, mediaResources, exportGlobalState);
+
                 // Render frame
-                renderFrame(ctx, video, state);
+                renderFrame(ctx, video, frameState);
 
                 // Update progress
                 const progress = calculateProgress(
-                    video.currentTime - trimRange.start,
-                    trimRange.end - trimRange.start
+                    currentTime - startTime,
+                    endTime - startTime
                 );
                 setExportProgress(Math.min(95, progress));
 
@@ -270,13 +361,6 @@ export const useExport = (mediaElementRef, mediaType) => {
             alert('Video export failed. Please try again.');
             setIsExporting(false);
             isExportingRef.current = false;
-
-            // Ensure audio is restored even on error
-            try {
-                if (sourceNodeRef.current && audioContextRef.current) {
-                    sourceNodeRef.current.connect(audioContextRef.current.destination);
-                }
-            } catch (e) { }
         }
     }, [mediaElementRef, exportSettings]);
 
@@ -309,11 +393,16 @@ export const useExport = (mediaElementRef, mediaType) => {
     /**
      * Main export handler
      */
-    const handleExport = useCallback(async (canvasRef, state, trimRange = null) => {
+    const handleExport = useCallback(async (canvasRef, state, trimRange = null, tracks, mediaResources, globalState) => {
         if (mediaType === 'image') {
             await exportImage(canvasRef, state);
         } else {
-            await exportVideo(canvasRef, state, trimRange || { start: 0, end: mediaElementRef.current.duration });
+            // Validate required args for video
+            if (!tracks || !mediaResources) {
+                console.error("Missing tracks or mediaResources for video export");
+                return;
+            }
+            await exportVideo(canvasRef, state, trimRange || { start: 0, end: mediaElementRef.current.duration }, tracks, mediaResources, globalState);
         }
     }, [mediaType, exportImage, exportVideo, mediaElementRef]);
 
