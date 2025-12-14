@@ -1051,7 +1051,11 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
         const s = scale / 100;
         ctx.scale(s, s);
 
-        ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
+        // Apply resolution scaling to match drawTextOverlay (Design Ref: 600px height)
+        const refScale = ctx.canvas.height / 600;
+        const scaledFontSize = fontSize * refScale;
+
+        ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${scaledFontSize}px ${fontFamily}`;
         ctx.textAlign = textAlign;
         ctx.textBaseline = 'middle';
 

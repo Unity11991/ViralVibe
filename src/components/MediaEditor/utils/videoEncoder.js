@@ -45,8 +45,16 @@ export class VideoExporter {
             }
         });
 
+        // Determine Codec Level based on resolution
+        // Level 4.2 (avc1.4d002a) supports up to 2,228,224 pixels (approx 2048x1080)
+        // Level 5.1 (avc1.4d0033) supports up to 8,912,896 pixels (approx 4096x2160)
+        // We use Level 5.1 for anything larger than standard HD to support 4K.
+        const pixelCount = this.width * this.height;
+        const is4K = pixelCount > 2228224;
+        const codecString = is4K ? 'avc1.4d0033' : 'avc1.4d002a';
+
         this.videoEncoder.configure({
-            codec: 'avc1.4d002a',
+            codec: codecString,
             width: this.width,
             height: this.height,
             bitrate: this.bitrate,

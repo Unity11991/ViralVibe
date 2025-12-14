@@ -165,8 +165,36 @@ export const useExport = (mediaElementRef, mediaType) => {
             });
 
             // 3. Offline Render Loop
+            // 3. Offline Render Loop
             const startTime = trimRange.start;
-            const endTime = trimRange.end; // Use trimmed end
+
+            // Calculate actual content duration from tracks to prevent blank frames
+            // This acts as a safety net if trimRange.end is stale or set to full video duration
+            let maxContentDuration = 0;
+            if (tracks && tracks.length > 0) {
+                tracks.forEach(track => {
+                    track.clips.forEach(clip => {
+                        const end = clip.startTime + clip.duration;
+                        if (end > maxContentDuration) maxContentDuration = end;
+                    });
+                });
+            }
+
+            // If we found content, clamp to it. Otherwise fallback to trimRange (e.g. empty timeline)
+            const contentEnd = maxContentDuration > 0 ? maxContentDuration : trimRange.end;
+
+            // Use the smaller of trimRange.end (user selection) or contentEnd (actual media)
+            // But if trimRange.end is LARGER than content (the bug), this clamps it.
+            // If trimRange.end is SMALLER (user selected a region), we respect it.
+            // Wait, if trimRange defaults to full video (16s) and content is 8s, we want 8s.
+            // So Math.min is correct.
+            let endTime = trimRange.end;
+            if (contentEnd > 0) {
+                endTime = Math.min(trimRange.end, contentEnd);
+            }
+            // Ensure we don't end before start
+            if (endTime <= startTime) endTime = startTime + 1; // Minimal duration
+
             const duration = endTime - startTime;
             const totalFrames = Math.ceil(duration * targetFPS);
 
@@ -264,7 +292,13 @@ export const useExport = (mediaElementRef, mediaType) => {
                 // 3. Update State & Render
                 // We need to construct a fake "state" for this frame if our state is React state.
                 // But `getFrameState` does this logic! 
-                const frameState = getFrameState(currentTime, tracks, mediaResources, exportGlobalState);
+                // Ensure no UI overlays (draggers/selection) are rendered by clearing selection ID
+                const cleanGlobalState = {
+                    ...exportGlobalState,
+                    selectedClipId: null,
+                    activeOverlayId: null
+                };
+                const frameState = getFrameState(currentTime, tracks, mediaResources, cleanGlobalState);
 
                 renderFrame(ctx, video, frameState);
 
