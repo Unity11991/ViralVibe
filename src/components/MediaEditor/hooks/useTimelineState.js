@@ -88,14 +88,9 @@ export const useTimelineState = () => {
             const newTrack = {
                 id: `track-${type}-${count + 1}-${Date.now()}`,
                 type,
-                height: type === 'audio' ? 48 : 80,
+                height: type === 'audio' ? 48 : (type === 'adjustment' ? 32 : 80),
                 clips: []
             };
-            // Add to top (start of array) or bottom? 
-            // Usually new layers are added on top (foreground).
-            // Let's add to the end of the list for now, which we will treat as "Top/Foreground" visually in the list,
-            // but we need to decide on rendering order.
-            // If list is [Background, ..., Foreground], then push is correct for "New Layer on Top".
             const newTracks = [...prev, newTrack];
             addToHistory(newTracks);
             return newTracks;
@@ -152,7 +147,7 @@ export const useTimelineState = () => {
             const newTrack = {
                 id: newTrackId,
                 type,
-                height: type === 'audio' ? 48 : 80,
+                height: type === 'audio' ? 48 : (type === 'adjustment' ? 32 : 80),
                 clips: [{
                     id: clipData.id || `clip-${Date.now()}`,
                     ...clipData

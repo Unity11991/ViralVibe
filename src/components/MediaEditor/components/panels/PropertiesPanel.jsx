@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
+import { AudioPropertiesPanel } from './AudioPropertiesPanel';
 
 const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState('video'); // video, speed, animation, adjust
+    const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
 
     const handleUpdate = (updates) => {
@@ -24,7 +25,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
         <div className="flex flex-col h-full">
             {/* Top Tabs */}
             <div className="flex border-b border-white/10">
-                {['video', 'speed', 'animation', 'adjust'].map(tab => (
+                {['video', 'audio', 'speed', 'animation', 'adjust'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -185,6 +186,10 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate }) => {
                     </div>
                 )}
 
+                {activeTab === 'audio' && (
+                    <AudioPropertiesPanel activeItem={activeItem} onUpdate={onUpdate} />
+                )}
+
                 {activeTab === 'speed' && (
                     <div className="p-4 space-y-6">
                         <div className="space-y-4">
@@ -247,6 +252,26 @@ export const PropertiesPanel = ({ activeItem, onUpdate }) => {
     // If it's a video or image, use the new VideoPropertiesPanel
     if (activeItem.type === 'video' || activeItem.type === 'image') {
         return <VideoPropertiesPanel activeItem={activeItem} onUpdate={onUpdate} />;
+    }
+
+    if (activeItem.type === 'audio') {
+        return <AudioPropertiesPanel activeItem={activeItem} onUpdate={onUpdate} />;
+    }
+
+    if (activeItem.type === 'adjustment') {
+        return (
+            <div className="flex flex-col h-full">
+                <div className="p-4 border-b border-white/5">
+                    <h3 className="font-bold text-lg">Adjustment Layer</h3>
+                </div>
+                <div className="p-4 overflow-y-auto custom-scrollbar">
+                    <AdjustPanel
+                        adjustments={activeItem.adjustments || {}}
+                        onUpdate={(newAdjustments) => onUpdate({ adjustments: newAdjustments })}
+                    />
+                </div>
+            </div>
+        );
     }
 
     // Fallback for Text/Other types (Simplified for now, can be expanded)

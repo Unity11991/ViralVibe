@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download, RotateCcw, Video, Upload } from 'lucide-react';
 import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
@@ -19,6 +19,7 @@ import { MaskPanel } from './MediaEditor/components/MaskPanel';
 import { PropertiesPanel } from './MediaEditor/components/panels/PropertiesPanel';
 import { TimelinePanel } from './MediaEditor/components/timeline/TimelinePanel';
 import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
+import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
 
 /**
  * MediaEditor - Professional Video & Image Editor
@@ -177,7 +178,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const visualizationTracks = tracks;
 
     // Handle Split
-    const handleSplit = () => {
+    const handleSplit = useCallback(() => {
         if (!selectedClipId) {
             // If no clip selected, try to split the clip under the playhead on the main track
             const mainTrack = tracks.find(t => t.id === 'track-main');
@@ -193,10 +194,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             return;
         }
         splitClip(selectedClipId, currentTime);
-    };
+    }, [selectedClipId, tracks, currentTime, splitClip]);
 
     // Handle Clip Selection
-    const handleClipSelect = (clipId) => {
+    const handleClipSelect = useCallback((clipId) => {
         setSelectedClipId(clipId);
 
         // Determine type of clip to set active tab
@@ -220,7 +221,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             // Ideally we should have a "Global" state vs "Clip" state.
             // For now, let's just keep whatever is there, or reset to global defaults if we had a global store.
         }
-    };
+    }, [tracks, setSelectedClipId, setAdjustments, setActiveFilterId, setActiveEffectId]);
 
     // Wrappers for UI updates to target selected clip
     const handleSetAdjustments = (newAdjustments) => {
@@ -425,6 +426,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     rotation: clip.sticker?.rotation || 0,
                     image: clip.sticker?.image
                 });
+            } else if (track.type === 'adjustment') {
+                visibleLayers.push({
+                    ...baseLayer,
+                    type: 'adjustment',
+                    adjustments: clip.adjustments || {}
+                });
             } else if (track.type === 'video' || track.type === 'image') {
                 // Resolve Media Element
                 let media = null;
@@ -516,6 +523,43 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // For dynamic elements (secondary tracks), we should register them or sync them in an effect.
 
     useEffect(() => {
+        // Helper to apply audio properties
+        const applyAudioProps = (element, clip, time) => {
+            if (!element || !clip) return;
+
+            // Speed
+            const speed = clip.speed || 1;
+            if (element.playbackRate !== speed) {
+                element.playbackRate = speed;
+            }
+
+            // Volume & Fades
+            let volume = (clip.volume !== undefined ? clip.volume : 100) / 100;
+
+            // Fade In
+            if (clip.fadeIn > 0) {
+                const relativeTime = time - clip.startTime;
+                if (relativeTime < clip.fadeIn) {
+                    volume *= (relativeTime / clip.fadeIn);
+                }
+            }
+
+            // Fade Out
+            if (clip.fadeOut > 0) {
+                const relativeTime = time - clip.startTime;
+                const endTime = clip.duration;
+                const timeRemaining = endTime - relativeTime;
+
+                if (timeRemaining < clip.fadeOut) {
+                    volume *= (timeRemaining / clip.fadeOut);
+                }
+            }
+
+            // Clamp and Apply
+            volume = Math.max(0, Math.min(1, volume));
+            element.volume = volume;
+        };
+
         // Sync Secondary Videos
         tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
             const activeClip = track.clips.find(c =>
@@ -526,17 +570,42 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (!videoElementsRef.current[activeClip.id]) {
                     const video = document.createElement('video');
                     video.src = activeClip.source;
-                    video.muted = true;
+                    video.muted = true; // Use muted for video tracks unless detached? User might want audio from video tracks.
+                    // If audio is NOT detached, we should let it play? 
+                    // Current logic mutes secondary videos. 
+                    // Let's assume secondary videos are muted by default or use a specific flag.
+                    // Wait, property panel allows editing volume for videos.
+                    // So we should NOT mute it if we want volume control.
+                    // BUT, browsers might block autoplay unmuted.
+                    // Let's stick to muted=true for secondary visual tracks for now unless we implement full audio mixing.
+                    // Actually, if we are editing volume, we expect to hear it.
+                    // Let's UNMUTE but control volume.
+                    video.muted = false;
                     video.crossOrigin = 'anonymous';
                     videoElementsRef.current[activeClip.id] = video;
                 }
                 const video = videoElementsRef.current[activeClip.id];
 
-                // Manual Sync for now (or register if we want auto-sync)
+                // Manual Sync
                 const expectedSourceTime = activeClip.startOffset + (currentTime - activeClip.startTime);
                 const drift = Math.abs(video.currentTime - expectedSourceTime);
 
                 if (drift > 0.2) video.currentTime = expectedSourceTime;
+
+                // Apply Properties
+                applyAudioProps(video, activeClip, currentTime);
+
+                // Voice Effect
+                if (activeClip.voiceEffect) {
+                    voiceEffects.applyEffect(video, activeClip.voiceEffect);
+                } else {
+                    // Disconnect if none (or handle via applyEffect('none'))
+                    voiceEffects.applyEffect(video, 'none');
+                }
+
+                if (activeClip.muted) video.muted = true;
+                if (!activeClip.muted) video.muted = false;
+
 
                 if (isPlaying && video.paused) video.play().catch(() => { });
                 else if (!isPlaying && !video.paused) video.pause();
@@ -567,6 +636,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 const drift = Math.abs(audio.currentTime - expectedSourceTime);
 
                 if (drift > 0.2) audio.currentTime = expectedSourceTime;
+
+                // Apply Properties
+                applyAudioProps(audio, activeClip, currentTime);
+
+                // Voice Effect
+                if (activeClip.voiceEffect) {
+                    voiceEffects.applyEffect(audio, activeClip.voiceEffect);
+                } else {
+                    voiceEffects.applyEffect(audio, 'none');
+                }
 
                 if (isPlaying && audio.paused) audio.play().catch(() => { });
                 else if (!isPlaying && !audio.paused) audio.pause();
@@ -913,7 +992,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         togglePlay();
     };
 
-    const handleSeek = (time) => {
+    const handleSeek = useCallback((time) => {
         seek(time);
 
         // Sync video element immediately for preview
@@ -944,7 +1023,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 }
             }
         });
-    };
+    }, [seek, isVideo, tracks, mediaElementRef]);
 
     const handleAddAsset = (type, data) => {
         if (type === 'text') {
@@ -1026,6 +1105,26 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             };
 
             addClip(targetTrack.id, newClip);
+        } else if (type === 'adjustment') {
+            const newClip = {
+                id: `clip-adj-${Date.now()}`,
+                type: 'adjustment',
+                name: data.name || 'Adjustment Layer',
+                startTime: currentTime,
+                duration: data.duration || 5, // Default 5s
+                startOffset: 0,
+                adjustments: {}
+            };
+
+            const track = tracks.find(t => t.type === 'adjustment');
+            if (track) {
+                // Find a free spot? For now, overlap is okay or just add.
+                // Or snap to end if occupied?
+                // Let's just add it at currentTime.
+                addClip(track.id, newClip);
+            } else {
+                addClipToNewTrack('adjustment', newClip);
+            }
         }
     };
 
@@ -1126,13 +1225,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         updateClip(selectedClipId, finalUpdates);
     };
 
-    const handleDelete = () => {
+    const handleDelete = useCallback(() => {
         if (selectedClipId) {
             deleteClip(selectedClipId);
         }
-    };
+    }, [selectedClipId, deleteClip]);
 
-    const handleDrop = (trackId, asset, time) => {
+    const handleDrop = useCallback((trackId, asset, time) => {
         const clipData = {
             type: asset.type,
             source: asset.url,
@@ -1147,14 +1246,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         } else {
             // Add to existing track with "Connect" logic (Snap to end if close)
             // We need to find the track to check for collisions/snapping
+            // We need to find the track to check for collisions/snapping
             const track = tracks.find(t => t.id === trackId);
             if (track) {
                 // Find if we are dropping near the end of another clip
-                // Simple logic: if time is within 0.5s of a clip end, snap to it.
-                // Or if we are dropping "over" a clip, maybe insert?
-                // The user said "connect the existing media".
-                // Let's try to find the closest clip end before the drop time.
-
                 let closestEnd = -1;
                 let minDiff = Infinity;
 
@@ -1176,7 +1271,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
             addClip(trackId, clipData);
         }
-    };
+    }, [addClipToNewTrack, tracks, addClip]);
 
     // Render upload screen if no media
     if (!mediaUrl) {
