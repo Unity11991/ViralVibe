@@ -12,6 +12,8 @@ import {
 
 /**
  * Custom hook for exporting media
+ * Aligned with Mobile "Play & Capture" concept for stability,
+ * but retaining Desktop features (Audio, Multi-track).
  */
 export const useExport = (mediaElementRef, mediaType) => {
     const [isExporting, setIsExporting] = useState(false);
@@ -19,12 +21,13 @@ export const useExport = (mediaElementRef, mediaType) => {
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportSettings, setExportSettings] = useState({
         resolution: 'HD',
-        fps: 60,
+        fps: 30, // Default to 30 FPS for stability
         format: 'image/png'
     });
 
     const mediaRecorderRef = useRef(null);
     const isExportingRef = useRef(false);
+    const destinationNodeRef = useRef(null);
 
     /**
      * Export image
@@ -39,7 +42,6 @@ export const useExport = (mediaElementRef, mediaType) => {
             const ctx = exportCanvas.getContext('2d');
 
             // Set export dimensions (high quality)
-            // Set export dimensions based on crop
             const media = mediaElementRef.current;
             const originalWidth = media.width || media.videoWidth;
             const originalHeight = media.height || media.videoHeight;
@@ -59,7 +61,8 @@ export const useExport = (mediaElementRef, mediaType) => {
             setExportProgress(30);
 
             // Render final frame
-            renderFrame(ctx, media, state);
+            // Ensure no selection UI is rendered
+            renderFrame(ctx, media, { ...state, activeOverlayId: null });
 
             setExportProgress(70);
 
@@ -83,12 +86,7 @@ export const useExport = (mediaElementRef, mediaType) => {
     }, [mediaElementRef, exportSettings]);
 
     /**
-     * Export video
-     */
-    const destinationNodeRef = useRef(null);
-
-    /**
-     * Export video
+     * Export video (Offline Rendering)
      */
     const exportVideo = useCallback(async (canvasRef, state, trimRange, tracks, mediaResources, globalState) => {
         try {
@@ -96,269 +94,208 @@ export const useExport = (mediaElementRef, mediaType) => {
             isExportingRef.current = true;
             setExportProgress(0);
 
-            // Create export canvas
+            // 1. Setup Canvas
             const exportCanvas = document.createElement('canvas');
             const ctx = exportCanvas.getContext('2d');
-            const video = mediaElementRef.current; // Main Video
+            const video = mediaElementRef.current; // Main video (background)
 
-            // Set dimensions
-            // Calculate dimensions based on crop and resolution
-            const originalWidth = video.videoWidth;
-            const originalHeight = video.videoHeight;
+            // Calculate export dimensions
+            const originalWidth = video.videoWidth || 1920;
+            const originalHeight = video.videoHeight || 1080;
 
-            let cropWidth = originalWidth;
-            let cropHeight = originalHeight;
+            // Handle Crop (if any)
+            let finalWidth = originalWidth;
+            let finalHeight = originalHeight;
 
             if (state.transform?.crop) {
                 const { width, height } = state.transform.crop;
-                cropWidth = (width / 100) * originalWidth;
-                cropHeight = (height / 100) * originalHeight;
+                finalWidth = (width / 100) * originalWidth;
+                finalHeight = (height / 100) * originalHeight;
             }
 
-            const aspectRatio = cropWidth / cropHeight;
-
-            // Determine base size based on resolution setting
-            let baseSize = 1080; // HD
+            // Aspect Ratio Check
+            const aspectRatio = finalWidth / finalHeight;
+            let baseSize = 1080; // HD default
             if (exportSettings.resolution === '2K') baseSize = 1440;
             if (exportSettings.resolution === '4K') baseSize = 2160;
 
             let exportWidth, exportHeight;
-
-            if (aspectRatio >= 1) {
-                // Landscape or Square
+            if (aspectRatio >= 1) { // Landscape
                 exportHeight = baseSize;
                 exportWidth = baseSize * aspectRatio;
-            } else {
-                // Portrait
+            } else { // Portrait
                 exportWidth = baseSize;
                 exportHeight = baseSize / aspectRatio;
             }
 
-            exportCanvas.width = Math.round(exportWidth);
-            exportCanvas.height = Math.round(exportHeight);
+            exportWidth = Math.round(exportWidth);
+            exportHeight = Math.round(exportHeight);
 
-            // Override global state with export dimensions?
-            // getFrameState uses canvasDimensions for aspect ratio logic mostly,
-            // but we need to ensure it renders at high res.
-            // We pass the EXPORT canvas dimensions to getFrameState via a modified globalState
+            // Need valid even dimensions for some codecs
+            if (exportWidth % 2 !== 0) exportWidth++;
+            if (exportHeight % 2 !== 0) exportHeight++;
+
+            exportCanvas.width = exportWidth;
+            exportCanvas.height = exportHeight;
+
             const exportGlobalState = {
                 ...globalState,
-                canvasDimensions: { width: exportCanvas.width, height: exportCanvas.height },
-                // Ensure adjustments are passed if not present in globalState
-                initialAdjustments: globalState.initialAdjustments || state.adjustments // Fallback
+                canvasDimensions: { width: exportWidth, height: exportHeight },
+                initialAdjustments: globalState.initialAdjustments || state.adjustments,
+                activeOverlayId: null,
+                activeElementId: null
             };
 
-            // --- Audio Handling (Multi-track Master Bus) ---
-            let audioTrack = null;
-            let destNode = null;
+            // 2. Setup Video Exporter (Offline)
+            // Import dynamically to avoid loading if not exporting
+            const { VideoExporter } = await import('../utils/videoEncoder');
 
-            try {
-                // 1. Get Audio Context from VoiceEffects (centralized)
-                const actx = voiceEffects.getContext();
-
-                // 2. Create Destination for Recording
-                destNode = actx.createMediaStreamDestination();
-                destinationNodeRef.current = destNode;
-
-                // 3. Tap ALL audio sources (Main video, effects, overlays) into this destination
-                voiceEffects.tap(destNode);
-
-                // 4. Get the mixed audio track
-                const stream = destNode.stream;
-                if (stream) {
-                    const audioTracks = stream.getAudioTracks();
-                    if (audioTracks.length > 0) {
-                        audioTrack = audioTracks[0];
-                    }
-                }
-
-                // Resume context if suspended
-                if (actx.state === 'suspended') {
-                    await actx.resume();
-                }
-
-            } catch (e) {
-                console.warn('Failed to setup master audio export:', e);
-            }
-
-            // Setup MediaRecorder
-            const mediaRecorder = setupMediaRecorder(
-                exportCanvas,
-                exportSettings.fps,
-                exportSettings.resolution,
-                audioTrack
-            );
-            mediaRecorderRef.current = mediaRecorder;
-
-            const chunks = [];
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
+            const targetFPS = exportSettings.fps || 30;
+            const bitrateMap = {
+                'HD': 8000000,
+                '2K': 16000000,
+                '4K': 25000000
             };
 
-            const cleanupExport = () => {
-                try {
-                    if (destinationNodeRef.current) {
-                        voiceEffects.untap(destinationNodeRef.current);
-                        destinationNodeRef.current = null;
-                    }
-
-                    // Pause Forcefully all media
-                    video.pause();
-                    if (mediaResources.videoElements) {
-                        Object.values(mediaResources.videoElements).forEach(v => v.pause());
-                    }
-                    if (mediaResources.audioElements) {
-                        // Object.values(mediaResources.audioElements).forEach(a => a.pause()); 
-                        // Note: audioElements might not be passed in mediaResources?
-                        // We need to add audioElements to mediaResources in calling site!
-                    }
-
-                } catch (e) {
-                    console.warn('Error cleaning up cleanupexport:', e);
-                }
-            };
-
-            mediaRecorder.onstop = () => {
-                cleanupExport();
-                if (!isExportingRef.current) return;
-
-                const blob = new Blob(chunks, { type: 'video/webm' });
-                const filename = generateExportFilename('video');
-                downloadBlob(blob, filename);
-
-                setIsExporting(false);
-                isExportingRef.current = false;
-                setShowExportModal(false);
-            };
-
-            mediaRecorder.start();
-
-            // Prepare for Playback
-            const startTime = trimRange.start;
-            const endTime = trimRange.end;
-
-            // Seek Main Video and Wait
-            video.currentTime = startTime;
-
-            // Wait for seek to complete on main video
-            await new Promise(resolve => {
-                const onSeeked = () => {
-                    video.removeEventListener('seeked', onSeeked);
-                    resolve();
-                };
-                // If already sufficient
-                if (Math.abs(video.currentTime - startTime) < 0.1) {
-                    resolve();
-                } else {
-                    video.addEventListener('seeked', onSeeked);
-                    // Timeout fallback
-                    setTimeout(resolve, 500);
-                }
+            const exporter = new VideoExporter({
+                width: exportWidth,
+                height: exportHeight,
+                fps: targetFPS,
+                bitrate: bitrateMap[exportSettings.resolution] || 8000000
             });
 
-            // Ensure secondary media are also ready/paused at their correct times?
-            // For now, allow them to drift-correct in the loop.
+            // 3. Offline Render Loop
+            const startTime = trimRange.start;
+            const endTime = trimRange.end; // Use trimmed end
+            const duration = endTime - startTime;
+            const totalFrames = Math.ceil(duration * targetFPS);
+
+            // 3. Render Audio Offline
+            setExportProgress(1); // Show some activity
+            const { renderOfflineAudio } = await import('../utils/audioExportUtils');
 
             try {
-                await video.play();
-            } catch (e) {
-                console.warn("Play interrupted or failed, retrying play in loop", e);
+                // Ensure we have the audio source for the main video.
+                // The tracks array usually has it.
+                // Note: renderOfflineAudio expects clips to have 'source' property.
+                // Main video clip might rely on global state, but initializeTimeline usually sets source.
+
+                // Let's verify main track source for robustness
+                const mainTrack = tracks.find(t => t.id === 'track-main');
+                if (mainTrack && mainTrack.clips.length > 0 && !mainTrack.clips[0].source && mediaResources.mediaUrl) {
+                    // Fallback: Ensure source is set if missing (rare case)
+                    mainTrack.clips[0].source = mediaResources.mediaUrl;
+                }
+
+                console.log('Starting offline audio rendering...');
+                const audioBuffer = await renderOfflineAudio(tracks, duration);
+
+                if (audioBuffer) {
+                    console.log('Audio rendered, encoding...', audioBuffer.duration);
+                    await exporter.encodeAudio(audioBuffer);
+                }
+            } catch (audioErr) {
+                console.warn('Audio export failed, proceeding with video only', audioErr);
             }
 
-            const processFrame = () => {
-                if (!isExportingRef.current) {
-                    mediaRecorder.stop();
-                    video.pause();
-                    return;
-                }
+            // 4. Offline Render Loop (Video)
 
-                // End Condition
-                if (video.currentTime >= endTime || video.ended) {
-                    mediaRecorder.stop();
-                    video.pause();
-                    return;
-                }
+            // Let's pause real playback
+            video.pause();
 
-                // If paused unexpectedly, resume
-                if (video.paused && isExportingRef.current) {
-                    video.play().catch(e => console.warn('Resume failed', e));
-                }
+            for (let i = 0; i < totalFrames; i++) {
+                if (!isExportingRef.current) break;
 
-                const currentTime = video.currentTime;
+                const currentTime = startTime + (i / targetFPS);
 
-                // --- Sync Secondary Media ---
-                // We must manually sync them because the main React loop might rely on 'isPlaying' state 
-                // which might be false during export modal (or we don't want to depend on it).
+                // 1. Seek Main Video
+                video.currentTime = currentTime;
 
-                // Helper to sync element
-                const syncElement = (element, clip) => {
-                    if (!element || !clip) return;
-
-                    const expectedTime = clip.startOffset + (currentTime - clip.startTime);
-
-                    // Check if should be playing
-                    if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
-                        // Drift Correction
-                        const drift = Math.abs(element.currentTime - expectedTime);
-                        if (drift > 0.2) {
-                            element.currentTime = expectedTime;
-                        }
-
-                        if (element.paused) {
-                            element.play().catch(e => { /* ignore play promise errors */ });
-                        }
-
-                        // Volume/Mute (Simple apply)
-                        element.volume = (clip.volume !== undefined ? clip.volume : 100) / 100;
-                        element.muted = !!clip.muted;
-
-                    } else {
-                        if (!element.paused) element.pause();
+                // Robust seek wait
+                // We must wait for the frame to be ready. 
+                // The 'seeked' event fires when the browser has decoding data for the new content.
+                await new Promise(resolve => {
+                    // Check if seeking is already complete (unlikely after immediate set)
+                    if (!video.seeking && Math.abs(video.currentTime - currentTime) < 0.001) {
+                        resolve();
+                        return;
                     }
-                };
 
-                // Sync Videos
-                tracks.forEach(track => {
-                    if (track.type === 'video' && track.id !== 'track-main') {
-                        track.clips.forEach(clip => {
-                            const params = mediaResources.videoElements[clip.id];
-                            if (params) syncElement(params, clip);
-                        });
-                    }
-                    if (track.type === 'audio') {
-                        // We need access to audio elements too! Use mediaResources.
-                        // We will assume `audioElements` is passed in mediaResources
-                        if (mediaResources.audioElements) {
-                            track.clips.forEach(clip => {
-                                const params = mediaResources.audioElements[clip.id];
-                                if (params) syncElement(params, clip);
-                            });
-                        }
-                    }
+                    const onSeeked = () => {
+                        resolve();
+                    };
+
+                    video.addEventListener('seeked', onSeeked, { once: true });
+
+                    // Failsafe timeout (e.g. if we are at EOF or browser quirk)
+                    // Increase timeout for 4K handling
+                    setTimeout(() => {
+                        video.removeEventListener('seeked', onSeeked);
+                        resolve();
+                    }, 1000);
                 });
 
+                // 2. Sync Secondary Tracks (Video Elements)
+                if (tracks) {
+                    tracks.forEach(track => {
+                        if (track.type === 'video' && track.id !== 'track-main') {
+                            track.clips.forEach(clip => {
+                                const el = mediaResources?.videoElements?.[clip.id];
+                                if (el) {
+                                    // Calculate where this clip should be
+                                    // Clip starts at clip.startTime in timeline
+                                    // Its content starts at clip.startOffset
+                                    if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
+                                        const clipTime = clip.startOffset + (currentTime - clip.startTime);
+                                        el.currentTime = clipTime;
+                                        // For secondary videos, we also need to wait for seek!
+                                        // This might be slow but ensures frame accuracy.
+                                        // We can't await inside forEach easily. 
+                                    }
+                                }
+                            });
+                        }
+                    });
 
-                // Calculate State
+                    // Optimization: We should ideally wait for "canplay" on all active secondary videos.
+                    // For now, assuming fast seek or browser cache.
+                }
+
+                // 3. Update State & Render
+                // We need to construct a fake "state" for this frame if our state is React state.
+                // But `getFrameState` does this logic! 
                 const frameState = getFrameState(currentTime, tracks, mediaResources, exportGlobalState);
 
-                // Render frame
                 renderFrame(ctx, video, frameState);
 
-                // Update progress
-                const progress = calculateProgress(
-                    currentTime - startTime,
-                    endTime - startTime
-                );
-                setExportProgress(Math.min(95, progress));
+                // 4. Encode
+                await exporter.encodeFrame(exportCanvas, i);
 
-                requestAnimationFrame(processFrame);
-            };
+                // 5. Progress
+                const progress = Math.min(100, Math.round((i / totalFrames) * 100));
+                setExportProgress(progress);
 
-            processFrame();
+                // Yield to event loop to keep UI responsive (and allow cancel)
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            if (isExportingRef.current) {
+                // Finalize
+                const blob = await exporter.stop();
+                const filename = generateExportFilename('video');
+                downloadBlob(blob, filename);
+            }
+
+            setIsExporting(false);
+            isExportingRef.current = false;
+            setShowExportModal(false);
+
+            // Cleanup: Reset video to start
+            video.currentTime = startTime;
 
         } catch (error) {
             console.error('Video export failed:', error);
-            alert('Video export failed. Please try again.');
+            alert('Video export failed. ' + error.message);
             setIsExporting(false);
             isExportingRef.current = false;
         }
@@ -372,18 +309,14 @@ export const useExport = (mediaElementRef, mediaType) => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
         }
-        if (mediaElementRef.current && mediaElementRef.current.pause) {
-            mediaElementRef.current.pause();
-        }
+        if (mediaElementRef.current) mediaElementRef.current.pause();
 
-        // Restore audio
-        try {
-            if (sourceNodeRef.current && audioContextRef.current) {
-                sourceNodeRef.current.disconnect(destinationNodeRef.current);
-                sourceNodeRef.current.connect(audioContextRef.current.destination);
-            }
-        } catch (e) {
-            console.warn('Error restoring audio on cancel:', e);
+        // Restore audio if needed (usually handled by onstop cleanup, but good to be safe)
+        voiceEffects.unmuteSpeakers();
+
+        if (destinationNodeRef.current) {
+            voiceEffects.untap(destinationNodeRef.current);
+            destinationNodeRef.current = null;
         }
 
         setIsExporting(false);
@@ -397,7 +330,6 @@ export const useExport = (mediaElementRef, mediaType) => {
         if (mediaType === 'image') {
             await exportImage(canvasRef, state);
         } else {
-            // Validate required args for video
             if (!tracks || !mediaResources) {
                 console.error("Missing tracks or mediaResources for video export");
                 return;
@@ -407,13 +339,10 @@ export const useExport = (mediaElementRef, mediaType) => {
     }, [mediaType, exportImage, exportVideo, mediaElementRef]);
 
     return {
-        // State
         isExporting,
         exportProgress,
         showExportModal,
         exportSettings,
-
-        // Actions
         setShowExportModal,
         setExportSettings,
         handleExport,

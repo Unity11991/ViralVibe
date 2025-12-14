@@ -87,12 +87,12 @@ export const setupMediaRecorder = (canvas, fps = 60, resolution = 'HD', audioTra
         stream.addTrack(audioTrack);
     }
 
-    // High bitrate settings for "CapCut-like" quality
-    // HD: 25 Mbps (Standard high quality)
-    // 2K: 40 Mbps
-    // 4K: 80 Mbps (Very high quality)
-    const videoBitsPerSecond = resolution === '4K' ? 80000000 :
-        resolution === '2K' ? 40000000 : 25000000;
+    // Standard Professional Web Bitrates (Optimized for smoothness & quality)
+    // HD: 8 Mbps (YouTube High Quality)
+    // 2K: 16 Mbps
+    // 4K: 25 Mbps (High fidelity)
+    const videoBitsPerSecond = resolution === '4K' ? 25000000 :
+        resolution === '2K' ? 16000000 : 8000000;
 
     const options = {
         mimeType: 'video/webm;codecs=vp9',
@@ -134,7 +134,7 @@ export const calculateProgress = (currentFrame, totalFrames) => {
  */
 export const generateExportFilename = (type, format = 'png') => {
     const timestamp = Date.now();
-    const extension = type === 'video' ? 'webm' : format;
+    const extension = type === 'video' ? 'mp4' : format; // Changed video extension to mp4
     return `govyral_export_${timestamp}.${extension}`;
 };
 
