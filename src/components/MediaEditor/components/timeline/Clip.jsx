@@ -165,6 +165,34 @@ export const Clip = React.memo(({
                     </div>
                 )}
 
+                {/* Beat Markers */}
+                {clip.markers && clip.markers.length > 0 && (
+                    <div className="absolute inset-0 pointer-events-none z-10">
+                        {clip.markers.map((time, i) => {
+                            const startOffset = clip.startOffset || 0;
+                            const relativeTime = time - startOffset;
+
+                            // Only render if within visible range of the clip
+                            if (relativeTime >= 0 && relativeTime <= clip.duration) {
+                                // Calculate position in pixels
+                                // My width calculation is: width = clip.duration * scale
+                                // So relative position is relativeTime * scale
+
+                                return (
+                                    <div
+                                        key={i}
+                                        className="absolute top-0 bottom-0 w-[2px] bg-amber-400/70"
+                                        style={{ left: `${relativeTime * scale}px` }}
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-amber-400 -ml-[3px] shadow-sm" />
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })}
+                    </div>
+                )}
+
                 <span className="text-xs font-medium text-white/90 truncate relative z-10 ml-1 shadow-black drop-shadow-md">
                     {clip.name || 'Clip'}
                 </span>

@@ -46,6 +46,7 @@ class VoiceEffectsManager {
             input,
             output,
             effects: [], // Store effect nodes to disconnect later
+            currentEffect: null
         };
 
         this.sources.set(element, connection);
@@ -59,6 +60,11 @@ class VoiceEffectsManager {
      */
     applyEffect(element, effectType) {
         const conn = this.connect(element);
+
+        // Optimize: Don't re-apply if it's the same effect
+        if (conn.currentEffect === effectType) return;
+        conn.currentEffect = effectType;
+
         const ctx = this.getContext();
 
         // 1. Cleanup previous effects
@@ -69,7 +75,7 @@ class VoiceEffectsManager {
         conn.effects = [];
 
         // 2. Build new chain based on effect
-        console.log(`Applying effect: ${effectType} to`, element);
+        // console.log(`Applying effect: ${effectType} to`, element);
 
         switch (effectType) {
             case 'robot':
@@ -79,21 +85,12 @@ class VoiceEffectsManager {
                 osc.frequency.value = 50; // 50Hz Ring Mod
 
                 const ringGain = ctx.createGain();
-                ringGain.gain.value = 0.0; // AM modulation depth? 
-                // Actually standard Ring Mod: Source * Carrier
-                // Web Audio: connect Source to Gain.gain, connect Osc to Gain? No.
-                // It's Source -> GainNode. GainNode.gain controlled by Osc.
+                ringGain.gain.value = 0.0;
 
                 const robotGain = ctx.createGain();
                 robotGain.gain.value = 1.0;
 
                 // Modulate gain of the signal with oscillator
-                // Workaround for Ring Mod in simple Web Audio:
-                // Source -> GainNode
-                // Oscillator -> GainNode.gain
-
-                // Better Robot: Delay + Feedback + some modulation
-                // Let's stick to simple Ring Mod style
                 osc.connect(robotGain.gain);
                 conn.input.connect(robotGain);
                 robotGain.connect(conn.output);
@@ -112,10 +109,6 @@ class VoiceEffectsManager {
                 const echoFilter = ctx.createBiquadFilter();
                 echoFilter.type = 'lowpass';
                 echoFilter.frequency.value = 2000;
-
-                // Graph: Input -> Output (Dry)
-                //       Input -> Delay -> Filter -> Feedback -> Delay
-                //       Delay -> Output (Wet)
 
                 conn.input.connect(conn.output); // Dry
                 conn.input.connect(delay);
@@ -147,29 +140,62 @@ class VoiceEffectsManager {
                 break;
 
             case 'chipmunk':
-                // Pitch shift is hard without libraries. 
-                // We will rely on playbackRate (speed) change in the main component.
-                // Just add a EQ to emphasize "smallness"
-                const chipFilter = ctx.createBiquadFilter();
-                chipFilter.type = 'highshelf';
-                chipFilter.frequency.value = 3000;
-                chipFilter.gain.value = 10;
+                // Emulate "Helium" sound with formant shifting via EQ
+                // Remove bass completely
+                const chipHighPass = ctx.createBiquadFilter();
+                chipHighPass.type = 'highpass';
+                chipHighPass.frequency.value = 500;
 
-                conn.input.connect(chipFilter);
-                chipFilter.connect(conn.output);
-                conn.effects.push(chipFilter);
+                // Boost "squeaky" frequencies
+                const chipPeaking = ctx.createBiquadFilter();
+                chipPeaking.type = 'peaking';
+                chipPeaking.frequency.value = 2500;
+                chipPeaking.Q.value = 1;
+                chipPeaking.gain.value = 20;
+
+                // Graph
+                conn.input.connect(chipHighPass);
+                chipHighPass.connect(chipPeaking);
+                chipPeaking.connect(conn.output);
+
+                conn.effects.push(chipHighPass, chipPeaking);
                 break;
 
             case 'monster':
-                // Deep voice EQ
-                const monsterFilter = ctx.createBiquadFilter();
-                monsterFilter.type = 'lowshelf';
-                monsterFilter.frequency.value = 200;
-                monsterFilter.gain.value = 15;
+                // Deep distorted growl
+                // 1. Boost bass massively
+                const monsterLowShelf = ctx.createBiquadFilter();
+                monsterLowShelf.type = 'lowshelf';
+                monsterLowShelf.frequency.value = 200;
+                monsterLowShelf.gain.value = 25;
 
-                conn.input.connect(monsterFilter);
-                monsterFilter.connect(conn.output);
-                conn.effects.push(monsterFilter);
+                // 2. Cut high end
+                const monsterLowPass = ctx.createBiquadFilter();
+                monsterLowPass.type = 'lowpass';
+                monsterLowPass.frequency.value = 800;
+
+                // 3. Ring Mod for "Growl" (Sub-harmonic generation)
+                const growlOsc = ctx.createOscillator();
+                growlOsc.type = 'sawtooth'; // Gritty
+                growlOsc.frequency.value = 30; // 30Hz sub-bass growl
+
+                // Add parallel growl layer
+                const growlPathGain = ctx.createGain();
+                growlPathGain.gain.value = 0; // Controlled by Osc
+
+                conn.input.connect(growlPathGain);
+                growlPathGain.connect(conn.output);
+
+                // Connect Osc to Gain.gain
+                growlOsc.connect(growlPathGain.gain);
+                growlOsc.start();
+
+                // Basic Graph for dry(ish) signal
+                conn.input.connect(monsterLowShelf);
+                monsterLowShelf.connect(monsterLowPass);
+                monsterLowPass.connect(conn.output);
+
+                conn.effects.push(monsterLowShelf, monsterLowPass, growlOsc, growlPathGain);
                 break;
 
             default: // None

@@ -84,3 +84,71 @@ export const generateWaveform = async (url, samples = 100) => {
         return new Float32Array(samples).fill(0.1);
     }
 };
+
+/**
+ * Detects beats in an audio file
+ * @param {string} url - Audio URL
+ * @returns {Promise<number[]>} - Array of timestamps (in seconds) where beats occur
+ */
+export const detectBeats = async (url) => {
+    try {
+        const audioBuffer = await fetchAudioBuffer(url);
+
+        // Use offline context for analysis if needed, or just raw data processing
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        const beatTimestamps = [];
+
+        // Window size for analysis (e.g., 0.05s)
+        const windowSize = Math.floor(0.05 * sampleRate);
+        const step = Math.floor(windowSize / 2); // Overlap
+
+        let localEnergies = [];
+
+        // 1. Calculate energy for each window
+        for (let i = 0; i < channelData.length - windowSize; i += step) {
+            let sum = 0;
+            // Optimize loop for performance
+            for (let j = 0; j < windowSize; j++) {
+                const val = channelData[i + j];
+                sum += val * val;
+            }
+            localEnergies.push({
+                time: i / sampleRate,
+                energy: sum / windowSize
+            });
+        }
+
+        // 2. Calculate local threshold (moving average of energy)
+        const neighborCount = 40; // ~2 seconds window if step is small
+
+        for (let i = 0; i < localEnergies.length; i++) {
+            const start = Math.max(0, i - neighborCount);
+            const end = Math.min(localEnergies.length, i + neighborCount);
+            let sum = 0;
+            for (let j = start; j < end; j++) {
+                sum += localEnergies[j].energy;
+            }
+            const avg = sum / (end - start);
+
+            // C = Constant multiplier (sensitivity)
+            const C = 1.5;
+
+            if (localEnergies[i].energy > C * avg && localEnergies[i].energy > 0.01) {
+                // Potential beat
+                // Debounce
+                const lastBeat = beatTimestamps[beatTimestamps.length - 1];
+                // Min distance between beats? 0.25s = 240 BPM limit
+                if (!lastBeat || (localEnergies[i].time - lastBeat > 0.25)) {
+                    beatTimestamps.push(localEnergies[i].time);
+                }
+            }
+        }
+
+        return beatTimestamps;
+
+    } catch (e) {
+        console.error("Beat detection failed:", e);
+        return [];
+    }
+};
