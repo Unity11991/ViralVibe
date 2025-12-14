@@ -176,10 +176,6 @@ export const Clip = React.memo(({
 
                             // Only render if within visible range of the clip
                             if (relativeTime >= 0 && relativeTime <= clip.duration) {
-                                // Calculate position in pixels
-                                // My width calculation is: width = clip.duration * scale
-                                // So relative position is relativeTime * scale
-
                                 return (
                                     <div
                                         key={i}
@@ -192,6 +188,57 @@ export const Clip = React.memo(({
                             }
                             return null;
                         })}
+                    </div>
+                )}
+
+                {/* Keyframe Markers */}
+                {clip.keyframes && (
+                    <div className="absolute bottom-0 left-0 right-0 h-4 z-20 pointer-events-none">
+                        {(() => {
+                            // Aggregate all unique keyframe times across all properties
+                            const allTimes = new Set();
+                            Object.values(clip.keyframes).forEach(frames => {
+                                frames.forEach(kf => allTimes.add(kf.time));
+                            });
+
+                            return Array.from(allTimes).map((time) => {
+                                // Clamp to visible duration
+                                if (time < 0 || time > clip.duration) return null;
+
+                                return (
+                                    <div
+                                        key={`kf-${time}`}
+                                        className="absolute bottom-0 w-3 h-3 -ml-1.5 transform rotate-45 bg-blue-400 border border-white shadow-sm cursor-pointer pointer-events-auto hover:scale-125 transition-transform"
+                                        style={{ left: `${time * scale}px` }}
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            // Handle global seek via parent?
+                                            // Clip doesn't have onSeek prop. 
+                                            // We can trigger a select which updates properties panel, 
+                                            // but to move playhead, we might need to rely on the click passing through to timeline?
+                                            // BUT wait, timeline click sets time based on mouse properties.
+                                            // If we stopPropagation, timeline won't receive it.
+                                            // If we allow propagation, calculation uses mouse X.
+
+                                            // Ideally, we want exact Frame snapping.
+                                            // Since we don't have onSeek passed to Clip, let's just let it bubble to timeline
+                                            // Timeline click handler uses mouse position.
+                                            // Maybe we can dispatch a custom event or check if we can pass onSeek to Clip?
+                                            // Checking Track.jsx... Track has onClipSelect, onTrim etc. No onSeek.
+
+                                            // Hack/Workaround: Let it bubble. The timeline click handler calculates time based on mouse X.
+                                            // The diamond is strictly positioned at the time, so clicking center of diamond should be close enough.
+                                            // The PropertiesPanel has "Remove Keyframe" logic that checks "Math.abs(k.time - relativeTime) < 0.1".
+                                            // So precise clicking isn't strictly required if tolerance is handled there.
+
+                                            // Better UX: Pass onSeek down? Too many layers.
+                                            // Let's just bubble for now.
+                                        }}
+                                        title={`Keyframe at ${time.toFixed(2)}s`}
+                                    />
+                                );
+                            });
+                        })()}
                     </div>
                 )}
 

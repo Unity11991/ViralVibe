@@ -106,7 +106,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         magneticMode,
         toggleMagneticMode,
         groupSelectedClips,
-        ungroupSelectedClips
+        ungroupSelectedClips,
+        addKeyframe,
+        removeKeyframe
     } = useTimelineState();
 
     // Editor State
@@ -1355,6 +1357,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     <PropertiesPanel
                         activeItem={getActiveItem()}
                         onUpdate={handleUpdateActiveItem}
+                        currentTime={currentTime}
+                        onAddKeyframe={addKeyframe}
+                        onRemoveKeyframe={removeKeyframe}
                     />
                 }
                 bottomPanel={

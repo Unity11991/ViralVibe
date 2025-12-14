@@ -571,6 +571,69 @@ export const useTimelineState = () => {
         });
     }, [addToHistory]);
 
+    // Keyframe Management
+    const addKeyframe = useCallback((clipId, property, time, value, easing = 'linear') => {
+        setTracks(prev => {
+            const newTracks = prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip => {
+                    if (clip.id !== clipId) return clip;
+
+                    const keyframes = { ...(clip.keyframes || {}) };
+                    const propKeyframes = [...(keyframes[property] || [])];
+
+                    // Check if keyframe exists at this time (allow small tolerance)
+                    const existingIndex = propKeyframes.findIndex(k => Math.abs(k.time - time) < 0.01);
+
+                    if (existingIndex !== -1) {
+                        // Update existing
+                        propKeyframes[existingIndex] = { ...propKeyframes[existingIndex], value, easing };
+                    } else {
+                        // Add new
+                        propKeyframes.push({
+                            id: `kf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            time,
+                            value,
+                            easing
+                        });
+                    }
+
+                    // Sort by time
+                    propKeyframes.sort((a, b) => a.time - b.time);
+
+                    keyframes[property] = propKeyframes;
+                    return { ...clip, keyframes };
+                })
+            }));
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
+    const removeKeyframe = useCallback((clipId, property, keyframeId) => {
+        setTracks(prev => {
+            const newTracks = prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip => {
+                    if (clip.id !== clipId) return clip;
+                    if (!clip.keyframes || !clip.keyframes[property]) return clip;
+
+                    const newKeyframes = clip.keyframes[property].filter(k => k.id !== keyframeId);
+
+                    return {
+                        ...clip,
+                        keyframes: {
+                            ...clip.keyframes,
+                            [property]: newKeyframes
+                        }
+                    };
+                })
+            }));
+            addToHistory(newTracks);
+            return newTracks;
+        });
+    }, [addToHistory]);
+
     return {
         tracks,
         setTracks,
@@ -600,6 +663,8 @@ export const useTimelineState = () => {
         deleteClip,
         detachAudio,
         addMarkersToClip,
+        addKeyframe,
+        removeKeyframe,
         undo,
         redo,
         canUndo: historyIndex > 0,
