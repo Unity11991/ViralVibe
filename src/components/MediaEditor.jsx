@@ -231,6 +231,25 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         splitClip(selectedClipId, currentTime);
     }, [selectedClipId, tracks, currentTime, splitClip]);
 
+    // Sync UI state when tracks change (e.g. Undo/Redo)
+    useEffect(() => {
+        if (selectedClipId) {
+            const track = tracks.find(t => t.clips.some(c => c.id === selectedClipId));
+            if (track) {
+                const clip = track.clips.find(c => c.id === selectedClipId);
+                if (clip) {
+                    // Only update if different to avoid loops (though setters usually handle this)
+                    setAdjustments(prev => {
+                        const newAdj = clip.adjustments || getInitialAdjustments();
+                        return JSON.stringify(prev) !== JSON.stringify(newAdj) ? newAdj : prev;
+                    });
+                    setActiveFilterId(prev => clip.filter !== prev ? (clip.filter || 'normal') : prev);
+                    setActiveEffectId(prev => clip.effect !== prev ? (clip.effect || null) : prev);
+                }
+            }
+        }
+    }, [tracks, selectedClipId]);
+
     // Handle Clip Selection
     const handleClipSelect = useCallback((clipId) => {
         setSelectedClipId(clipId);
