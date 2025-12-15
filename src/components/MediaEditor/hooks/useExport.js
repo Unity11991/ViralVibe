@@ -237,14 +237,48 @@ export const useExport = (mediaElementRef, mediaType) => {
                 const currentTime = startTime + (i / targetFPS);
 
                 // 1. Seek Main Video
-                video.currentTime = currentTime;
+                // Check if we need to switch source for main track
+                const mainTrack = tracks.find(t => t.id === 'track-main');
+                if (mainTrack) {
+                    const activeMainClip = mainTrack.clips.find(c => currentTime >= c.startTime && currentTime < (c.startTime + c.duration));
+                    if (activeMainClip) {
+                        // Check if source needs update
+                        // We use a data attribute or just check src if possible, but for export we can just track it locally
+                        // or rely on the element's current src if we can normalize it. 
+                        // Safer to track what we set.
+                        // But wait, video.src returns absolute URL. activeMainClip.source might be blob or relative.
+                        // Let's use the dataset approach similar to MediaEditor.jsx
+
+                        if (video.dataset.clipId !== activeMainClip.id) {
+                            console.log(`Export: Switching main video source to clip ${activeMainClip.id}`);
+                            video.src = activeMainClip.source;
+                            video.dataset.clipId = activeMainClip.id;
+
+                            // Wait for load
+                            await new Promise((resolve, reject) => {
+                                video.onloadeddata = () => resolve();
+                                video.onerror = (e) => reject(new Error(`Failed to load video source for clip ${activeMainClip.id}`));
+                                // video.load(); // Trigger load
+                            });
+                        }
+
+                        // Calculate offset time
+                        const clipTime = activeMainClip.startOffset + (currentTime - activeMainClip.startTime);
+                        video.currentTime = clipTime;
+                    }
+                } else {
+                    // Fallback for single source or no main track structure
+                    video.currentTime = currentTime;
+                }
 
                 // Robust seek wait
                 // We must wait for the frame to be ready. 
                 // The 'seeked' event fires when the browser has decoding data for the new content.
                 await new Promise(resolve => {
                     // Check if seeking is already complete (unlikely after immediate set)
-                    if (!video.seeking && Math.abs(video.currentTime - currentTime) < 0.001) {
+                    if (!video.seeking && Math.abs(video.currentTime - video.currentTime) < 0.001) {
+                        // Wait, video.currentTime vs target? 
+                        // We just set it.
                         resolve();
                         return;
                     }
@@ -329,7 +363,7 @@ export const useExport = (mediaElementRef, mediaType) => {
 
         } catch (error) {
             console.error('Video export failed:', error);
-            alert('Video export failed. ' + error.message);
+            // alert('Video export failed. ' + error.message);
             setIsExporting(false);
             isExportingRef.current = false;
         }

@@ -36,8 +36,9 @@ const fetchAudioBuffer = async (url) => {
         audioBufferCache.set(url, audioBuffer);
         return audioBuffer;
     } catch (e) {
-        console.error("Error decoding audio:", e);
-        throw e;
+        // console.warn("Error decoding audio (might be unsupported format or video file):", e.message);
+        // Return null instead of throwing to allow caller to handle gracefully
+        return null;
     }
 };
 
@@ -55,6 +56,14 @@ export const generateWaveform = async (url, samples = 100) => {
 
     try {
         const audioBuffer = await fetchAudioBuffer(url);
+
+        if (!audioBuffer) {
+            // Return flat line if decoding failed
+            const empty = new Float32Array(samples).fill(0.1);
+            peaksCache.set(cacheKey, empty);
+            return empty;
+        }
+
         const channelData = audioBuffer.getChannelData(0); // Use first channel
         const step = Math.ceil(channelData.length / samples);
         const peaks = new Float32Array(samples);
@@ -93,6 +102,7 @@ export const generateWaveform = async (url, samples = 100) => {
 export const detectBeats = async (url) => {
     try {
         const audioBuffer = await fetchAudioBuffer(url);
+        if (!audioBuffer) return [];
 
         // Use offline context for analysis if needed, or just raw data processing
         const channelData = audioBuffer.getChannelData(0);

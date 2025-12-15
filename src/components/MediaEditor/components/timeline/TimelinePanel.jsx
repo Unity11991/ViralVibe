@@ -45,6 +45,19 @@ export const TimelinePanel = ({
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const [draggedTrackIndex, setDraggedTrackIndex] = useState(null);
+    const [timelineZoom, setTimelineZoom] = useState(zoom);
+
+    // Calculate Snap Points (Top Level Hook)
+    const snapPoints = React.useMemo(() => {
+        const points = new Set([0, duration, currentTime]);
+        tracks.forEach(t => {
+            t.clips.forEach(c => {
+                points.add(c.startTime);
+                points.add(c.startTime + c.duration);
+            });
+        });
+        return Array.from(points);
+    }, [tracks, duration, currentTime]);
 
     const formatTime = (time) => {
         const mins = Math.floor(time / 60);
@@ -145,6 +158,105 @@ export const TimelinePanel = ({
         };
     }, [zoom, onZoomChange]);
 
+    // --- Global Drag Logic ---
+    const [draggingClip, setDraggingClip] = useState(null); // { clipId, originalTrackId, offsetTime, startX, startY, clip }
+
+    const handleClipDragStart = (clipId, trackId, e, clip) => {
+        // e.preventDefault(); // Already handled in Clip?
+        // e.stopPropagation();
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const offsetTime = clickX / scale; // Time offset within the clip where user clicked
+
+        setDraggingClip({
+            clipId,
+            originalTrackId: trackId,
+            offsetTime: offsetTime, // Relative to clip start
+            startX: e.clientX,
+            startY: e.clientY,
+            clip: clip,
+            currentTrackId: trackId,
+            currentTime: clip.startTime
+        });
+
+        setIsDragging(false); // Ensure timeline scrub drag is off
+    };
+
+    useEffect(() => {
+        const handleGlobalMouseMove = (e) => {
+            if (!draggingClip) return;
+
+            // Calculate new time
+            const timelineRect = timelineRef.current.getBoundingClientRect();
+            const scrollLeft = timelineRef.current.scrollLeft;
+            const x = (e.clientX - timelineRect.left) + scrollLeft - sidebarWidth;
+            let newStartTime = (x / scale) - draggingClip.offsetTime;
+            newStartTime = Math.max(0, newStartTime);
+
+            // Snapping
+            if (snapPoints && snapPoints.length > 0) {
+                const threshold = 10 / scale;
+                let bestSnap = null;
+                let minDist = threshold;
+
+                // Snap Start
+                for (const point of snapPoints) {
+                    const dist = Math.abs(point - newStartTime);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestSnap = point;
+                    }
+                }
+                // Snap End
+                const newEndTime = newStartTime + draggingClip.clip.duration;
+                for (const point of snapPoints) {
+                    const dist = Math.abs(point - newEndTime);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestSnap = point - draggingClip.clip.duration;
+                    }
+                }
+                if (bestSnap !== null) newStartTime = bestSnap;
+            }
+
+            // Calculate Target Track
+            // We need to find which track container is under the mouse Y
+            // We can use document.elementFromPoint, but we need to ensure we hit a track
+            // Or we can just calculate based on Y if we knew track heights.
+            // elementFromPoint is safer.
+            const elements = document.elementsFromPoint(e.clientX, e.clientY);
+            const trackElement = elements.find(el => el.getAttribute('data-track-id'));
+            const targetTrackId = trackElement ? trackElement.getAttribute('data-track-id') : draggingClip.originalTrackId;
+
+            setDraggingClip(prev => ({
+                ...prev,
+                currentTime: newStartTime,
+                currentTrackId: targetTrackId
+            }));
+        };
+
+        const handleGlobalMouseUp = () => {
+            if (draggingClip) {
+                // Commit Move
+                if (onMove) {
+                    onMove(draggingClip.clipId, draggingClip.currentTime, draggingClip.currentTrackId);
+                }
+                setDraggingClip(null);
+            }
+        };
+
+        if (draggingClip) {
+            window.addEventListener('mousemove', handleGlobalMouseMove);
+            window.addEventListener('mouseup', handleGlobalMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleGlobalMouseMove);
+            window.removeEventListener('mouseup', handleGlobalMouseUp);
+        };
+    }, [draggingClip, scale, snapPoints, onMove, sidebarWidth]); // Dependencies need to be correct
+
     // Track Reordering Logic
     const handleTrackDragStart = (e, index) => {
         setDraggedTrackIndex(index);
@@ -162,23 +274,39 @@ export const TimelinePanel = ({
     // Split tracks for display
     // Unified sorted tracks
     const sortedTracks = React.useMemo(() => {
-        const priority = {
-            'adjustment': 0,
-            'video': 1,
-            'audio': 2,
-            'text': 3,
-            'sticker': 4
-        };
+        // Split into Visual and Audio tracks
+        const visualTracks = [];
+        const audioTracks = [];
 
-        return tracks
-            .map((t, i) => ({ ...t, originalIndex: i }))
-            .sort((a, b) => {
-                const typeA = priority[a.type] !== undefined ? priority[a.type] : 99;
-                const typeB = priority[b.type] !== undefined ? priority[b.type] : 99;
-                if (typeA !== typeB) return typeA - typeB;
-                return a.originalIndex - b.originalIndex; // Stable sort for same types
-            });
+        tracks.forEach((t, i) => {
+            const trackWithIndex = { ...t, originalIndex: i };
+            if (t.type === 'audio') {
+                audioTracks.push(trackWithIndex);
+            } else {
+                visualTracks.push(trackWithIndex);
+            }
+        });
+
+        // Visual Tracks: Reverse order (Highest index = Top of Stack = Top of UI)
+        // We want Adjustment layers to be at the TOP of the UI.
+        // In the reversed array, the first element is at the top.
+        // So in the original `visualTracks` array (before reverse), adjustment layers should be at the END.
+
+        visualTracks.sort((a, b) => {
+            if (a.type === 'adjustment' && b.type !== 'adjustment') return 1;
+            if (a.type !== 'adjustment' && b.type === 'adjustment') return -1;
+            return a.originalIndex - b.originalIndex;
+        });
+
+        visualTracks.reverse();
+
+        // Audio Tracks: Normal order (Index 0 = Top of Audio Section)
+        // audioTracks.sort((a, b) => a.originalIndex - b.originalIndex); // Already in order
+
+        return [...visualTracks, ...audioTracks];
     }, [tracks]);
+
+
 
     return (
         <div className="flex flex-col h-full">
@@ -459,10 +587,6 @@ export const TimelinePanel = ({
                                                 const time = Math.max(0, Math.min(duration, x / scale));
 
                                                 // Allow appropriate drops
-                                                let allowed = false;
-                                                if (track.type === asset.type) allowed = true;
-                                                if (track.type === 'video' && asset.type === 'image') allowed = true;
-
                                                 if (allowed) {
                                                     onDrop(track.id, asset, time);
                                                 }
@@ -486,6 +610,8 @@ export const TimelinePanel = ({
                                     onTransitionSelect={onTransitionSelect}
                                     onDrop={onDrop}
                                     onResize={(height) => onResizeTrack(track.id, height)}
+                                    snapPoints={snapPoints}
+                                    onClipDragStart={handleClipDragStart}
                                 />
                             </div>
                         ))}
@@ -516,6 +642,34 @@ export const TimelinePanel = ({
                     </div>
                 </div>
             </div>
+
+            {/* Drag Overlay */}
+            {draggingClip && (
+                <div
+                    className="fixed pointer-events-none z-50 opacity-80 border-2 border-yellow-400 rounded-md bg-blue-500/30"
+                    style={{
+                        left: `${(draggingClip.currentTime * scale) + sidebarWidth - timelineRef.current?.scrollLeft + timelineRef.current?.getBoundingClientRect().left}px`,
+                        top: `${(() => {
+                            // Find the track element to align Y
+                            // This is tricky because we are fixed.
+                            // We might just follow mouse Y? Or try to snap to track Y?
+                            // Snapping to track Y gives better feedback.
+                            const trackEl = document.querySelector(`[data-track-id="${draggingClip.currentTrackId}"]`);
+                            if (trackEl) {
+                                const rect = trackEl.getBoundingClientRect();
+                                return rect.top;
+                            }
+                            return draggingClip.startY; // Fallback
+                        })()}px`,
+                        width: `${draggingClip.clip.duration * scale}px`,
+                        height: '80px' // Assuming standard track height
+                    }}
+                >
+                    <div className="p-2 text-xs text-white font-bold truncate">
+                        {draggingClip.clip.name}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
