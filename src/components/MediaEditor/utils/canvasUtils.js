@@ -830,6 +830,42 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
         // For now, let's assume activeEffectId in state is a global override if not handled per clip
         // applyEffectToCanvas(ctx, activeEffectId, effectIntensity, dimensions.width, dimensions.height, null);
     }
+
+    // Draw Watermark (Export Only)
+    if (options.isExport) {
+        drawWatermark(ctx, dimensions.width, dimensions.height);
+    }
+};
+
+/**
+ * Draw GoVyral Watermark
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {number} width 
+ * @param {number} height 
+ */
+const drawWatermark = (ctx, width, height) => {
+    ctx.save();
+
+    // Scale font based on resolution (base 1080p)
+    const scale = Math.max(0.5, height / 1080);
+    const fontSize = Math.round(40 * scale);
+    const padding = Math.round(30 * scale);
+
+    ctx.globalAlpha = 0.6; // Faded
+    ctx.font = `${fontSize}px "Rock Salt", cursive`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+
+    // Shadow for visibility
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 4 * scale;
+    ctx.shadowOffsetX = 2 * scale;
+    ctx.shadowOffsetY = 2 * scale;
+
+    ctx.fillText('GoVyral', width - padding, height - padding);
+
+    ctx.restore();
 };
 
 /**

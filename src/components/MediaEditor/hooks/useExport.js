@@ -62,7 +62,7 @@ export const useExport = (mediaElementRef, mediaType) => {
 
             // Render final frame
             // Ensure no selection UI is rendered
-            renderFrame(ctx, media, { ...state, activeOverlayId: null });
+            renderFrame(ctx, media, { ...state, activeOverlayId: null }, { applyFiltersToContext: true, isExport: true });
 
             setExportProgress(70);
 
@@ -334,7 +334,7 @@ export const useExport = (mediaElementRef, mediaType) => {
                 };
                 const frameState = getFrameState(currentTime, tracks, mediaResources, cleanGlobalState);
 
-                renderFrame(ctx, video, frameState);
+                renderFrame(ctx, video, frameState, { applyFiltersToContext: true, isExport: true });
 
                 // 4. Encode
                 await exporter.encodeFrame(exportCanvas, i);
