@@ -308,8 +308,22 @@ export const TimelinePanel = ({
 
 
 
+    const [activeTool, setActiveTool] = useState('select'); // 'select' | 'razor'
+
+    // Toggle Tool
+    const toggleTool = (tool) => {
+        setActiveTool(current => current === tool ? 'select' : tool);
+    };
+
+    // Handle Razor Click (Split at point)
+    const handleRazorClick = (clipId, time) => {
+        if (activeTool === 'razor' && onSplit) {
+            onSplit(clipId, time);
+        }
+    };
+
     return (
-        <div className="flex flex-col h-full">
+        <div className={`flex flex-col h-full ${activeTool === 'razor' ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]' : ''}`}>
             {/* Timeline Toolbar */}
             <div className="h-10 border-b border-white/5 flex items-center justify-between px-4 bg-[#1a1a1f]">
                 {/* ... existing toolbar ... */}
@@ -383,7 +397,11 @@ export const TimelinePanel = ({
 
                     <div className="w-px h-4 bg-white/10 mx-2" />
 
-                    <button onClick={onSplit} className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white" title="Split (B)">
+                    <button
+                        onClick={() => toggleTool('razor')}
+                        className={`p-1.5 rounded transition-colors ${activeTool === 'razor' ? 'bg-blue-500 text-white' : 'hover:bg-white/10 text-white/70 hover:text-white'}`}
+                        title="Razor Tool (C)"
+                    >
                         <Scissors size={16} />
                     </button>
                     <button onClick={onDelete} className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-red-400" title="Delete (Del)">
@@ -412,38 +430,6 @@ export const TimelinePanel = ({
                             return (
                                 <button
                                     onClick={async () => {
-                                        if (onBeatDetect) {
-                                            const beats = await onBeatDetect(selectedClip.source);
-                                            // onBeatDetect prop should probably handle the state update too?
-                                            // Or return beats and we call another prop?
-                                            // Let's assume onBeatDetect DOES EVERYTHING (detect + update).
-                                            // Wait, if onBeatDetect is passed from parent, parent does logic.
-                                            // If I want to do it here:
-                                            // onClick={() => { detectBeats(..).then(beats => onAddMarkers(id, beats)) }}
-                                            // Simpler: Just call `onBeatDetect(selectedClip.id, selectedClip.source)`
-                                            onBeatDetect(selectedClip.id, selectedClip.source);
-                                        }
-                                    }}
-                                    className="px-2 py-1.5 hover:bg-white/10 rounded text-white/70 hover:text-yellow-400 flex items-center gap-1 text-xs font-medium"
-                                    title="Auto-Detect Beats"
-                                >
-                                    <Music size={14} />
-                                    <span>Beat Detect</span>
-                                </button>
-                            );
-                        }
-
-                        // Beat Detection Button (Audio)
-                        if (selectedClip && selectedClip.type === 'audio') {
-                            return (
-                                <button
-                                    onClick={async () => {
-                                        // Dynamic import or passed prop for detection?
-                                        // Design: Passed prop onBeatDetect
-                                        // Parent will handle calling utils.
-                                        // Actually easier to do it here if we import utils?
-                                        // But TimelinePanel shouldn't know utils necessarily. 
-                                        // Let's assume onBeatDetect prop.
                                         if (onBeatDetect) {
                                             onBeatDetect(selectedClip.id, selectedClip.source);
                                         }
@@ -494,7 +480,7 @@ export const TimelinePanel = ({
 
             {/* Timeline Tracks Area */}
             <div
-                className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0f0f12] custom-scrollbar select-none"
+                className={`flex-1 overflow-x-auto overflow-y-auto relative bg-[#0f0f12] custom-scrollbar select-none`}
                 ref={timelineRef}
                 onMouseDown={handleMouseDown}
             >
@@ -562,7 +548,7 @@ export const TimelinePanel = ({
                             <div
                                 key={track.id}
                                 className="track-container"
-                                draggable
+                                draggable={activeTool !== 'razor'}
                                 onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
                                 onDragEnd={() => setDraggedTrackIndex(null)}
                                 onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
@@ -612,6 +598,8 @@ export const TimelinePanel = ({
                                     onResize={(height) => onResizeTrack(track.id, height)}
                                     snapPoints={snapPoints}
                                     onClipDragStart={handleClipDragStart}
+                                    activeTool={activeTool}
+                                    onRazorClick={handleRazorClick}
                                 />
                             </div>
                         ))}

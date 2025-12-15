@@ -206,7 +206,14 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const visualizationTracks = tracks;
 
     // Handle Split
-    const handleSplit = useCallback(() => {
+    const handleSplit = useCallback((targetClipId, targetTime) => {
+        // If arguments are provided (Razor Tool), use them
+        if (targetClipId && typeof targetClipId === 'string' && typeof targetTime === 'number') {
+            splitClip(targetClipId, targetTime);
+            return;
+        }
+
+        // Fallback to "Split at Playhead" logic (Keyboard Shortcut / Button)
         if (!selectedClipId) {
             // If no clip selected, try to split the clip under the playhead on the main track
             const mainTrack = tracks.find(t => t.id === 'track-main');
@@ -533,6 +540,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
         const newState = getFrameState(currentTime, tracks, mediaResources, globalState);
 
+
+
         renderStateRef.current = newState;
 
         // Render immediately
@@ -567,6 +576,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (!video.paused) video.pause();
                 video.src = '';
                 delete videoElementsRef.current[clipId];
+            }
+        });
+
+        // Cleanup Image Ref
+        Object.keys(imageElementsRef.current).forEach(clipId => {
+            if (!currentClipIds.has(clipId)) {
+                delete imageElementsRef.current[clipId];
             }
         });
     }, [tracks]);
@@ -662,8 +678,26 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         });
 
-        // Cleanup Orphaned Elements (Deleted Clips)
+        // Sync Images
+        tracks.forEach(track => {
+            if (track.type !== 'image' && track.type !== 'sticker') return;
 
+            const activeClip = track.clips.find(c =>
+                currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
+            );
+
+            if (activeClip) {
+                // Check if it's already handled as video
+                if (videoElementsRef.current[activeClip.id]) return;
+
+                if (!imageElementsRef.current[activeClip.id]) {
+                    const img = new Image();
+                    img.src = activeClip.source || activeClip.thumbnail;
+                    img.crossOrigin = 'anonymous';
+                    imageElementsRef.current[activeClip.id] = img;
+                }
+            }
+        });
 
         // Sync Audio
         tracks.forEach(track => {
@@ -717,11 +751,20 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 // 1. Check Source
                 if (video.dataset.clipId !== activeMainClip.id) {
                     // Only update src if it's different to avoid reloading
-                    // We use dataset.clipId to track the current clip because src might be resolved
-                    video.src = activeMainClip.source;
+                    // Check if src is actually different (handle absolute URLs)
+                    const currentSrc = video.src;
+                    const newSrc = activeMainClip.source;
+
+                    // Create anchor to resolve relative URLs if needed (though blob URLs are absolute)
+                    const a = document.createElement('a');
+                    a.href = newSrc;
+
+                    if (currentSrc !== a.href) {
+                        video.src = activeMainClip.source;
+                    }
+
+                    // Always update clipId
                     video.dataset.clipId = activeMainClip.id;
-                    // We don't call load() immediately to avoid interruption if browser handles it, 
-                    // but for src change we usually need it or it happens auto.
                 }
 
                 // 2. Sync Time
@@ -1415,6 +1458,40 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             addMarkersToClip(clipId, beats);
         }
     }, [addMarkersToClip]);
+
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ignore if input/textarea is focused
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+
+            // Delete
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedClipId) {
+                    handleDelete();
+                }
+            }
+
+            // Undo/Redo
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    if (canRedo) redo();
+                } else {
+                    if (canUndo) undo();
+                }
+            }
+
+            // Redo (Ctrl+Y)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                if (canRedo) redo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedClipId, handleDelete, undo, redo, canUndo, canRedo]);
 
     // Render upload screen if no media
     if (!mediaUrl) {
