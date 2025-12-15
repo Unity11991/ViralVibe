@@ -1512,6 +1512,44 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedClipId, handleDelete, undo, redo, canUndo, canRedo]);
 
+    const getVideoElement = useCallback((clipId) => {
+        // Check secondary videos first
+        if (videoElementsRef.current[clipId]) {
+            return videoElementsRef.current[clipId];
+        }
+        // Check main video
+        const mainTrack = tracks.find(t => t.id === 'track-main');
+        if (mainTrack && mainTrack.clips.some(c => c.id === clipId)) {
+            return mediaElementRef.current;
+        }
+        return null;
+    }, [tracks]);
+
+    const handleAddAdjustmentLayer = useCallback((targetClipId, adjustments) => {
+        // Find target clip to get timing
+        let targetClip = null;
+        for (const track of tracks) {
+            const clip = track.clips.find(c => c.id === targetClipId);
+            if (clip) {
+                targetClip = clip;
+                break;
+            }
+        }
+
+        if (!targetClip) return;
+
+        const clipData = {
+            type: 'adjustment',
+            startTime: targetClip.startTime,
+            duration: targetClip.duration,
+            name: 'AI Color Grade',
+            adjustments: adjustments
+        };
+
+        // Add to a new track to ensure it sits above
+        addClipToNewTrack('adjustment', clipData);
+    }, [tracks, addClipToNewTrack]);
+
     // Render upload screen if no media
     if (!mediaUrl) {
         return (
@@ -1534,8 +1572,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setSelectedClipId(clipId);
         setActiveTab('transitions');
     };
-
-
 
     return (
         <>
@@ -1610,6 +1646,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         currentTime={currentTime}
                         onAddKeyframe={addKeyframe}
                         onRemoveKeyframe={removeKeyframe}
+                        getVideoElement={getVideoElement}
+                        onAddAdjustmentLayer={handleAddAdjustmentLayer}
                     />
                 }
                 bottomPanel={

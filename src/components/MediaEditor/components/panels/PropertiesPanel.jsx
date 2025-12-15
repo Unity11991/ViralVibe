@@ -3,6 +3,7 @@ import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, A
 import { AdjustPanel } from '../AdjustPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
 import { ANIMATIONS } from '../../utils/animationPresets';
+import { analyzeFrame, generateGrading } from '../../utils/aiColorService';
 
 // Helper Component for Keyframe Button
 const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
@@ -42,7 +43,7 @@ const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyfra
     );
 };
 
-const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
+const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe, getVideoElement, onAddAdjustmentLayer }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
 
@@ -246,7 +247,97 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                             </div>
                         )}
 
-                        {videoSubTab !== 'basic' && (
+                        {videoSubTab === 'retouch' && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-white/10 rounded-xl p-4">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg shadow-lg shadow-purple-500/20">
+                                            <Wand2 size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-white">AI Color Grade</h4>
+                                            <p className="text-[10px] text-white/50">Auto-enhance video colors</p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={async () => {
+                                            // Find the video element using the prop
+                                            const videoEl = getVideoElement ? getVideoElement(activeItem.id) : null;
+
+                                            if (!videoEl) {
+                                                console.error("Video element not found for analysis");
+                                                return;
+                                            }
+
+                                            const btn = document.getElementById('ai-grade-btn');
+                                            const originalText = btn.innerHTML;
+                                            btn.innerHTML = '<span class="animate-spin">⟳</span> Analyzing...';
+                                            btn.disabled = true;
+                                            btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                                            try {
+                                                // Simulate "AI" thinking time for effect + actual analysis
+                                                const [analysis] = await Promise.all([
+                                                    analyzeFrame(videoEl),
+                                                    new Promise(r => setTimeout(r, 1500))
+                                                ]);
+
+                                                if (analysis) {
+                                                    const grading = generateGrading(analysis);
+
+                                                    // Create a new adjustment layer instead of modifying the clip directly
+                                                    if (onAddAdjustmentLayer) {
+                                                        onAddAdjustmentLayer(activeItem.id, grading);
+                                                    } else {
+                                                        // Fallback (should not happen if prop is passed)
+                                                        const newAdjustments = {
+                                                            ...(activeItem.adjustments || {}),
+                                                            ...grading
+                                                        };
+                                                        onUpdate({ adjustments: newAdjustments });
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                console.error(e);
+                                            } finally {
+                                                btn.innerHTML = originalText;
+                                                btn.disabled = false;
+                                                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                                            }
+                                        }}
+                                        id="ai-grade-btn"
+                                        className="w-full py-2.5 bg-white text-black font-bold text-xs rounded-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/5"
+                                    >
+                                        <Zap size={14} className="text-yellow-600" fill="currentColor" />
+                                        Auto Grade
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4 opacity-50 pointer-events-none filter blur-[1px]">
+                                    <div className="flex justify-between items-center">
+                                        <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider">Face Retouch</h4>
+                                        <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/40">Pro</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs text-white/40">
+                                            <span>Smooth Skin</span>
+                                            <span>0%</span>
+                                        </div>
+                                        <div className="h-1 bg-white/5 rounded-full w-full"></div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs text-white/40">
+                                            <span>Whiten Teeth</span>
+                                            <span>0%</span>
+                                        </div>
+                                        <div className="h-1 bg-white/5 rounded-full w-full"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {videoSubTab !== 'basic' && videoSubTab !== 'retouch' && (
                             <div className="flex flex-col items-center justify-center py-12 text-white/30 space-y-2">
                                 <Wand2 size={24} />
                                 <span className="text-xs">Coming Soon</span>
@@ -343,7 +434,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
     );
 };
 
-export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
+export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe, getVideoElement, onAddAdjustmentLayer }) => {
     const [activeTab, setActiveTab] = useState('style'); // style, animation
 
     // Reset tab when item changes
@@ -371,6 +462,8 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
                 currentTime={currentTime}
                 onAddKeyframe={onAddKeyframe}
                 onRemoveKeyframe={onRemoveKeyframe}
+                getVideoElement={getVideoElement}
+                onAddAdjustmentLayer={onAddAdjustmentLayer}
             />
         );
     }
