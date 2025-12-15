@@ -1,118 +1,215 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
+// Global thumbnail cache to prevent regenerating the same thumbnails
+const thumbnailCache = new Map();
+// Expose cache globally for management
+if (typeof window !== 'undefined') {
+    window.__thumbnailCache = thumbnailCache;
+}
+// Limit concurrent thumbnail generation
+let activeGenerations = 0;
+const MAX_CONCURRENT_GENERATIONS = 2;
+
 export const VideoThumbnails = React.memo(({ source, duration, width, height, visibleWidth, startOffset = 0 }) => {
     const [thumbnails, setThumbnails] = useState([]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isVisible, setIsVisible] = useState(false);
     const isMounted = useRef(true);
+    const containerRef = useRef(null);
 
-    // Config
-    const thumbWidth = 60; // Desired width of each thumbnail
-    const thumbCount = Math.ceil(width / thumbWidth);
+    // Config - Optimized values
+    const thumbWidth = 60;
+    const maxThumbs = 8; // Limit max thumbnails per clip
+    const thumbCount = Math.min(Math.ceil(width / thumbWidth), maxThumbs);
 
+    // Intersection Observer for lazy loading
     useEffect(() => {
         isMounted.current = true;
-        return () => { isMounted.current = false; };
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                setIsVisible(entry.isIntersecting);
+            },
+            {
+                root: null,
+                rootMargin: '200px', // Start loading 200px before visible
+                threshold: 0.01
+            }
+        );
+
+        if (containerRef.current) {
+            observer.observe(containerRef.current);
+        }
+
+        return () => {
+            isMounted.current = false;
+            observer.disconnect();
+        };
     }, []);
 
     useEffect(() => {
         let isActive = true;
 
-        // Debounce or check constraints
-        if (!source || !duration || width <= 0) return;
+        // Only generate if visible, has source, and within constraints
+        if (!isVisible || !source || !duration || width <= 0) {
+            return;
+        }
+
+        // Check cache first
+        const cacheKey = `${source}-${thumbCount}-${startOffset}`;
+        if (thumbnailCache.has(cacheKey)) {
+            setThumbnails(thumbnailCache.get(cacheKey));
+            return;
+        }
 
         const generate = async () => {
-            if (!isActive) return;
-            setIsGenerating(true);
-            setThumbnails([]);
+            // Wait if too many concurrent generations
+            while (activeGenerations >= MAX_CONCURRENT_GENERATIONS) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                if (!isActive) return;
+            }
 
-            const video = document.createElement('video');
-            video.src = source;
-            video.crossOrigin = 'anonymous';
-            video.muted = true;
-            video.preload = 'auto'; // Load metadata mostly
+            activeGenerations++;
 
-            // Wait for metadata
-            try {
-                await new Promise((resolve, reject) => {
-                    video.onloadedmetadata = resolve;
-                    video.onerror = reject;
-                });
-            } catch (e) {
-                console.warn("Thumbnail generation failed", e);
-                if (isActive) setIsGenerating(false);
+            if (!isActive) {
+                activeGenerations--;
                 return;
             }
 
-            if (!isActive) return;
+            setIsGenerating(true);
+            setThumbnails([]);
 
-            const canvas = document.createElement('canvas');
-            // Maintain aspect ratio
-            const aspect = video.videoWidth / video.videoHeight;
-            const drawHeight = height || 40;
-            const drawWidth = drawHeight * aspect;
+            try {
+                const video = document.createElement('video');
+                video.src = source;
+                // Only set crossOrigin for external URLs
+                if (!source.startsWith('blob:')) {
+                    video.crossOrigin = 'anonymous';
+                }
+                video.muted = true;
+                video.preload = 'metadata'; // Only load metadata, not entire video
 
-            canvas.width = drawWidth;
-            canvas.height = drawHeight;
-            const ctx = canvas.getContext('2d');
+                // Wait for metadata with timeout
+                await Promise.race([
+                    new Promise((resolve, reject) => {
+                        video.onloadedmetadata = resolve;
+                        video.onerror = reject;
+                    }),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout')), 5000)
+                    )
+                ]);
 
-            const thumbs = [];
+                if (!isActive) {
+                    video.remove();
+                    activeGenerations--;
+                    return;
+                }
 
-            // Generate frames
-            // Calculate time interval
-            const timeStep = duration / thumbCount;
+                const canvas = document.createElement('canvas');
+                // Smaller canvas for better performance
+                const aspect = video.videoWidth / video.videoHeight;
+                const drawHeight = Math.min(height || 40, 30); // Max 30px height
+                const drawWidth = drawHeight * aspect;
 
-            for (let i = 0; i < thumbCount; i++) {
-                if (!isActive) break;
-
-                const time = startOffset + (i * timeStep);
-
-                // Seek
-                video.currentTime = time;
-                await new Promise(r => {
-                    const onSeek = () => {
-                        video.removeEventListener('seeked', onSeek);
-                        r();
-                    };
-                    video.addEventListener('seeked', onSeek);
+                canvas.width = drawWidth;
+                canvas.height = drawHeight;
+                const ctx = canvas.getContext('2d', {
+                    willReadFrequently: false,
+                    alpha: false
                 });
 
-                if (!isActive) break;
+                const thumbs = [];
+                const timeStep = duration / thumbCount;
 
-                // Draw
-                ctx.drawImage(video, 0, 0, drawWidth, drawHeight);
-                try {
-                    thumbs.push(canvas.toDataURL('image/jpeg', 0.5)); // Low quality for perf
-                } catch (e) {
-                    console.warn("Canvas tainted, cannot generate thumb", e);
-                    break; // Stop generating if tainted
+                // Generate thumbnails using requestIdleCallback for non-blocking
+                for (let i = 0; i < thumbCount; i++) {
+                    if (!isActive) break;
+
+                    const time = Math.max(0, Math.min(startOffset + (i * timeStep), duration - 0.1));
+
+                    // Seek with timeout
+                    video.currentTime = time;
+                    await Promise.race([
+                        new Promise(resolve => {
+                            const onSeek = () => {
+                                video.removeEventListener('seeked', onSeek);
+                                resolve();
+                            };
+                            video.addEventListener('seeked', onSeek);
+                        }),
+                        new Promise(resolve => setTimeout(resolve, 500))
+                    ]);
+
+                    if (!isActive) break;
+
+                    // Draw with error handling
+                    try {
+                        ctx.drawImage(video, 0, 0, drawWidth, drawHeight);
+                        // Lower quality JPEG for smaller file size
+                        thumbs.push(canvas.toDataURL('image/jpeg', 0.3));
+                    } catch (e) {
+                        console.warn("Canvas error, skipping thumbnail", e);
+                        // Use placeholder for failed thumbnails
+                        thumbs.push('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>');
+                    }
+
+                    // Progressive update less frequently
+                    if (i % 3 === 0 && isActive) {
+                        setThumbnails([...thumbs]);
+                    }
+
+                    // Yield to browser between frames
+                    await new Promise(resolve => {
+                        if (typeof requestIdleCallback !== 'undefined') {
+                            requestIdleCallback(resolve, { timeout: 100 });
+                        } else {
+                            setTimeout(resolve, 0);
+                        }
+                    });
                 }
 
-                // Progressive update every 5 frames
-                if (i % 5 === 0 && isActive) {
-                    setThumbnails([...thumbs]);
+                if (isActive && thumbs.length > 0) {
+                    setThumbnails(thumbs);
+                    // Cache the result
+                    thumbnailCache.set(cacheKey, thumbs);
+                    // Limit cache size
+                    if (thumbnailCache.size > 50) {
+                        const firstKey = thumbnailCache.keys().next().value;
+                        thumbnailCache.delete(firstKey);
+                    }
                 }
-            }
 
-            if (isActive) {
-                setThumbnails(thumbs);
-                setIsGenerating(false);
-            }
+                // Cleanup
+                video.removeAttribute('src');
+                video.load();
+                video.remove();
 
-            // Cleanup
-            video.removeAttribute('src');
-            video.load();
+            } catch (e) {
+                console.warn("Thumbnail generation failed:", e);
+            } finally {
+                if (isActive) {
+                    setIsGenerating(false);
+                }
+                activeGenerations--;
+            }
         };
 
-        generate();
+        // Debounce generation slightly
+        const timeoutId = setTimeout(generate, 50);
 
         return () => {
             isActive = false;
+            clearTimeout(timeoutId);
         };
-    }, [source, duration, thumbCount, startOffset, height]); // Re-run if scale changes drastically (thumbCount)
+    }, [source, duration, thumbCount, startOffset, height, isVisible]);
 
     return (
-        <div className="absolute inset-0 flex overflow-hidden opacity-50 pointer-events-none bg-black/20">
+        <div
+            ref={containerRef}
+            className="absolute inset-0 flex overflow-hidden opacity-50 pointer-events-none bg-black/20"
+        >
             {thumbnails.map((src, i) => (
                 <img
                     key={i}
@@ -121,11 +218,12 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
                     className="h-full object-cover shrink-0"
                     style={{ width: `${thumbWidth}px` }}
                     draggable={false}
+                    loading="lazy"
                 />
             ))}
             {isGenerating && (
                 <div className="absolute inset-0 flex items-center justify-center bg-transparent z-10">
-                    <Loader2 className="animate-spin text-white/50" size={16} />
+                    <Loader2 className="animate-spin text-white/50" size={12} />
                 </div>
             )}
         </div>
