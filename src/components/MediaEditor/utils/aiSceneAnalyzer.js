@@ -32,7 +32,7 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
         const canvas = document.createElement('canvas');
         canvas.width = videoElement.videoWidth;
         canvas.height = videoElement.videoHeight;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(videoElement, 0, 0);
 
         const base64Image = canvas.toDataURL('image/jpeg', 0.8);
@@ -102,7 +102,7 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
         const canvas = document.createElement('canvas');
         canvas.width = videoElement.videoWidth;
         canvas.height = videoElement.videoHeight;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(videoElement, 0, 0);
 
         return {
@@ -384,7 +384,7 @@ export const detectSceneChanges = async (videoUrl) => {
             const canvas = document.createElement('canvas');
             canvas.width = 160; // Small size for performance
             canvas.height = 90;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             const histogram = calculateHistogram(ctx, canvas.width, canvas.height);
