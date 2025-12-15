@@ -268,7 +268,8 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     },
                     opacity: animatedProps.opacity,
                     mask: clip.mask || null,
-                    transition: transition
+                    transition: transition,
+                    faceRetouch: clip.faceRetouch || null
                 });
             }
         }

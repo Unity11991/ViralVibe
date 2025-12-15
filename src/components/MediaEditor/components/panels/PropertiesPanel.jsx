@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square } from 'lucide-react';
+import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
 import { ANIMATIONS } from '../../utils/animationPresets';
 import { analyzeFrame, generateGrading } from '../../utils/aiColorService';
+import { processVideoWithFaceRetouch, downloadProcessedVideo, estimateProcessingTime } from '../../utils/videoProcessorService';
 
 // Helper Component for Keyframe Button
 const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
@@ -46,6 +47,13 @@ const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyfra
 const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe, getVideoElement, onAddAdjustmentLayer }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
+
+    // Processing state
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [processingProgress, setProcessingProgress] = useState(0);
+    const [processingStatus, setProcessingStatus] = useState('');
+    const [processingFrameInfo, setProcessingFrameInfo] = useState({ current: 0, total: 0 });
+    const [abortController, setAbortController] = useState(null);
 
     const handleUpdate = (updates) => {
         onUpdate({ ...activeItem, ...updates });
@@ -314,26 +322,152 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                                     </button>
                                 </div>
 
-                                <div className="space-y-4 opacity-50 pointer-events-none filter blur-[1px]">
+                                <div className="space-y-4 pt-4 border-t border-white/5">
                                     <div className="flex justify-between items-center">
                                         <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider">Face Retouch</h4>
-                                        <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-white/40">Pro</span>
+                                        {(activeItem.faceRetouch?.smoothSkin > 0 || activeItem.faceRetouch?.whitenTeeth > 0) && (
+                                            <button
+                                                onClick={() => handleUpdate({ faceRetouch: { smoothSkin: 0, whitenTeeth: 0 } })}
+                                                className="text-[10px] text-blue-400 hover:text-blue-300"
+                                            >
+                                                Reset
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
-                                        <div className="flex justify-between text-xs text-white/40">
-                                            <span>Smooth Skin</span>
-                                            <span>0%</span>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-white/70">Smooth Skin</span>
+                                            <span className="text-white/40">{activeItem.faceRetouch?.smoothSkin || 0}%</span>
                                         </div>
-                                        <div className="h-1 bg-white/5 rounded-full w-full"></div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="100"
+                                            value={activeItem.faceRetouch?.smoothSkin || 0}
+                                            onChange={(e) => handleUpdate({
+                                                faceRetouch: {
+                                                    ...(activeItem.faceRetouch || {}),
+                                                    smoothSkin: parseInt(e.target.value)
+                                                }
+                                            })}
+                                            className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-pink-500"
+                                        />
                                     </div>
                                     <div className="space-y-2">
-                                        <div className="flex justify-between text-xs text-white/40">
-                                            <span>Whiten Teeth</span>
-                                            <span>0%</span>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-white/70">Whiten Teeth</span>
+                                            <span className="text-white/40">{activeItem.faceRetouch?.whitenTeeth || 0}%</span>
                                         </div>
-                                        <div className="h-1 bg-white/5 rounded-full w-full"></div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="100"
+                                            value={activeItem.faceRetouch?.whitenTeeth || 0}
+                                            onChange={(e) => handleUpdate({
+                                                faceRetouch: {
+                                                    ...(activeItem.faceRetouch || {}),
+                                                    whitenTeeth: parseInt(e.target.value)
+                                                }
+                                            })}
+                                            className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-400"
+                                        />
                                     </div>
+
+                                    {/* Process All Frames Button */}
+                                    {(activeItem.faceRetouch?.smoothSkin > 0 || activeItem.faceRetouch?.whitenTeeth > 0) && (
+                                        <button
+                                            onClick={async () => {
+                                                const videoElement = getVideoElement(activeItem.id);
+                                                if (!videoElement) {
+                                                    alert('Video element not found');
+                                                    return;
+                                                }
+
+                                                const controller = new AbortController();
+                                                setAbortController(controller);
+                                                setIsProcessing(true);
+                                                setProcessingProgress(0);
+
+                                                try {
+                                                    const blob = await processVideoWithFaceRetouch(
+                                                        videoElement,
+                                                        activeItem.faceRetouch,
+                                                        (progress, status, frameInfo) => {
+                                                            setProcessingProgress(progress);
+                                                            setProcessingStatus(status);
+                                                            setProcessingFrameInfo(frameInfo);
+                                                        },
+                                                        controller.signal
+                                                    );
+
+                                                    // Download processed video
+                                                    const filename = `${activeItem.name || 'video'}-retouched.webm`;
+                                                    downloadProcessedVideo(blob, filename);
+
+                                                    alert('Video processed successfully! Check your downloads.');
+                                                } catch (error) {
+                                                    if (error.name !== 'AbortError') {
+                                                        console.error('Processing failed:', error);
+                                                        alert('Processing failed: ' + error.message);
+                                                    }
+                                                } finally {
+                                                    setIsProcessing(false);
+                                                    setAbortController(null);
+                                                }
+                                            }}
+                                            disabled={isProcessing}
+                                            className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold text-xs rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+                                        >
+                                            <Zap size={14} fill="currentColor" />
+                                            Process All Frames
+                                        </button>
+                                    )}
                                 </div>
+
+                                {/* Processing Modal */}
+                                {isProcessing && (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                                        <div className="bg-[#1a1a1f] rounded-2xl border border-white/10 p-6 max-w-md w-full mx-4 shadow-2xl">
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <h3 className="text-lg font-bold text-white">Processing Video</h3>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (abortController) {
+                                                                abortController.abort();
+                                                            }
+                                                        }}
+                                                        className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+                                                    >
+                                                        <X size={20} className="text-white/50" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-sm">
+                                                        <span className="text-white/70">{processingStatus}</span>
+                                                        <span className="text-white/50">{Math.round(processingProgress)}%</span>
+                                                    </div>
+                                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                                                            style={{ width: `${processingProgress}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-between text-xs text-white/40">
+                                                        <span>Frame {processingFrameInfo.current} / {processingFrameInfo.total}</span>
+                                                        <span>Est. {Math.ceil((100 - processingProgress) / 10)}m remaining</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-center gap-2 text-white/50 text-sm">
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    <span>Please wait...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -430,7 +564,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 
