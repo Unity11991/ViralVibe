@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
+import { ANIMATIONS } from '../../utils/animationPresets';
 
 // Helper Component for Keyframe Button
 const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyframe, onRemoveKeyframe }) => {
@@ -79,7 +80,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
         <div className="flex flex-col h-full">
             {/* Top Tabs */}
             <div className="flex border-b border-white/10">
-                {['video', 'audio', 'speed', 'animation', 'adjust'].map(tab => (
+                {['video', 'audio', 'speed', 'animation'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -285,19 +286,56 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                     </div>
                 )}
 
-                {(activeTab === 'animation' || activeTab === 'adjust') && (
-                    <div className="flex flex-col items-center justify-center h-full text-white/30 space-y-2">
-                        <Activity size={24} />
-                        <span className="text-xs">Coming Soon</span>
-                    </div>
-                )}
+                {activeTab === 'animation' && (
+                    <div className="p-4 space-y-6">
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider flex items-center gap-2">
+                                <Activity size={12} /> Animations
+                            </h4>
 
-                {activeTab === 'adjust' && (
-                    <div className="p-4">
-                        <AdjustPanel
-                            adjustments={activeItem.adjustments || {}}
-                            onUpdate={(newAdjustments) => handleUpdate({ adjustments: newAdjustments })}
-                        />
+                            {/* Animation Duration Slider */}
+                            {activeItem.animation?.type && activeItem.animation?.type !== 'none' && (
+                                <div className="bg-white/5 p-3 rounded-lg space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-medium text-white/60">Duration</label>
+                                        <span className="text-xs text-white/40">{activeItem.animation.duration || 1.0}s</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0.1"
+                                        max="5.0"
+                                        step="0.1"
+                                        value={activeItem.animation.duration || 1.0}
+                                        onChange={(e) => handleUpdate({
+                                            animation: { ...activeItem.animation, duration: parseFloat(e.target.value) }
+                                        })}
+                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Animation Grid */}
+                            <div className="grid grid-cols-3 gap-2">
+                                {ANIMATIONS.map(anim => {
+                                    const isActive = activeItem.animation?.type === anim.id || (!activeItem.animation?.type && anim.id === 'none');
+                                    return (
+                                        <button
+                                            key={anim.id}
+                                            onClick={() => handleUpdate({
+                                                animation: { type: anim.id, duration: activeItem.animation?.duration || 1.0 }
+                                            })}
+                                            className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all h-20 ${isActive
+                                                ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
+                                                }`}
+                                        >
+                                            <span className="text-[10px] font-medium text-center leading-tight">{anim.label}</span>
+                                            <span className="text-[9px] text-white/30 uppercase mt-1">{anim.type}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -509,8 +547,8 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
                                             animation: { type: anim.id, duration: activeItem.animation?.duration || 1.0 }
                                         })}
                                         className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${isActive
-                                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
+                                            ? 'bg-blue-500/20 border-blue-500 text-white'
+                                            : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
                                             }`}
                                     >
                                         <div className="text-2xl mb-1">{anim.icon}</div>

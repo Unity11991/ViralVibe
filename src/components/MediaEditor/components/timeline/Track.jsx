@@ -18,7 +18,8 @@ export const Track = React.memo(({
     snapPoints,
     onClipDragStart,
     activeTool,
-    onRazorClick
+    onRazorClick,
+    onTrackDragStart
 }) => {
     const getIcon = () => {
         switch (track.type) {
@@ -55,7 +56,11 @@ export const Track = React.memo(({
     return (
         <div className="flex mb-2 group" style={{ height: `${track.height || 80}px` }} data-track-id={track.id}>
             {/* Track Header */}
-            <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-2 z-40 sticky left-0 relative group/header">
+            <div
+                className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-2 z-40 sticky left-0 relative group/header cursor-grab active:cursor-grabbing"
+                draggable={activeTool !== 'razor'}
+                onDragStart={onTrackDragStart}
+            >
                 <div className="flex items-center gap-2 text-white/70 mb-1">
                     <div className="cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50">
                         <GripVertical size={12} />
