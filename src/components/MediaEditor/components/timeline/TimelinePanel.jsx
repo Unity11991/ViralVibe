@@ -548,8 +548,6 @@ export const TimelinePanel = ({
                             <div
                                 key={track.id}
                                 className="track-container"
-                                draggable={activeTool !== 'razor'}
-                                onDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
                                 onDragEnd={() => setDraggedTrackIndex(null)}
                                 onDragOver={(e) => handleTrackDragOver(e, track.originalIndex)}
                                 onDrop={(e) => {
@@ -573,7 +571,7 @@ export const TimelinePanel = ({
                                                 const time = Math.max(0, Math.min(duration, x / scale));
 
                                                 // Allow appropriate drops
-                                                if (allowed) {
+                                                if (track.type === asset.type || (track.type === 'video' && asset.type === 'image')) {
                                                     onDrop(track.id, asset, time);
                                                 }
                                             }
@@ -600,6 +598,7 @@ export const TimelinePanel = ({
                                     onClipDragStart={handleClipDragStart}
                                     activeTool={activeTool}
                                     onRazorClick={handleRazorClick}
+                                    onTrackDragStart={(e) => handleTrackDragStart(e, track.originalIndex)}
                                 />
                             </div>
                         ))}

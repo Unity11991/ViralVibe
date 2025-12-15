@@ -4,7 +4,7 @@
  */
 
 import { getInitialAdjustments } from './filterUtils';
-import { interpolateProperty } from './animationUtils';
+import { interpolateProperty, applyAnimation } from './animationUtils';
 
 /**
  * Calculate the state of the current frame based on the timeline
@@ -86,61 +86,72 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         // Apply Opacity override
         baseLayer.opacity = activeOpacity;
 
+        // --- UNIFIED ANIMATION LOGIC ---
+        // Calculate animated transform properties
+        let animatedProps = {
+            x: getVal('x', clip.transform?.x || (track.type === 'text' ? 50 : 0)),
+            y: getVal('y', clip.transform?.y || (track.type === 'text' ? 50 : 0)),
+            scale: getVal('scale', clip.transform?.scale || (track.type === 'text' ? clip.style?.fontSize || 48 : 100)),
+            rotation: getVal('rotation', clip.transform?.rotation || 0),
+            opacity: baseLayer.opacity
+        };
+
+        // Apply Preset Animation if active
+        if (clip.animation && clip.animation.type !== 'none') {
+            const animDuration = clip.animation.duration || 1.0;
+            const animType = clip.animation.type;
+            let progress = 0;
+
+            // Determine progress based on animation type (In vs Out vs Combo)
+            // For simplicity, we use the 'type' field from ANIMATIONS array if available, 
+            // but here we just infer from ID string or assume 'in' if unknown.
+            // Actually, applyAnimation handles the math, we just need the 0-1 progress relative to duration.
+
+            // Logic:
+            // IN: 0 -> duration
+            // OUT: (clip.duration - duration) -> clip.duration
+            // COMBO: 0 -> duration (or loop?) -> Let's assume start of clip for now.
+
+            const isOut = animType.toLowerCase().includes('out');
+
+            if (isOut) {
+                // Out animation starts at (duration - animDuration)
+                const startTime = clip.duration - animDuration;
+                if (clipTime >= startTime) {
+                    progress = (clipTime - startTime) / animDuration;
+                    progress = Math.min(1, Math.max(0, progress));
+                    animatedProps = applyAnimation(animatedProps, animType, progress);
+                }
+            } else {
+                // In or Combo animation starts at 0
+                if (clipTime <= animDuration) {
+                    progress = clipTime / animDuration;
+                    progress = Math.min(1, Math.max(0, progress));
+                    animatedProps = applyAnimation(animatedProps, animType, progress);
+                }
+            }
+        }
+
         if (track.type === 'text') {
             const textLayer = {
                 ...baseLayer,
                 type: 'text',
                 text: clip.text || 'Text',
-                x: getVal('x', clip.style?.x || 50),
-                y: getVal('y', clip.style?.y || 50),
-                fontSize: getVal('scale', clip.style?.fontSize || 48),
+                x: animatedProps.x,
+                y: animatedProps.y,
+                fontSize: animatedProps.scale, // Text uses scale as fontSize in this context
                 fontFamily: clip.style?.fontFamily || 'Arial',
                 fontWeight: clip.style?.fontWeight || 'bold',
                 color: clip.style?.color || '#ffffff',
-                rotation: getVal('rotation', clip.style?.rotation || 0),
+                rotation: animatedProps.rotation,
+                opacity: animatedProps.opacity
             };
 
-            // Apply Text Animations
-            if (clip.animation && clip.animation.type !== 'none') {
+            // Typewriter is special, affects text content, not just transform
+            if (clip.animation?.type === 'typewriter') {
                 const animDuration = clip.animation.duration || 1.0;
                 const progress = Math.min(1, Math.max(0, clipTime / animDuration));
-
-                switch (clip.animation.type) {
-                    case 'typewriter':
-                        textLayer.text = textLayer.text.substring(0, Math.floor(progress * textLayer.text.length));
-                        break;
-                    case 'fadeIn':
-                        textLayer.opacity = (textLayer.opacity / 100) * progress * 100;
-                        break;
-                    case 'slideIn': // From Left
-                        // Assuming 50 is center, 0 is left. Start from -50?
-                        // Let's assume standard percent coordinates.
-                        const startX = -20;
-                        textLayer.x = startX + (textLayer.x - startX) * (1 - Math.pow(1 - progress, 3)); // Ease Out Cubic
-                        textLayer.opacity = progress * 100;
-                        break;
-                    case 'slideUp': // From Bottom
-                        const startY = 120;
-                        textLayer.y = startY + (textLayer.y - startY) * (1 - Math.pow(1 - progress, 3));
-                        textLayer.opacity = progress * 100;
-                        break;
-                    case 'bounce':
-                        // Simple bounce effect scaling up
-                        const bounce = (t) => {
-                            if (t < (1 / 2.75)) return 7.5625 * t * t;
-                            else if (t < (2 / 2.75)) return 7.5625 * (t -= (1.5 / 2.75)) * t + 0.75;
-                            else if (t < (2.5 / 2.75)) return 7.5625 * (t -= (2.25 / 2.75)) * t + 0.9375;
-                            else return 7.5625 * (t -= (2.625 / 2.75)) * t + 0.984375;
-                        };
-                        // This is bounce ease out, typically used for falling.
-                        // For "Pop In" bounce:
-                        const elastic = (x) => {
-                            const c4 = (2 * Math.PI) / 3;
-                            return x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1;
-                        }
-                        textLayer.fontSize *= elastic(progress);
-                        break;
-                }
+                textLayer.text = textLayer.text.substring(0, Math.floor(progress * textLayer.text.length));
             }
 
             visibleLayers.push(textLayer);
@@ -177,11 +188,14 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     filter: clip.filter || 'normal',
                     effect: clip.effect || null,
                     transform: {
-                        ...(clip.transform || {
-                            x: 0, y: 0, scale: 100, rotation: 0
-                        }),
+                        x: animatedProps.x,
+                        y: animatedProps.y,
+                        scale: animatedProps.scale,
+                        rotation: animatedProps.rotation,
+                        opacity: animatedProps.opacity,
                         blendMode: clip.blendMode || 'normal'
                     },
+                    opacity: animatedProps.opacity,
                     mask: clip.mask || null
                 });
             }
@@ -245,14 +259,14 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     filter: clip.filter || 'normal',
                     effect: clip.effect || null,
                     transform: {
-                        ...(clip.transform || { rotation, zoom }),
-                        // Override with animated values
-                        x: getVal('x', clip.transform?.x || 0),
-                        y: getVal('y', clip.transform?.y || 0),
-                        scale: getVal('scale', clip.transform?.scale || 100),
-                        rotation: getVal('rotation', clip.transform?.rotation || 0),
+                        x: animatedProps.x,
+                        y: animatedProps.y,
+                        scale: animatedProps.scale,
+                        rotation: animatedProps.rotation,
+                        opacity: animatedProps.opacity,
                         blendMode: clip.blendMode || 'normal'
                     },
+                    opacity: animatedProps.opacity,
                     mask: clip.mask || null,
                     transition: transition
                 });
