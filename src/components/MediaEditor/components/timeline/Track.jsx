@@ -16,7 +16,9 @@ export const Track = React.memo(({
     onDrop,
     onResize,
     snapPoints,
-    onClipDragStart
+    onClipDragStart,
+    activeTool,
+    onRazorClick
 }) => {
     const getIcon = () => {
         switch (track.type) {
@@ -113,6 +115,8 @@ export const Track = React.memo(({
                                 onMove={onMove}
                                 snapPoints={snapPoints}
                                 onDragStart={(e) => onClipDragStart(clip.id, track.id, e, clip)}
+                                activeTool={activeTool}
+                                onRazorClick={onRazorClick}
                             />
                             {/* Transition Button */}
                             {isConnected && (

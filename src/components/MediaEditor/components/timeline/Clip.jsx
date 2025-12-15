@@ -12,7 +12,9 @@ export const Clip = React.memo(({
     onTrimEnd,
     onMove,
     snapPoints,
-    onDragStart
+    onDragStart,
+    activeTool,
+    onRazorClick
 }) => {
     const width = clip.duration * scale;
     const left = clip.startTime * scale;
@@ -22,10 +24,10 @@ export const Clip = React.memo(({
     const clipRef = useRef(null);
 
     // Keep track of latest props for event handlers
-    const propsRef = useRef({ clip, scale, onMove, snapPoints, onTrim, onDragStart });
+    const propsRef = useRef({ clip, scale, onMove, snapPoints, onTrim, onDragStart, activeTool, onRazorClick });
     useEffect(() => {
-        propsRef.current = { clip, scale, onMove, snapPoints, onTrim, onDragStart };
-    }, [clip, scale, onMove, snapPoints, onTrim, onDragStart]);
+        propsRef.current = { clip, scale, onMove, snapPoints, onTrim, onDragStart, activeTool, onRazorClick };
+    }, [clip, scale, onMove, snapPoints, onTrim, onDragStart, activeTool, onRazorClick]);
 
     const handleDragStart = (e, type) => {
         e.stopPropagation();
@@ -150,7 +152,10 @@ export const Clip = React.memo(({
     return (
         <div
             ref={clipRef}
-            className={`timeline-clip absolute top-1 bottom-1 rounded-md cursor-pointer border-2 transition-all ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
+            className={`timeline-clip absolute top-1 bottom-1 rounded-md border-2 transition-all ${activeTool === 'razor'
+                    ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]'
+                    : 'cursor-pointer'
+                } ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
                 } ${clip.type === 'video' ? 'bg-blue-500/20' :
                     clip.type === 'audio' ? 'bg-green-500/20' :
                         clip.type === 'text' ? 'bg-purple-500/20' :
@@ -163,6 +168,21 @@ export const Clip = React.memo(({
             onMouseDown={(e) => {
                 // Prevent native drag and drop interference
                 e.preventDefault();
+
+                // Razor Tool Handling
+                if (propsRef.current.activeTool === 'razor') {
+                    e.stopPropagation();
+                    if (propsRef.current.onRazorClick) {
+                        // Calculate time relative to clip start
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const timeOffset = clickX / scale;
+                        const splitTime = clip.startTime + timeOffset;
+
+                        propsRef.current.onRazorClick(clip.id, splitTime);
+                    }
+                    return;
+                }
 
                 // Select on mouse down to ensure immediate feedback
                 // Pass event for multi-select detection
@@ -321,6 +341,7 @@ export const Clip = React.memo(({
     return (
         prev.clip === next.clip &&
         prev.scale === next.scale &&
-        prev.isSelected === next.isSelected
+        prev.isSelected === next.isSelected &&
+        prev.activeTool === next.activeTool
     );
 });
