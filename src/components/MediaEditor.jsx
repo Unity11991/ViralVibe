@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Download, RotateCcw, Video, Upload } from 'lucide-react';
+import { X, Download, RotateCcw, Video, Upload, Wand2 } from 'lucide-react';
 import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
@@ -25,12 +25,15 @@ import { TimelinePanel } from './MediaEditor/components/timeline/TimelinePanel';
 import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
 import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
 import ExportModal from './MediaEditor/components/modals/ExportModal';
+import { AutoCompositePanel } from './MediaEditor/components/panels/AutoCompositePanel';
 
 /**
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt with 3-pane layout and advanced timeline
  */
 const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, suggestedFilter, isPro = false }) => {
+    const [showAutoComposite, setShowAutoComposite] = useState(false);
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY;
     // Load Fonts
     useEffect(() => {
         const link = document.createElement('link');
@@ -135,6 +138,19 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [thumbnailUrl, setThumbnailUrl] = useState(null);
     const [mediaLibrary, setMediaLibrary] = useState([]);
 
+    // Calculate timeline duration dynamically
+    const timelineDuration = React.useMemo(() => {
+        if (!tracks || tracks.length === 0) return 10; // Default 10s
+        let maxDuration = 0;
+        tracks.forEach(track => {
+            track.clips.forEach(clip => {
+                const end = clip.startTime + clip.duration;
+                if (end > maxDuration) maxDuration = end;
+            });
+        });
+        return Math.max(maxDuration, 5); // Minimum 5s
+    }, [tracks]);
+
     const fileInputRef = useRef(null);
     const containerRef = useRef(null);
     const overlayRef = useRef(null);
@@ -142,27 +158,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const audioElementsRef = useRef({}); // Cache for audio clip elements
     const videoElementsRef = useRef({}); // Cache for secondary video clip elements
 
-    // Calculate total timeline duration dynamically
-    const timelineDuration = React.useMemo(() => {
-        let maxDuration = 0;
-
-        if (tracks && tracks.length > 0) {
-            tracks.forEach(track => {
-                track.clips.forEach(clip => {
-                    const end = clip.startTime + clip.duration;
-                    if (end > maxDuration) maxDuration = end;
-                });
-            });
-        }
-
-        // If we have clips, that's our duration (plus small buffer if needed? No, precise is better for export).
-        // If we have NO clips (e.g. just opened), use video duration.
-        if (maxDuration > 0) {
-            return maxDuration;
-        }
-
-        return videoDuration || 10;
-    }, [tracks, videoDuration]);
 
     // Update trimRange when timeline duration changes
     useEffect(() => {
@@ -177,7 +172,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         pause,
         togglePlay,
         seek
-    } = usePlayback(trimRange.end, (time) => {
+    } = usePlayback(timelineDuration, (time) => {
         // Optional: Any per-tick logic that isn't rendering
     });
 
@@ -1325,6 +1320,57 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     };
 
+    /**
+     * Applies AI-generated composition to timeline
+     */
+    const handleApplyComposition = useCallback((plan, audioTrack, videoClips) => {
+        if (!plan) return;
+
+        // 1. Create Video Track
+        const mainTrack = {
+            id: 'track-main',
+            type: 'video',
+            height: 80,
+            clips: plan.clips.map((clip, index) => ({
+                id: `clip-${Date.now()}-${index}`,
+                type: 'video',
+                name: `Clip ${index + 1}`,
+                startTime: clip.startTime,
+                duration: clip.duration,
+                startOffset: clip.startOffset,
+                source: clip.source,
+                sourceDuration: clip.videoAnalysis?.duration || 10,
+                filter: clip.filter,
+                adjustments: clip.adjustments,
+                effects: clip.effects,
+                transition: plan.transitions?.find(t => t.fromClipIndex === index)
+            }))
+        };
+
+        // 2. Create Audio Track
+        const audioTrackObj = {
+            id: 'track-audio-main',
+            type: 'audio',
+            height: 48,
+            clips: [{
+                id: `clip-audio-${Date.now()}`,
+                type: 'audio',
+                name: audioTrack.name || 'Background Music',
+                startTime: 0,
+                duration: plan.duration,
+                startOffset: 0,
+                source: audioTrack.url,
+                volume: 100
+            }]
+        };
+
+        // 3. Update Timeline (Single Update)
+        setTracks([mainTrack, audioTrackObj]);
+
+        // 4. Reset Selection
+        setSelectedClipId(null);
+    }, [setTracks, setSelectedClipId]);
+
     const handleAddToLibrary = async (file) => {
         const url = URL.createObjectURL(file);
         const type = file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'image';
@@ -1583,6 +1629,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             <h2 className="text-lg font-bold text-white">Media Editor</h2>
                         </div>
                         <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => setShowAutoComposite(true)}
+                                variant="secondary"
+                                size="sm"
+                                icon={Wand2}
+                                title="AI Auto Composite"
+                            >
+                                Auto Composite
+                            </Button>
                             <Button onClick={() => setShowExportModal(true)} variant="primary" size="sm" icon={Download}>Export</Button>
                             <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors">
                                 <X size={20} />
@@ -1729,6 +1784,25 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 onSettingsChange={setExportSettings}
                 onCancel={cancelExport}
             />
+            {/* Auto-Composite Panel Modal */}
+            {showAutoComposite && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                    onClick={() => setShowAutoComposite(false)}
+                >
+                    <div
+                        className="w-[800px] h-[700px] bg-[#1a1a1a] rounded-xl overflow-hidden shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <AutoCompositePanel
+                            onApplyComposition={handleApplyComposition}
+                            mediaLibrary={mediaLibrary}
+                            apiKey={apiKey}
+                            onClose={() => setShowAutoComposite(false)}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 };

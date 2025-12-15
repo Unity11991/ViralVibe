@@ -33,7 +33,7 @@ function App() {
         apiKey: import.meta.env.VITE_GROQ_API_KEY || '',
         platform: 'instagram',
         mood: 'best',
-        model: import.meta.env.VITE_AI_MODEL || 'llama-3.2-11b-vision-preview',
+        model: import.meta.env.VITE_AI_MODEL || 'meta-llama/llama-4-maverick-17b-128e-instruct',
         length: 'Medium',
         customInstructions: ''
     });

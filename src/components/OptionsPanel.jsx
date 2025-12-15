@@ -74,7 +74,7 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                             type="text"
                             value={settings.model}
                             onChange={(e) => handleChange('model', e.target.value)}
-                            placeholder="e.g., llama-3.2-11b-vision-preview"
+                            placeholder="e.g., meta-llama/llama-4-maverick-17b-128e-instruct"
                             className="w-full input-liquid px-4 py-3 placeholder-secondary focus:ring-1 focus:ring-indigo-500/50"
                         />
                     </div>
