@@ -3,7 +3,7 @@ import React from 'react';
 /**
  * Reusable Slider Component
  */
-export const Slider = ({ label, value, min, max, step = 1, onChange, unit = '' }) => {
+export const Slider = ({ label, value = 0, min, max, step = 1, onChange, unit = '' }) => {
     return (
         <div className="space-y-2">
             <div className="flex justify-between text-xs">

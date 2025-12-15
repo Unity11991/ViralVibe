@@ -14,7 +14,9 @@ export const Track = React.memo(({
     onAddTransition,
     onTransitionSelect,
     onDrop,
-    onResize
+    onResize,
+    snapPoints,
+    onClipDragStart
 }) => {
     const getIcon = () => {
         switch (track.type) {
@@ -49,7 +51,7 @@ export const Track = React.memo(({
     };
 
     return (
-        <div className="flex mb-2 group" style={{ height: `${track.height || 80}px` }}>
+        <div className="flex mb-2 group" style={{ height: `${track.height || 80}px` }} data-track-id={track.id}>
             {/* Track Header */}
             <div className="w-32 flex-shrink-0 bg-[#1a1a1f] border-r border-white/5 flex flex-col justify-center px-2 z-40 sticky left-0 relative group/header">
                 <div className="flex items-center gap-2 text-white/70 mb-1">
@@ -109,6 +111,8 @@ export const Track = React.memo(({
                                 onTrim={onTrim}
                                 onTrimEnd={onTrimEnd}
                                 onMove={onMove}
+                                snapPoints={snapPoints}
+                                onDragStart={(e) => onClipDragStart(clip.id, track.id, e, clip)}
                             />
                             {/* Transition Button */}
                             {isConnected && (

@@ -131,17 +131,7 @@ export const useTimelineState = () => {
             }]
         };
 
-        const adjustmentTrack = {
-            id: 'track-adjustment-1',
-            type: 'adjustment',
-            height: 32,
-            clips: []
-        };
-        const textTrack = { id: 'track-text-1', type: 'text', height: 64, clips: [] };
-        const stickerTrack = { id: 'track-sticker-1', type: 'sticker', height: 64, clips: [] };
-        const audioTrack = { id: 'track-audio-1', type: 'audio', height: 48, clips: [] };
-
-        const newTracks = [adjustmentTrack, initialTrack, audioTrack, textTrack, stickerTrack];
+        const newTracks = [initialTrack];
         setTracks(newTracks);
         setHistory([newTracks]);
         setHistoryIndex(0);
@@ -378,73 +368,69 @@ export const useTimelineState = () => {
         });
     }, []);
 
-    // Move a clip
-    const moveClip = useCallback((clipId, newStartTime) => {
+    // Move a clip (supports cross-track)
+    const moveClip = useCallback((clipId, newStartTime, newTrackId) => {
         setTracks(prev => {
-            // Find the moving clip and its group
-            let groupId = null;
-            let originalClip = null;
-            prev.forEach(t => {
-                const c = t.clips.find(clip => clip.id === clipId);
-                if (c) {
-                    groupId = c.groupId;
-                    originalClip = c;
+            // 1. Find the clip and its current track
+            let sourceTrackIndex = -1;
+            let sourceClipIndex = -1;
+            let clip = null;
+
+            prev.forEach((t, ti) => {
+                const ci = t.clips.findIndex(c => c.id === clipId);
+                if (ci !== -1) {
+                    sourceTrackIndex = ti;
+                    sourceClipIndex = ci;
+                    clip = t.clips[ci];
                 }
             });
 
-            // Calculate delta
-            let delta = 0;
-            if (originalClip) {
-                // Determine potential new time (constrained) before applying delta to group?
-                // This is hard to constraint-check a whole group at once.
-                // Simplified: Calculate desired delta, then try to apply it.
-                delta = newStartTime - originalClip.startTime;
+            if (!clip) return prev; // Clip not found
+
+            const sourceTrack = prev[sourceTrackIndex];
+            const targetTrackId = newTrackId || sourceTrack.id;
+            const targetTrackIndex = prev.findIndex(t => t.id === targetTrackId);
+
+            if (targetTrackIndex === -1) return prev; // Target track not found
+
+            // 2. Check compatibility (if changing tracks)
+            const targetTrack = prev[targetTrackIndex];
+            if (sourceTrack.id !== targetTrack.id) {
+                // Allow video->video, audio->audio, text->text, etc.
+                // Also allow video->image (if we treat them as visual)
+                // For now, strict type check or specific allowances
+                const isCompatible =
+                    (sourceTrack.type === targetTrack.type) ||
+                    (sourceTrack.type === 'video' && targetTrack.type === 'video') || // both video
+                    (sourceTrack.type === 'video' && clip.type === 'image' && targetTrack.type === 'video'); // image on video track
+
+                if (!isCompatible) {
+                    // console.warn("Incompatible track type");
+                    return prev;
+                }
             }
 
-            const newTracks = prev.map(track => {
-                // Logic: 
-                // 1. Identify clips to move: either just clipId, or all with same groupId
-                // 2. For each moving clip, validation check against collision on THAT track.
+            // 3. Remove from source track
+            const newSourceClips = [...sourceTrack.clips];
+            newSourceClips.splice(sourceClipIndex, 1);
 
-                // This gets complex. For MVP Group Move:
-                // We just update the start times. If constraints hit, we might let them overlap or stop?
-                // Let's implement individual move first, which was working.
+            // 4. Prepare clip for target
+            const updatedClip = { ...clip, startTime: Math.max(0, newStartTime) };
 
-                // TODO: Group Moving Logic (Iterate all tracks, check all members)
-                // For now, let's keep it safe: Only move the target clip, ignoring group for move (unless we fix it).
-                // Actually, let's try to support it.
+            // 5. Add to target track (and handle collisions/constraints)
+            let newTargetClips = sourceTrack.id === targetTrack.id ? newSourceClips : [...targetTrack.clips];
 
-                const clipIndex = track.clips.findIndex(c => c.id === clipId); // Only primary
-                if (clipIndex === -1) return track;
+            // Simple insertion for now. 
+            // Ideally we should check for collisions and prevent move if it overlaps?
+            // Or just let it overlap? The user asked to "drag to other tracks".
+            // Let's just add it and sort by time.
+            newTargetClips.push(updatedClip);
+            newTargetClips.sort((a, b) => a.startTime - b.startTime);
 
-                const clip = track.clips[clipIndex];
-                const prevClip = clipIndex > 0 ? track.clips[clipIndex - 1] : null;
-                const nextClip = clipIndex < track.clips.length - 1 ? track.clips[clipIndex + 1] : null;
-
-                let validatedStartTime = newStartTime;
-
-                if (prevClip) {
-                    const minStartTime = prevClip.startTime + prevClip.duration;
-                    if (Math.abs(validatedStartTime - minStartTime) < 0.1 || validatedStartTime < minStartTime) {
-                        validatedStartTime = minStartTime;
-                    }
-                } else {
-                    if (validatedStartTime < 0) validatedStartTime = 0;
-                }
-
-                if (nextClip) {
-                    const maxEndTime = nextClip.startTime;
-                    if (Math.abs((validatedStartTime + clip.duration) - maxEndTime) < 0.1 || validatedStartTime + clip.duration > maxEndTime) {
-                        validatedStartTime = maxEndTime - clip.duration;
-                    }
-                }
-
-                const updatedClip = { ...clip, startTime: validatedStartTime };
-                const newClips = [...track.clips];
-                newClips[clipIndex] = updatedClip;
-
-                return { ...track, clips: newClips };
-            });
+            // 6. Construct new tracks array
+            const newTracks = [...prev];
+            newTracks[sourceTrackIndex] = { ...sourceTrack, clips: newSourceClips };
+            newTracks[targetTrackIndex] = { ...targetTrack, clips: newTargetClips };
 
             return newTracks;
         });

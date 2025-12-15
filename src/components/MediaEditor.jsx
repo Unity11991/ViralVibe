@@ -77,7 +77,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
     // Timeline State Hook
     const {
-        tracks,
+        tracks = [],
         setTracks,
         selectedClipId,
         setSelectedClipId,
@@ -111,7 +111,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         ungroupSelectedClips,
         addKeyframe,
         removeKeyframe
-    } = useTimelineState();
+    } = useTimelineState() || {};
 
     // Editor State
     const [activeTab, setActiveTab] = useState('adjust');
@@ -176,18 +176,20 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         play,
         pause,
         togglePlay,
-        seek,
-        registerMedia
+        seek
     } = usePlayback(trimRange.end, (time) => {
         // Optional: Any per-tick logic that isn't rendering
     });
 
-    // Register Main Media Element
+    // Register Main Media Element - DISABLED
+    // We handle main media sync manually now to support multiple clips on the main track
+    /*
     useEffect(() => {
         if (mediaElementRef.current && isVideo && !isExporting) {
             return registerMedia(mediaElementRef.current);
         }
     }, [mediaElementRef, isVideo, registerMedia, isExporting]);
+    */
 
     // Initialize Timeline when media loads
     useEffect(() => {
@@ -704,34 +706,62 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         });
 
-        // Sync Main Media Mute State & Properties
+        // Sync Main Media Mute State & Properties & Time
         const mainVideoTrack = tracks.find(t => t.type === 'video'); // Get first video track (usually main)
         if (mainVideoTrack && mediaElementRef.current) {
             const activeMainClip = mainVideoTrack.clips.find(c => currentTime >= c.startTime && currentTime < (c.startTime + c.duration));
+
             if (activeMainClip) {
+                const video = mediaElementRef.current;
+
+                // 1. Check Source
+                if (video.dataset.clipId !== activeMainClip.id) {
+                    // Only update src if it's different to avoid reloading
+                    // We use dataset.clipId to track the current clip because src might be resolved
+                    video.src = activeMainClip.source;
+                    video.dataset.clipId = activeMainClip.id;
+                    // We don't call load() immediately to avoid interruption if browser handles it, 
+                    // but for src change we usually need it or it happens auto.
+                }
+
+                // 2. Sync Time
+                const expectedSourceTime = activeMainClip.startOffset + (currentTime - activeMainClip.startTime);
+
+                // Only sync if loaded metadata (duration) is available or we just switched
+                if (video.readyState >= 1) {
+                    const drift = Math.abs(video.currentTime - expectedSourceTime);
+                    if (drift > 0.2) {
+                        video.currentTime = expectedSourceTime;
+                    }
+                }
+
+                // 3. Play/Pause
+                if (isPlaying && video.paused) {
+                    video.play().catch(() => { });
+                } else if (!isPlaying && !video.paused) {
+                    video.pause();
+                }
+
                 // Apply Mute
                 const shouldMute = !!activeMainClip.muted;
-                if (mediaElementRef.current.muted !== shouldMute) {
-                    mediaElementRef.current.muted = shouldMute;
+                if (video.muted !== shouldMute) {
+                    video.muted = shouldMute;
                 }
 
                 // Apply Speed/Pitch/Volume
-                applyAudioProps(mediaElementRef.current, activeMainClip, currentTime);
+                applyAudioProps(video, activeMainClip, currentTime);
 
-                // Apply Voice Effect (Node connection if needed)
-                // Note: Main media connection might interfere with useMediaProcessor/Context?
-                // VoiceEffectsManager handles connection safely (singleton ctx).
+                // Apply Voice Effect
                 if (activeMainClip.voiceEffect) {
-                    voiceEffects.applyEffect(mediaElementRef.current, activeMainClip.voiceEffect);
+                    voiceEffects.applyEffect(video, activeMainClip.voiceEffect);
                 } else {
-                    voiceEffects.applyEffect(mediaElementRef.current, 'none');
+                    voiceEffects.applyEffect(video, 'none');
                 }
             } else {
-                // No active clip on main track? Maybe black screen or pause?
-                // Ensure default props
-                mediaElementRef.current.playbackRate = 1;
-                mediaElementRef.current.volume = 1;
-                voiceEffects.applyEffect(mediaElementRef.current, 'none');
+                // No active clip on main track
+                if (mediaElementRef.current && !mediaElementRef.current.paused) {
+                    mediaElementRef.current.pause();
+                }
             }
         }
 
@@ -1130,47 +1160,59 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             if (track) {
                 addClip(track.id, newClip);
             } else {
-                // We need to add a track. This is tricky inside this handler.
-                // Let's modify useTimelineState to support "addClipToNewTrack" or similar?
-                // Or just hack it:
-                // We can't easily do it here without refactoring useTimelineState.
-                // Let's assume we initialize with a text track or add one.
-                // For now, let's just console.warn if no track.
-                // Wait, we can use setTracks directly if we really wanted, but we should use the hook.
-                // Let's just add a text track on init.
+                addClipToNewTrack('text', newClip);
             }
         } else if (type === 'media' || type === 'audio' || type === 'video' || type === 'image') {
             // Handle adding media/audio from library to timeline
+
+            const duration = data.duration || 10;
+            const startTime = currentTime;
+            const endTime = startTime + duration;
+
+            // Helper to check for collision on a specific track
+            const hasCollision = (track) => {
+                return track.clips.some(c => {
+                    const cStart = c.startTime;
+                    const cEnd = c.startTime + c.duration;
+                    // Check overlap: (StartA < EndB) and (EndA > StartB)
+                    return (startTime < cEnd && endTime > cStart);
+                });
+            };
+
             // Find appropriate track or create new one
-            // For MVP: Find first track of type, or create new
-            let targetTrack = tracks.find(t => t.type === type);
+            // 1. Try to find an existing track of compatible type that has NO collision
+            let targetTrack = tracks.find(t => {
+                // Check type compatibility
+                let isCompatible = t.type === type;
+                if (type === 'image' || type === 'video') {
+                    isCompatible = (t.type === 'video' || t.type === 'image');
+                }
 
-            // Relaxed check: Allow images on video tracks and vice versa
-            if (!targetTrack && (type === 'image' || type === 'video')) {
-                targetTrack = tracks.find(t => t.type === 'video' || t.type === 'image');
-            }
+                if (!isCompatible) return false;
 
-            // If no track of this type, we should probably add one, but for now let's reuse logic
-            // Ideally useTimelineState should expose 'addTrack' which we have.
-
-            if (!targetTrack) {
-                // TODO: Auto-create track. For now, we rely on pre-existing tracks or manual creation
-                console.warn(`No track found for type ${type}`);
-                return;
-            }
+                // Check collision
+                return !hasCollision(t);
+            });
 
             const newClip = {
                 id: `clip-${Date.now()}`,
                 type: type,
-                name: data.file.name,
-                startTime: currentTime,
-                duration: data.duration || 10, // Default or actual duration
+                name: data.file ? data.file.name : (data.name || 'Media'),
+                startTime: startTime,
+                duration: duration,
                 startOffset: 0,
                 source: data.url,
                 sourceDuration: data.duration
             };
 
-            addClip(targetTrack.id, newClip);
+            if (targetTrack) {
+                addClip(targetTrack.id, newClip);
+            } else {
+                // No available track found, create a new one
+                // Determine track type for creation
+                const trackType = (type === 'image' || type === 'video') ? 'video' : type;
+                addClipToNewTrack(trackType, newClip);
+            }
         } else if (type === 'adjustment') {
             const newClip = {
                 id: `clip-adj-${Date.now()}`,
@@ -1525,7 +1567,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 onClose={() => setShowExportModal(false)}
                 isExporting={isExporting}
                 progress={exportProgress}
-                onExport={() => {
+                onExport={(e) => {
+                    if (e && e.preventDefault) e.preventDefault();
                     pause(); // Stop playback before exporting
                     const globalState = {
                         canvasDimensions,

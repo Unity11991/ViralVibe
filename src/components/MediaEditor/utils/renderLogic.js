@@ -44,11 +44,9 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
     // Create Unified Layer List
     const visibleLayers = [];
 
-    // Iterate tracks in Reverse Order (Draw Bottom Tracks first, Top Tracks last)
-    // Track 0 is Top (Adjustment), Track N is Bottom (Sticker)
-    // We want to draw Sticker -> Text -> Audio -> Video -> Adjustment
-    // So we iterate tracks backwards.
-    [...tracks].reverse().forEach((track, reverseIndex) => {
+    // Iterate tracks in Normal Order (Draw Bottom Tracks first, Top Tracks last)
+    // Track 0 is Bottom (Background), Track N is Top (Foreground)
+    tracks.forEach((track, index) => {
         // Find active clip in this track
         const clip = track.clips.find(c =>
             currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
@@ -61,7 +59,7 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         // but renderFrame uses array order.
         const baseLayer = {
             id: clip.id,
-            zIndex: track.id === 'track-adjustment-1' ? 999 : (tracks.length - 1 - reverseIndex),
+            zIndex: index,
             // We keep original index semblance or just rely on array order.
             opacity: clip.opacity !== undefined ? clip.opacity : 100,
             blendMode: clip.blendMode || 'normal',
@@ -196,10 +194,9 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         } else if (track.type === 'video' || track.type === 'image') {
             // Resolve Media Element
             let media = null;
-            const isMainSource = clip.source === mediaUrl;
-
-            // Scenario 1: It's the main media, and we have a shared element for it
-            if (isMainSource && isVideo && clip.id === activeMainClip?.id) {
+            // Scenario 1: It's the active clip on the main track, so we use the shared main media element
+            // (MediaEditor.jsx ensures this element is synced to the active clip's source)
+            if (isVideo && clip.id === activeMainClip?.id && track.id === 'track-main') {
                 media = mediaElement;
             }
 

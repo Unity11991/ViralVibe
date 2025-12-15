@@ -10,7 +10,9 @@ export const Clip = React.memo(({
     isSelected,
     onTrim,
     onTrimEnd,
-    onMove
+    onMove,
+    snapPoints,
+    onDragStart
 }) => {
     const width = clip.duration * scale;
     const left = clip.startTime * scale;
@@ -19,8 +21,20 @@ export const Clip = React.memo(({
     const initialValuesRef = useRef(null);
     const clipRef = useRef(null);
 
+    // Keep track of latest props for event handlers
+    const propsRef = useRef({ clip, scale, onMove, snapPoints, onTrim, onDragStart });
+    useEffect(() => {
+        propsRef.current = { clip, scale, onMove, snapPoints, onTrim, onDragStart };
+    }, [clip, scale, onMove, snapPoints, onTrim, onDragStart]);
+
     const handleDragStart = (e, type) => {
         e.stopPropagation();
+
+        if (type === 'move' && propsRef.current.onDragStart) {
+            propsRef.current.onDragStart(e);
+            return;
+        }
+
         setIsTrimming(type);
         startXRef.current = e.clientX;
         initialValuesRef.current = {
@@ -58,7 +72,7 @@ export const Clip = React.memo(({
                 newDuration = duration - diff;
             }
 
-            onTrim(clip.id, newStartTime, newDuration, newStartOffset);
+            if (propsRef.current.onTrim) propsRef.current.onTrim(clip.id, newStartTime, newDuration, newStartOffset);
 
         } else if (isTrimming === 'end') {
             // Trimming end: duration changes
@@ -66,12 +80,44 @@ export const Clip = React.memo(({
 
             if (newDuration < 0.5) newDuration = 0.5;
 
-            onTrim(clip.id, startTime, newDuration, startOffset);
+            if (propsRef.current.onTrim) propsRef.current.onTrim(clip.id, startTime, newDuration, startOffset);
 
         } else if (isTrimming === 'move') {
             // Moving clip
-            const newStartTime = Math.max(0, startTime + deltaTime);
-            if (onMove) onMove(clip.id, newStartTime);
+            let newStartTime = Math.max(0, startTime + deltaTime);
+
+            // Snapping Logic
+            const currentSnapPoints = propsRef.current.snapPoints;
+            if (currentSnapPoints && currentSnapPoints.length > 0) {
+                const threshold = 10 / scale; // 10px threshold
+                let bestSnap = null;
+                let minDist = threshold;
+
+                // Check Start snapping
+                for (const point of currentSnapPoints) {
+                    const dist = Math.abs(point - newStartTime);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestSnap = point;
+                    }
+                }
+
+                // Check End snapping (align end to snap point)
+                const newEndTime = newStartTime + duration;
+                for (const point of currentSnapPoints) {
+                    const dist = Math.abs(point - newEndTime);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestSnap = point - duration;
+                    }
+                }
+
+                if (bestSnap !== null) {
+                    newStartTime = bestSnap;
+                }
+            }
+
+            if (propsRef.current.onMove) propsRef.current.onMove(clip.id, newStartTime);
         }
     };
 
@@ -115,6 +161,9 @@ export const Clip = React.memo(({
                 width: `${width}px`
             }}
             onMouseDown={(e) => {
+                // Prevent native drag and drop interference
+                e.preventDefault();
+
                 // Select on mouse down to ensure immediate feedback
                 // Pass event for multi-select detection
                 if (!isSelected || e.shiftKey || e.ctrlKey || e.metaKey) {
