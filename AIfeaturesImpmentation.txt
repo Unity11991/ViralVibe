@@ -1,0 +1,25 @@
+🚀 Immediate "Low Hanging Fruit" (Fits current UI)
+Face Retouching (The "Pro" Tab)
+Smooth Skin: Automatically soften skin tones while keeping edges sharp.
+Whiten Teeth: Detect smiles and brighten teeth.
+Why: You already have the UI placeholders for this!
+AI Background Removal (Green Screen without Green Screen)
+Remove the background from the video so users can place themselves over gameplay, reaction videos, or custom backgrounds.
+Why: Essential for "Reaction" style content.
+Smart Crop / Auto-Reframe
+Automatically detect the subject (face/person) and keep them centered when converting landscape (16:9) videos to vertical (9:16) for TikTok/Reels.
+Why: Critical for repurposing content.
+⚡ High-Impact "Viral" Features
+Auto-Captions (The #1 Request)
+Automatically transcribe audio and generate trendy, animated subtitles (like Alex Hormozi style).
+Why: 80% of users watch social video on mute; this is a must-have.
+Silence Remover / Jump Cut AI
+Automatically detect and cut out silence, "umms," and "ahhs" to make the video fast-paced and engaging.
+Why: Drastically speeds up editing for talking-head videos.
+AI Magic Eraser
+Highlight an unwanted object (like a trash can or a photobomber) and have AI fill in the background.
+AI Voiceover / Text-to-Speech
+Type text and have a realistic AI voice narrate it (popular for faceless channels).
+🎨 Creative & Fun
+Style Transfer: Turn video into an anime, sketch, or oil painting.
+AI Music Sync: Automatically cut the video to the beat of the music.

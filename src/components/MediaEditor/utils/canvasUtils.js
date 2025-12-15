@@ -3,6 +3,8 @@
  * Handles all canvas rendering operations
  */
 
+import { detectFaces, applySkinSmoothing, applyTeethWhitening } from './aiFaceService';
+
 /**
  * Draw image or video frame to canvas with filters
  * @param {CanvasRenderingContext2D} ctx - Canvas context
@@ -122,7 +124,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         blendMode = 'normal'
     } = transform;
 
-    const { mask = null } = options;
+    const { mask = null, faceRetouch = null } = options;
 
     const { clearCanvas = true } = options;
 
@@ -234,6 +236,76 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     }
 
     ctx.restore();
+
+    // Apply face retouching if enabled (after drawing and restoring context)
+    if (faceRetouch && (faceRetouch.smoothSkin > 0 || faceRetouch.whitenTeeth > 0)) {
+        applyFaceRetouchingToCanvas(ctx, media, faceRetouch, transform, canvasDimensions);
+    }
+};
+
+/**
+ * Apply face retouching effects to the canvas
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {HTMLVideoElement|HTMLImageElement} media - Media element
+ * @param {Object} faceRetouch - Face retouch settings
+ * @param {Object} transform - Transform settings
+ * @param {Object} canvasDimensions - Canvas dimensions
+ */
+const applyFaceRetouchingToCanvas = async (ctx, media, faceRetouch, transform, canvasDimensions) => {
+    try {
+        // Detect faces in the media
+        const faces = await detectFaces(media);
+
+        if (faces.length === 0) {
+            return; // No faces detected
+        }
+
+        // Calculate scaling factors to map face coordinates to canvas coordinates
+        const mediaWidth = media.videoWidth || media.width;
+        const mediaHeight = media.videoHeight || media.height;
+        const { width: canvasWidth, height: canvasHeight } = canvasDimensions;
+
+        // Calculate how the media is displayed on canvas (same logic as drawMediaToCanvas)
+        const mediaAspect = mediaWidth / mediaHeight;
+        const canvasAspect = canvasWidth / canvasHeight;
+
+        let baseWidth, baseHeight;
+        if (mediaAspect > canvasAspect) {
+            baseWidth = canvasWidth;
+            baseHeight = canvasWidth / mediaAspect;
+        } else {
+            baseHeight = canvasHeight;
+            baseWidth = canvasHeight * mediaAspect;
+        }
+
+        const scaleFactor = (transform.scale || 100) / 100;
+        const drawWidth = baseWidth * scaleFactor;
+        const drawHeight = baseHeight * scaleFactor;
+
+        // Calculate offset
+        const offsetX = (canvasWidth - drawWidth) / 2 + (transform.x || 0);
+        const offsetY = (canvasHeight - drawHeight) / 2 + (transform.y || 0);
+
+        // Map face coordinates from media space to canvas space
+        const canvasFaces = faces.map(face => ({
+            x: (face.x / mediaWidth) * drawWidth + offsetX,
+            y: (face.y / mediaHeight) * drawHeight + offsetY,
+            width: (face.width / mediaWidth) * drawWidth,
+            height: (face.height / mediaHeight) * drawHeight,
+            landmarks: face.landmarks
+        }));
+
+        // Apply effects
+        if (faceRetouch.smoothSkin > 0) {
+            applySkinSmoothing(ctx, canvasFaces, faceRetouch.smoothSkin);
+        }
+
+        if (faceRetouch.whitenTeeth > 0) {
+            applyTeethWhitening(ctx, canvasFaces, faceRetouch.whitenTeeth);
+        }
+    } catch (error) {
+        // Silently fail - face detection may not be ready yet
+    }
 };
 
 /**
@@ -588,7 +660,8 @@ const renderLayer = (ctx, layer, globalState) => {
         mask = null,
         opacity = 100,
         blendMode = 'normal',
-        transition = null
+        transition = null,
+        faceRetouch = null
     } = layer;
 
     // 1. Setup Context State
@@ -617,7 +690,8 @@ const renderLayer = (ctx, layer, globalState) => {
             drawMediaToCanvas(tempCtx, media, adjustments, transform, canvasDimensions, memePadding, {
                 applyFiltersToContext: true,
                 clearCanvas: false,
-                mask: mask
+                mask: mask,
+                faceRetouch: faceRetouch
             });
         } else if (type === 'text') {
             // Adapt text overlay to drawTextOverlay signature
@@ -640,7 +714,8 @@ const renderLayer = (ctx, layer, globalState) => {
             drawMediaToCanvas(ctx, media, adjustments, transform, canvasDimensions, memePadding, {
                 applyFiltersToContext: true,
                 clearCanvas: false,
-                mask: mask
+                mask: mask,
+                faceRetouch: faceRetouch
             });
         } else if (type === 'text') {
             drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
