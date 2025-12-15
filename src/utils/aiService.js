@@ -9,7 +9,7 @@ export const analyzeImage = async (fileOrBase64, settings) => {
     }
 
     const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
-    const model = modelName || "llama-3.2-11b-vision-preview";
+    const model = modelName || "meta-llama/llama-4-maverick-17b-128e-instruct";
 
     // Handle File object or Base64 string
     let base64DataUrl;
