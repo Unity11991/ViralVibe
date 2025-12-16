@@ -113,8 +113,18 @@ export const useTimelineState = () => {
         });
     }, [selectedClipIds, addToHistory]);
 
-    // Initialize timeline with a main media file
+    // Initialize timeline with a main media file OR empty for blank canvas
     const initializeTimeline = useCallback((mediaFile, mediaType, duration) => {
+        // If no media file, initialize with empty timeline
+        if (!mediaFile) {
+            const newTracks = [];
+            setTracks(newTracks);
+            setHistory([newTracks]);
+            setHistoryIndex(0);
+            return;
+        }
+
+        // Otherwise create initial track with main media
         const initialTrack = {
             id: 'track-main',
             type: mediaType === 'video' ? 'video' : 'image',
