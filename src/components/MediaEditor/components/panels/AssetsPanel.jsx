@@ -80,10 +80,14 @@ export const AssetsPanel = ({
                                 <input
                                     type="file"
                                     accept="image/*,video/*"
+                                    multiple
                                     className="absolute inset-0 opacity-0 cursor-pointer"
                                     onChange={(e) => {
-                                        if (e.target.files?.[0]) {
-                                            onAddToLibrary(e.target.files[0]);
+                                        if (e.target.files && e.target.files.length > 0) {
+                                            // Upload all selected files
+                                            Array.from(e.target.files).forEach(file => {
+                                                onAddToLibrary(file);
+                                            });
                                         }
                                     }}
                                 />
@@ -138,10 +142,14 @@ export const AssetsPanel = ({
                                 <input
                                     type="file"
                                     accept="audio/*"
+                                    multiple
                                     className="absolute inset-0 opacity-0 cursor-pointer"
                                     onChange={(e) => {
-                                        if (e.target.files?.[0]) {
-                                            onAddToLibrary(e.target.files[0]);
+                                        if (e.target.files && e.target.files.length > 0) {
+                                            // Upload all selected files
+                                            Array.from(e.target.files).forEach(file => {
+                                                onAddToLibrary(file);
+                                            });
                                         }
                                     }}
                                 />

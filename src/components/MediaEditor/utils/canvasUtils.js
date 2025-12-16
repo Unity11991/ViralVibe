@@ -1,9 +1,11 @@
 /**
  * Canvas Utilities for MediaEditor
  * Handles all canvas rendering operations
+ * OPTIMIZED FOR HD VIDEO PERFORMANCE
  */
 
 import { detectFaces, applySkinSmoothing, applyTeethWhitening } from './aiFaceService';
+import { getGrainTexture, getVignetteGradient } from './textureCache';
 
 /**
  * Draw image or video frame to canvas with filters
@@ -16,22 +18,61 @@ import { detectFaces, applySkinSmoothing, applyTeethWhitening } from './aiFaceSe
 
 /**
  * Canvas Pool to reduce GC pressure
+ * OPTIMIZED: Added LRU eviction, size tracking, and automatic cleanup
  */
 const CanvasPool = {
     pool: [],
+    maxPoolSize: 15,
+    lastCleanup: Date.now(),
+    cleanupInterval: 30000, // Clean up every 30 seconds
+
     get(width, height) {
-        let canvas = this.pool.pop();
-        if (!canvas) {
+        // Periodic cleanup to prevent memory leaks
+        this.periodicCleanup();
+
+        // Try to find a canvas with matching or larger dimensions
+        const index = this.pool.findIndex(c =>
+            c.width >= width && c.height >= height &&
+            c.width <= width * 1.2 && c.height <= height * 1.2 // Avoid huge canvases
+        );
+
+        let canvas;
+        if (index !== -1) {
+            canvas = this.pool.splice(index, 1)[0];
+        } else {
             canvas = document.createElement('canvas');
         }
+
         canvas.width = width;
         canvas.height = height;
+        canvas._lastUsed = Date.now();
         return canvas;
     },
+
     release(canvas) {
-        if (this.pool.length < 10) { // Limit pool size
+        if (!canvas) return;
+
+        // Only keep canvases that are reasonably sized
+        const size = canvas.width * canvas.height * 4; // RGBA bytes
+        const maxSize = 1920 * 1080 * 4 * 2; // Max 2x 1080p canvases
+
+        if (this.pool.length < this.maxPoolSize && size < maxSize) {
+            canvas._lastUsed = Date.now();
             this.pool.push(canvas);
         }
+    },
+
+    periodicCleanup() {
+        const now = Date.now();
+        if (now - this.lastCleanup < this.cleanupInterval) return;
+
+        // Remove canvases not used in last 60 seconds
+        this.pool = this.pool.filter(c => now - (c._lastUsed || 0) < 60000);
+        this.lastCleanup = now;
+    },
+
+    clear() {
+        this.pool = [];
     }
 };
 
@@ -124,7 +165,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         blendMode = 'normal'
     } = transform;
 
-    const { mask = null, faceRetouch = null } = options;
+    const { mask = null, faceRetouch = null, isPlaying = false } = options;
 
     const { clearCanvas = true } = options;
 
@@ -133,9 +174,22 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Apply filters
-    if (options.applyFiltersToContext !== false) {
+    // HD VIDEO OPTIMIZATION: Skip heavy filters during playback for performance
+    // Only apply full filters when paused or during export
+    if (options.applyFiltersToContext !== false && !isPlaying) {
         ctx.filter = buildFilterString(filters);
+    } else if (isPlaying) {
+        // Apply only basic adjustments during playback (faster)
+        const brightness = filters.brightness || 0;
+        const contrast = filters.contrast || 0;
+        const saturation = filters.saturation || 0;
+
+        const quickFilters = [];
+        if (brightness !== 0) quickFilters.push(`brightness(${100 + brightness}%)`);
+        if (contrast !== 0) quickFilters.push(`contrast(${100 + contrast}%)`);
+        if (saturation !== 0) quickFilters.push(`saturate(${100 + saturation}%)`);
+
+        ctx.filter = quickFilters.length > 0 ? quickFilters.join(' ') : 'none';
     } else {
         ctx.filter = 'none';
     }
@@ -310,10 +364,27 @@ const applyFaceRetouchingToCanvas = async (ctx, media, faceRetouch, transform, c
 
 /**
  * Build CSS filter string from adjustment values
+ * OPTIMIZED: Added caching to avoid rebuilding on every frame
  * @param {Object} adjustments - Filter adjustment values
  * @returns {string} CSS filter string
  */
+
+// Filter cache to avoid rebuilding expensive strings
+const filterStringCache = new Map();
+let cacheHits = 0;
+let cacheMisses = 0;
+
 export const buildFilterString = (adjustments = {}) => {
+    // Create cache key from adjustments
+    const cacheKey = JSON.stringify(adjustments);
+
+    if (filterStringCache.has(cacheKey)) {
+        cacheHits++;
+        return filterStringCache.get(cacheKey);
+    }
+
+    cacheMisses++;
+
     // Helper to ensure value is a valid number
     const safeNum = (val, def = 0) => {
         const n = Number(val);
@@ -387,11 +458,29 @@ export const buildFilterString = (adjustments = {}) => {
         filters.push(`saturate(${clamp(100 - fade * 0.5)}%)`);
     }
 
-    return filters.length > 0 ? filters.join(' ') : 'none';
+    const result = filters.length > 0 ? filters.join(' ') : 'none';
+
+    // Cache the result (limit cache size)
+    if (filterStringCache.size > 100) {
+        // Clear oldest entries (simple FIFO)
+        const firstKey = filterStringCache.keys().next().value;
+        filterStringCache.delete(firstKey);
+    }
+    filterStringCache.set(cacheKey, result);
+
+    return result;
+};
+
+// Export cache clear function
+export const clearFilterCache = () => {
+    filterStringCache.clear();
+    cacheHits = 0;
+    cacheMisses = 0;
 };
 
 /**
  * Draw vignette effect
+ * OPTIMIZED: Uses cached gradient texture instead of creating on every call
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {number} intensity - Vignette intensity (0-100)
  */
@@ -401,23 +490,18 @@ export const drawVignette = (ctx, intensity, canvasDimensions = null) => {
     const canvas = ctx.canvas;
     const { width: logicalWidth, height: logicalHeight } = canvasDimensions || { width: canvas.width, height: canvas.height };
 
-    const gradient = ctx.createRadialGradient(
-        logicalWidth / 2, logicalHeight / 2, logicalWidth * 0.2,
-        logicalWidth / 2, logicalHeight / 2, logicalWidth * 0.8
-    );
-
-    gradient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradient.addColorStop(1, `rgba(0,0,0,${intensity / 100})`);
+    // Use cached vignette gradient
+    const vignetteTexture = getVignetteGradient(logicalWidth, logicalHeight, intensity);
 
     ctx.save();
-    ctx.fillStyle = gradient;
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+    ctx.drawImage(vignetteTexture, 0, 0, logicalWidth, logicalHeight);
     ctx.restore();
 };
 
 /**
  * Draw grain effect
+ * OPTIMIZED: Uses pre-generated cached texture instead of pixel manipulation
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {number} intensity - Grain intensity (0-100)
  */
@@ -425,18 +509,15 @@ export const drawGrain = (ctx, intensity) => {
     if (intensity <= 0) return;
 
     const canvas = ctx.canvas;
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const amount = intensity / 100;
 
-    for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * amount * 255;
-        data[i] += noise;     // R
-        data[i + 1] += noise; // G
-        data[i + 2] += noise; // B
-    }
+    // Use cached grain texture (much faster than getImageData/putImageData)
+    const grainTexture = getGrainTexture(canvas.width, canvas.height, intensity);
 
-    ctx.putImageData(imageData, 0, 0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = Math.min(intensity / 100, 0.8); // Cap opacity
+    ctx.drawImage(grainTexture, 0, 0);
+    ctx.restore();
 };
 
 /**

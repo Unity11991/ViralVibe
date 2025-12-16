@@ -258,9 +258,13 @@ const calculateClipDuration = (currentTime, beats, stylePreset, videoDuration) =
 
 /**
  * Step 3: Transition Selector
+ * Randomly selects transitions from available types with intelligent weighting
  */
 const selectTransitions = (clips, stylePreset, energyProfile, beats) => {
     const transitions = [];
+
+    // Available transition types from transitionEngine
+    const allTransitions = ['cut', 'crossfade', 'zoom', 'slide', 'whipPan', 'glitch', 'fadeToBlack'];
 
     for (let i = 0; i < clips.length - 1; i++) {
         const clip = clips[i];
@@ -270,20 +274,48 @@ const selectTransitions = (clips, stylePreset, energyProfile, beats) => {
         let duration = stylePreset.transitionDuration;
 
         if (type === 'mixed') {
-            // Context-aware selection
+            // Context-aware random selection with weighting
             const energy = getEnergyAtTime(transitionTime, energyProfile);
             const isOnBeat = isNearBeat(transitionTime, beats);
 
-            if (energy > 0.7 && isOnBeat) {
-                type = 'cut'; // High energy + beat = Cut
+            // Weight transitions based on energy level
+            type = selectWeightedTransition(energy, isOnBeat, stylePreset);
+
+            // Set duration based on selected type
+            if (type === 'cut') {
                 duration = 0;
-            } else if (energy < 0.4) {
-                type = 'crossfade'; // Low energy = Crossfade
-                duration = 1.0;
-            } else {
-                type = 'zoom'; // Medium energy = Dynamic
-                duration = 0.4;
+            } else if (['whipPan', 'glitch'].includes(type)) {
+                duration = 0.15 + Math.random() * 0.1; // 0.15-0.25s
+            } else if (['zoom', 'slide'].includes(type)) {
+                duration = 0.3 + Math.random() * 0.2; // 0.3-0.5s
+            } else if (type === 'fadeToBlack') {
+                duration = 0.6 + Math.random() * 0.3; // 0.6-0.9s
+            } else { // crossfade
+                duration = energy > 0.6 ? 0.3 : (0.5 + Math.random() * 0.5); // 0.3s fast or 0.5-1.0s slow
             }
+        } else if (type === 'cut') {
+            // Even for 'cut' style, occasionally add variety
+            if (Math.random() > 0.8) {
+                const fastTransitions = ['whipPan', 'glitch'];
+                type = fastTransitions[Math.floor(Math.random() * fastTransitions.length)];
+                duration = 0.15;
+            }
+        } else if (type === 'crossfade') {
+            // Even for 'crossfade' style, add occasional variety
+            if (Math.random() > 0.7) {
+                const smoothTransitions = ['fadeToBlack', 'zoom'];
+                type = smoothTransitions[Math.floor(Math.random() * smoothTransitions.length)];
+                duration = type === 'fadeToBlack' ? 0.8 : 0.4;
+            }
+        }
+
+        // Add random direction for transitions that support it
+        const options = {};
+        if (type === 'slide') {
+            const directions = ['left', 'right', 'up', 'down'];
+            options.direction = directions[Math.floor(Math.random() * directions.length)];
+        } else if (type === 'zoom') {
+            options.direction = Math.random() > 0.5 ? 'in' : 'out';
         }
 
         transitions.push({
@@ -291,12 +323,90 @@ const selectTransitions = (clips, stylePreset, energyProfile, beats) => {
             toClipIndex: i + 1,
             type,
             duration,
-            timestamp: transitionTime
+            timestamp: transitionTime,
+            options
         });
     }
 
     return transitions;
 };
+
+/**
+ * Selects a weighted random transition based on energy and beat
+ */
+const selectWeightedTransition = (energy, isOnBeat, stylePreset) => {
+    // Define transition weights based on energy level
+    let weights;
+
+    if (energy > 0.7 && isOnBeat) {
+        // High energy + on beat = favor fast, impactful transitions
+        weights = {
+            cut: 30,
+            whipPan: 25,
+            glitch: 20,
+            zoom: 15,
+            slide: 10,
+            crossfade: 0,
+            fadeToBlack: 0
+        };
+    } else if (energy > 0.6) {
+        // Medium-high energy = dynamic transitions
+        weights = {
+            zoom: 30,
+            slide: 25,
+            whipPan: 15,
+            crossfade: 15,
+            cut: 10,
+            glitch: 5,
+            fadeToBlack: 0
+        };
+    } else if (energy > 0.4) {
+        // Medium energy = balanced mix
+        weights = {
+            crossfade: 30,
+            zoom: 25,
+            slide: 20,
+            fadeToBlack: 15,
+            cut: 5,
+            whipPan: 5,
+            glitch: 0
+        };
+    } else {
+        // Low energy = smooth, gentle transitions
+        weights = {
+            crossfade: 40,
+            fadeToBlack: 30,
+            zoom: 20,
+            slide: 10,
+            cut: 0,
+            whipPan: 0,
+            glitch: 0
+        };
+    }
+
+    // Apply style preset influence
+    const intensity = stylePreset.effectIntensity || 0.5;
+    if (intensity < 0.5) {
+        // Reduce dramatic transitions for low intensity styles
+        weights.glitch = Math.floor(weights.glitch * 0.5);
+        weights.whipPan = Math.floor(weights.whipPan * 0.7);
+    }
+
+    // Select random transition based on weights
+    const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const [transition, weight] of Object.entries(weights)) {
+        random -= weight;
+        if (random <= 0) {
+            return transition;
+        }
+    }
+
+    // Fallback
+    return 'crossfade';
+};
+
 
 const isNearBeat = (time, beats) => {
     if (!beats) return false;
@@ -317,10 +427,28 @@ const applyColorGrading = (clips, stylePreset) => {
         const mood = clip.videoAnalysis.mood || 'neutral';
         const filter = getFilterForMood(mood);
 
+        // Use AI-suggested color grading values if available
+        const colorGrading = clip.videoAnalysis.colorGrading || {};
+
+        // Apply style preset strength to AI suggestions
+        const strength = stylePreset.colorGradeStrength || 0.8;
+
         return {
             ...clip,
             filter,
-            adjustments: getAdjustmentsForFilter(filter, stylePreset.colorGradeStrength)
+            adjustments: {
+                // Use AI-suggested values, scaled by preset strength
+                brightness: (colorGrading.brightness || 0) * strength,
+                contrast: 1 + ((colorGrading.contrast || 1.0) - 1) * strength,
+                saturation: 1 + ((colorGrading.saturation || 1.0) - 1) * strength,
+                temperature: (colorGrading.temperature || 0) * strength,
+                tint: (colorGrading.tint || 0) * strength,
+                // Additional standard adjustments
+                exposure: 0,
+                highlights: 0,
+                shadows: 0,
+                vibrance: 0
+            }
         };
     });
 };
@@ -338,13 +466,7 @@ const getFilterForMood = (mood) => {
     return map[mood] || 'normal';
 };
 
-const getAdjustmentsForFilter = (filter, strength) => {
-    // Simplified adjustment logic
-    return {
-        saturation: 1 + (strength * 0.2),
-        contrast: 1 + (strength * 0.1)
-    };
-};
+
 
 /**
  * Step 5: Effect Applicator

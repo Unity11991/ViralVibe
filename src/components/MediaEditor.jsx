@@ -1326,13 +1326,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const handleApplyComposition = useCallback((plan, audioTrack, videoClips) => {
         if (!plan) return;
 
+        const timestamp = Date.now();
+
         // 1. Create Video Track
         const mainTrack = {
             id: 'track-main',
             type: 'video',
             height: 80,
             clips: plan.clips.map((clip, index) => ({
-                id: `clip-${Date.now()}-${index}`,
+                id: `clip-${timestamp}-${index}`,
                 type: 'video',
                 name: `Clip ${index + 1}`,
                 startTime: clip.startTime,
@@ -1340,6 +1342,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 startOffset: clip.startOffset,
                 source: clip.source,
                 sourceDuration: clip.videoAnalysis?.duration || 10,
+                // Keep filter and adjustments on clips for backward compatibility
                 filter: clip.filter,
                 adjustments: clip.adjustments,
                 effects: clip.effects,
@@ -1353,7 +1356,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             type: 'audio',
             height: 48,
             clips: [{
-                id: `clip-audio-${Date.now()}`,
+                id: `clip-audio-${timestamp}`,
                 type: 'audio',
                 name: audioTrack.name || 'Background Music',
                 startTime: 0,
@@ -1364,10 +1367,46 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }]
         };
 
-        // 3. Update Timeline (Single Update)
-        setTracks([mainTrack, audioTrackObj]);
+        // 3. Create Adjustment Layer Tracks for Color Grading
+        // Group clips by filter type to create one adjustment layer per unique filter
+        const filterGroups = {};
+        plan.clips.forEach((clip, index) => {
+            const filter = clip.filter || 'normal';
+            if (filter !== 'normal') { // Skip clips without filters
+                if (!filterGroups[filter]) {
+                    filterGroups[filter] = [];
+                }
+                filterGroups[filter].push({ clip, index });
+            }
+        });
 
-        // 4. Reset Selection
+        // Create adjustment layer tracks for each filter group
+        const adjustmentTracks = Object.entries(filterGroups).map(([filter, clips], trackIndex) => {
+            // Create adjustment clips matching the timing of video clips with this filter
+            const adjustmentClips = clips.map(({ clip, index }) => ({
+                id: `adj-${timestamp}-${trackIndex}-${index}`,
+                type: 'adjustment',
+                name: `${filter} Grade`,
+                startTime: clip.startTime,
+                duration: clip.duration,
+                startOffset: 0,
+                adjustments: clip.adjustments || {},
+                filter: filter
+            }));
+
+            return {
+                id: `track-adjustment-${timestamp}-${trackIndex}`,
+                type: 'adjustment',
+                height: 40,
+                clips: adjustmentClips
+            };
+        });
+
+        // 4. Update Timeline with all tracks
+        // Order: Main video track, adjustment layers (on top), then audio
+        setTracks([mainTrack, ...adjustmentTracks, audioTrackObj]);
+
+        // 5. Reset Selection
         setSelectedClipId(null);
     }, [setTracks, setSelectedClipId]);
 
