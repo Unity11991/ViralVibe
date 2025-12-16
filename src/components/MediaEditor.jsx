@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download, RotateCcw, Video, Upload, Wand2 } from 'lucide-react';
 import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
+import { usePlayback } from './MediaEditor/hooks/usePlayback';
+import { useTimeline } from './MediaEditor/hooks/useTimeline';
+import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
 import { useExport } from './MediaEditor/hooks/useExport';
 import { useVoiceRecorder } from './MediaEditor/hooks/useVoiceRecorder';
 import { useVideoRecorder } from './MediaEditor/hooks/useVideoRecorder';
 
-import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
-import { usePlayback } from './MediaEditor/hooks/usePlayback';
+
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
 import { buildFilterString, isPointInClip, isPointInText, getHandleAtPoint } from './MediaEditor/utils/canvasUtils';
 import { detectBeats } from './MediaEditor/utils/waveformUtils';
@@ -26,13 +28,19 @@ import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
 import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
 import ExportModal from './MediaEditor/components/modals/ExportModal';
 import { AutoCompositePanel } from './MediaEditor/components/panels/AutoCompositePanel';
+import { CompositionLoadingModal } from './MediaEditor/components/modals/CompositionLoadingModal';
 
 /**
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt with 3-pane layout and advanced timeline
  */
 const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, suggestedFilter, isPro = false }) => {
+    // Auto-Composite State
     const [showAutoComposite, setShowAutoComposite] = useState(false);
+    const [showCompositionLoading, setShowCompositionLoading] = useState(false);
+    const [compositionProgress, setCompositionProgress] = useState(0);
+    const [compositionStatus, setCompositionStatus] = useState('');
+    const [compositionSteps, setCompositionSteps] = useState({ current: 0, total: 0 });
     const apiKey = import.meta.env.VITE_GROQ_API_KEY;
     // Load Fonts
     useEffect(() => {
@@ -285,11 +293,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 // Add to timeline on new audio track
                 // Create audio asset
                 const audioAsset = {
-                    id: `voiceover-${Date.now()}`, // temp id, addClip will generate real one
+                    id: `voiceover - ${Date.now()} `, // temp id, addClip will generate real one
                     type: 'audio',
                     source: result.url,
                     duration: result.blob.size > 0 ? recordingTime : 1.0,
-                    name: `Voiceover ${new Date().toLocaleTimeString()}`,
+                    name: `Voiceover ${new Date().toLocaleTimeString()} `,
                     format: 'webm'
                 };
 
@@ -340,11 +348,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
             if (result && result.blob) {
                 const videoAsset = {
-                    id: `videoover-${Date.now()}`,
+                    id: `videoover - ${Date.now()} `,
                     type: 'video',
                     source: result.url,
                     duration: result.blob.size > 0 ? recordingVideoTime : 1.0,
-                    name: `Camera ${new Date().toLocaleTimeString()}`,
+                    name: `Camera ${new Date().toLocaleTimeString()} `,
                     format: 'webm',
                     transform: { scale: 50, x: 20, y: 20 }
                 };
@@ -1196,7 +1204,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             // Or add to the first available text track.
 
             const newClip = {
-                id: `text-${Date.now()}`,
+                id: `text - ${Date.now()} `,
                 type: 'text',
                 name: data.text || 'Text',
                 startTime: currentTime,
@@ -1252,7 +1260,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             });
 
             const newClip = {
-                id: `clip-${Date.now()}`,
+                id: `clip - ${Date.now()} `,
                 type: type,
                 name: data.file ? data.file.name : (data.name || 'Media'),
                 startTime: startTime,
@@ -1272,7 +1280,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         } else if (type === 'adjustment') {
             const newClip = {
-                id: `clip-adj-${Date.now()}`,
+                id: `clip - adj - ${Date.now()} `,
                 type: 'adjustment',
                 name: data.name || 'Adjustment Layer',
                 startTime: currentTime,
@@ -1296,7 +1304,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             const isAnimated = data.isAnimated || data.url.endsWith('.mp4');
 
             const newClip = {
-                id: `sticker-${Date.now()}`,
+                id: `sticker - ${Date.now()} `,
                 type: 'sticker',
                 name: 'Sticker',
                 startTime: currentTime,
@@ -1321,93 +1329,133 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     };
 
     /**
-     * Applies AI-generated composition to timeline
+     * Applies AI-generated composition to timeline with loading progress
+     * Supports muting original video audio based on user preference
      */
-    const handleApplyComposition = useCallback((plan, audioTrack, videoClips) => {
+    const handleApplyComposition = useCallback(async (plan, audioTrack, videoClips, options = {}) => {
         if (!plan) return;
 
+        const { muteOriginalAudio = true } = options;
         const timestamp = Date.now();
+        const totalSteps = plan.clips.length + 2; // clips + audio + finalization
 
-        // 1. Create Video Track
-        const mainTrack = {
-            id: 'track-main',
-            type: 'video',
-            height: 80,
-            clips: plan.clips.map((clip, index) => ({
-                id: `clip-${timestamp}-${index}`,
+        // Show loading modal
+        setShowAutoComposite(false);
+        setShowCompositionLoading(true);
+        setCompositionProgress(0);
+        setCompositionSteps({ current: 0, total: totalSteps });
+
+        try {
+            // Small delay to show modal
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // Step 1: Create Video Track
+            setCompositionStatus('Creating video track...');
+            const mainTrack = {
+                id: 'track-main',
                 type: 'video',
-                name: `Clip ${index + 1}`,
-                startTime: clip.startTime,
-                duration: clip.duration,
-                startOffset: clip.startOffset,
-                source: clip.source,
-                sourceDuration: clip.videoAnalysis?.duration || 10,
-                // Keep filter and adjustments on clips for backward compatibility
-                filter: clip.filter,
-                adjustments: clip.adjustments,
-                effects: clip.effects,
-                transition: plan.transitions?.find(t => t.fromClipIndex === index)
-            }))
-        };
-
-        // 2. Create Audio Track
-        const audioTrackObj = {
-            id: 'track-audio-main',
-            type: 'audio',
-            height: 48,
-            clips: [{
-                id: `clip-audio-${timestamp}`,
-                type: 'audio',
-                name: audioTrack.name || 'Background Music',
-                startTime: 0,
-                duration: plan.duration,
-                startOffset: 0,
-                source: audioTrack.url,
-                volume: 100
-            }]
-        };
-
-        // 3. Create Adjustment Layer Tracks for Color Grading
-        // Group clips by filter type to create one adjustment layer per unique filter
-        const filterGroups = {};
-        plan.clips.forEach((clip, index) => {
-            const filter = clip.filter || 'normal';
-            if (filter !== 'normal') { // Skip clips without filters
-                if (!filterGroups[filter]) {
-                    filterGroups[filter] = [];
-                }
-                filterGroups[filter].push({ clip, index });
-            }
-        });
-
-        // Create adjustment layer tracks for each filter group
-        const adjustmentTracks = Object.entries(filterGroups).map(([filter, clips], trackIndex) => {
-            // Create adjustment clips matching the timing of video clips with this filter
-            const adjustmentClips = clips.map(({ clip, index }) => ({
-                id: `adj-${timestamp}-${trackIndex}-${index}`,
-                type: 'adjustment',
-                name: `${filter} Grade`,
-                startTime: clip.startTime,
-                duration: clip.duration,
-                startOffset: 0,
-                adjustments: clip.adjustments || {},
-                filter: filter
-            }));
-
-            return {
-                id: `track-adjustment-${timestamp}-${trackIndex}`,
-                type: 'adjustment',
-                height: 40,
-                clips: adjustmentClips
+                height: 80,
+                clips: plan.clips.map((clip, index) => ({
+                    id: `clip - ${timestamp} -${index} `,
+                    type: 'video',
+                    name: `Clip ${index + 1} `,
+                    startTime: clip.startTime,
+                    duration: clip.duration,
+                    startOffset: clip.startOffset,
+                    source: clip.source,
+                    sourceDuration: clip.videoAnalysis?.duration || 10,
+                    // Apply audio muting based on user preference
+                    muted: muteOriginalAudio,
+                    audioDetached: muteOriginalAudio,
+                    // Keep filter and adjustments on clips for backward compatibility
+                    filter: clip.filter,
+                    adjustments: clip.adjustments,
+                    effects: clip.effects,
+                    transition: plan.transitions?.find(t => t.fromClipIndex === index)
+                }))
             };
-        });
 
-        // 4. Update Timeline with all tracks
-        // Order: Main video track, adjustment layers (on top), then audio
-        setTracks([mainTrack, ...adjustmentTracks, audioTrackObj]);
+            setCompositionProgress(30);
+            setCompositionSteps(prev => ({ ...prev, current: 1 }));
+            await new Promise(resolve => setTimeout(resolve, 200));
 
-        // 5. Reset Selection
-        setSelectedClipId(null);
+            // Step 2: Create Audio Track
+            setCompositionStatus('A dding background audio...');
+            const audioTrackObj = {
+                id: 'track-audio-main',
+                type: 'audio',
+                height: 48,
+                clips: [{
+                    id: `clip - audio - ${timestamp} `,
+                    type: 'audio',
+                    name: audioTrack.name || 'Background Music',
+                    startTime: 0,
+                    duration: plan.duration,
+                    startOffset: 0,
+                    source: audioTrack.url,
+                    volume: 100
+                }]
+            };
+
+            setCompositionProgress(60);
+            setCompositionSteps(prev => ({ ...prev, current: 2 }));
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            // Step 3: Create Adjustment Layer Tracks for Color Grading
+            setCompositionStatus('Applying color grading...');
+            const filterGroups = {};
+            plan.clips.forEach((clip, index) => {
+                const filter = clip.filter || 'normal';
+                if (filter !== 'normal') {
+                    if (!filterGroups[filter]) {
+                        filterGroups[filter] = [];
+                    }
+                    filterGroups[filter].push({ clip, index });
+                }
+            });
+
+            const adjustmentTracks = Object.entries(filterGroups).map(([filter, clips], trackIndex) => {
+                const adjustmentClips = clips.map(({ clip, index }) => ({
+                    id: `adj - ${timestamp} -${trackIndex} -${index} `,
+                    type: 'adjustment',
+                    name: `${filter} Grade`,
+                    startTime: clip.startTime,
+                    duration: clip.duration,
+                    startOffset: 0,
+                    adjustments: clip.adjustments || {},
+                    filter: filter
+                }));
+
+                return {
+                    id: `track - adjustment - ${timestamp} -${trackIndex} `,
+                    type: 'adjustment',
+                    height: 40,
+                    clips: adjustmentClips
+                };
+            });
+
+            setCompositionProgress(80);
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            // Step 4: Finalize - Update Timeline
+            setCompositionStatus('Finalizing timeline...');
+            setTracks([mainTrack, ...adjustmentTracks, audioTrackObj]);
+            setSelectedClipId(null);
+
+            setCompositionProgress(100);
+            setCompositionSteps(prev => ({ ...prev, current: totalSteps }));
+            setCompositionStatus('Complete!');
+
+            // Wait a moment before closing
+            await new Promise(resolve => setTimeout(resolve, 800));
+        } catch (error) {
+            console.error('Error applying composition:', error);
+            setCompositionStatus('Error occurred');
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        } finally {
+            // Close loading modal
+            setShowCompositionLoading(false);
+        }
     }, [setTracks, setSelectedClipId]);
 
     const handleAddToLibrary = async (file) => {
@@ -1441,7 +1489,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
 
         const newItem = {
-            id: `asset-${Date.now()}`,
+            id: `asset - ${Date.now()} `,
             file,
             url,
             type,
@@ -1842,6 +1890,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     </div>
                 </div>
             )}
+
+            {/* Composition Loading Modal */}
+            <CompositionLoadingModal
+                isOpen={showCompositionLoading}
+                progress={compositionProgress}
+                status={compositionStatus}
+                currentStep={compositionSteps.current}
+                totalSteps={compositionSteps.total}
+            />
         </>
     );
 };
