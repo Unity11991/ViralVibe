@@ -246,7 +246,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         // Text mask always uses soft masking (composite) because clip() doesn't work with fillText
         if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text')) {
             const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
-            const tempCtx = tempCanvas.getContext('2d');
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
             tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
 
             // Draw Media to Temp
@@ -763,7 +763,7 @@ const renderLayer = (ctx, layer, globalState) => {
         // We might need a temp canvas if the transition involves masking/compositing
         const { width, height } = canvasDimensions;
         const tempCanvas = getCachedCanvas(width, height);
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         tempCtx.clearRect(0, 0, width, height);
 
         // Draw base content to temp
@@ -806,7 +806,7 @@ const renderLayer = (ctx, layer, globalState) => {
             // Adjustment Layer Logic: Snapshot -> Filter -> Draw Back
             const { width, height } = canvasDimensions;
             const tempCanvas = getCachedCanvas(width, height);
-            const tempCtx = tempCanvas.getContext('2d');
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 
             // 1. Snapshot current canvas state
             tempCtx.clearRect(0, 0, width, height);
@@ -831,7 +831,7 @@ const renderLayer = (ctx, layer, globalState) => {
 
             // We need a temp canvas of PHYSICAL size
             const tempCanvasPhys = getCachedCanvas(physWidth, physHeight);
-            const tempCtxPhys = tempCanvasPhys.getContext('2d');
+            const tempCtxPhys = tempCanvasPhys.getContext('2d', { willReadFrequently: true });
             tempCtxPhys.clearRect(0, 0, physWidth, physHeight);
             tempCtxPhys.drawImage(ctx.canvas, 0, 0);
 
@@ -1318,17 +1318,79 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
     ctx.save();
     ctx.globalCompositeOperation = 'destination-in';
 
-    if (type === 'fade' || type === 'dissolve' || type === 'none') {
+    if (type === 'fade' || type === 'none') {
+        // Simple cross-fade (opacity)
         ctx.globalAlpha = p;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
     } else if (type === 'fade_black') {
-        // For fade to black, we just fade in opacity, but the background should be black.
-        // Since we are masking, 'white' means opaque.
-        // We might need to handle this differently in renderFrame (draw black bg).
-        // For now, treat as fade.
+        // Fade to black (two-phase: fade out to black, then fade in from black)
+        if (p < 0.5) {
+            // First half: fade out to black
+            ctx.globalAlpha = 1 - (p * 2);
+        } else {
+            // Second half: fade in from black
+            ctx.globalAlpha = (p - 0.5) * 2;
+        }
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'fade_white') {
+        // Fade to white (two-phase: fade out to white, then fade in from white)
+        // First draw the clip normally
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+
+        // Then overlay white with varying opacity
+        ctx.globalCompositeOperation = 'source-over';
+        if (p < 0.5) {
+            // First half: increase white
+            ctx.globalAlpha = p * 2;
+        } else {
+            // Second half: decrease white
+            ctx.globalAlpha = (1 - p) * 2;
+        }
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'dissolve') {
+        // Dissolve with noise
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            const alpha = Math.random() < p ? 255 : 0;
+            data[i] = data[i + 1] = data[i + 2] = 255;
+            data[i + 3] = alpha;
+        }
+        ctx.putImageData(imageData, 0, 0);
+    } else if (type === 'luma_fade') {
+        // Luminance-based fade (bright areas fade first)
         ctx.globalAlpha = p;
         ctx.fillStyle = 'white';
+        ctx.filter = `brightness(${100 + (p * 50)}%)`;
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'additive') {
+        // Additive blend
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'multiply') {
+        // Multiply blend (darken)
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = 1 - p;
+        ctx.fillStyle = `rgba(0, 0, 0, ${1 - p})`;
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'screen') {
+        // Screen blend (lighten)
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+    } else if (type === 'overlay') {
+        // Overlay blend
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'gray';
         ctx.fillRect(0, 0, width, height);
     } else if (type.startsWith('wipe_')) {
         ctx.beginPath();
@@ -1367,6 +1429,120 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
                 }
             }
         }
+        ctx.fill();
+    } else if (type.startsWith('slide_') || type.startsWith('cover_') || type.startsWith('reveal_')) {
+        // Slide, Cover, and Reveal transitions
+        ctx.beginPath();
+
+        if (type === 'slide_left' || type === 'cover_left') {
+            ctx.rect(0, 0, width * p, height);
+        } else if (type === 'slide_right' || type === 'cover_right') {
+            ctx.rect(width * (1 - p), 0, width * p, height);
+        } else if (type === 'slide_up' || type === 'cover_up') {
+            ctx.rect(0, height * (1 - p), width, height * p);
+        } else if (type === 'slide_down' || type === 'cover_down') {
+            ctx.rect(0, 0, width, height * p);
+        } else if (type === 'reveal_left') {
+            ctx.rect(width * (1 - p), 0, width * p, height);
+        } else if (type === 'reveal_right') {
+            ctx.rect(0, 0, width * p, height);
+        } else if (type === 'reveal_up') {
+            ctx.rect(0, 0, width, height * p);
+        } else if (type === 'reveal_down') {
+            ctx.rect(0, height * (1 - p), width, height * p);
+        }
+
+        ctx.fill();
+    } else if (type.startsWith('zoom_') || type.startsWith('swirl_') || type.startsWith('elastic_') || type.startsWith('bounce_')) {
+        // Zoom, Swirl, Elastic, and Bounce transitions
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        ctx.beginPath();
+
+        if (type === 'zoom_in') {
+            const r = maxRadius * p;
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+        } else if (type === 'zoom_out') {
+            ctx.rect(0, 0, width, height);
+            const r = maxRadius * (1 - p);
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
+        } else if (type === 'zoom_rotate_in') {
+            const r = maxRadius * p;
+            const segments = 8;
+            for (let i = 0; i < segments; i++) {
+                const angle1 = (i / segments) * Math.PI * 2 - p * Math.PI * 2;
+                const angle2 = ((i + 0.5) / segments) * Math.PI * 2 - p * Math.PI * 2;
+                ctx.moveTo(width / 2, height / 2);
+                ctx.arc(width / 2, height / 2, r, angle1, angle2);
+                ctx.lineTo(width / 2, height / 2);
+            }
+        } else if (type === 'zoom_rotate_out') {
+            ctx.rect(0, 0, width, height);
+            const r = maxRadius * (1 - p);
+            const segments = 8;
+            for (let i = 0; i < segments; i++) {
+                const angle1 = (i / segments) * Math.PI * 2 + p * Math.PI * 2;
+                const angle2 = ((i + 0.5) / segments) * Math.PI * 2 + p * Math.PI * 2;
+                ctx.moveTo(width / 2, height / 2);
+                ctx.arc(width / 2, height / 2, r, angle1, angle2, true);
+                ctx.lineTo(width / 2, height / 2);
+            }
+        } else if (type === 'swirl_in') {
+            const spiralTurns = 3;
+            const steps = 100;
+            ctx.moveTo(width / 2, height / 2);
+            for (let i = 0; i <= steps; i++) {
+                const t = (i / steps) * p;
+                const angle = t * spiralTurns * Math.PI * 2;
+                const r = maxRadius * t;
+                const x = width / 2 + Math.cos(angle) * r;
+                const y = height / 2 + Math.sin(angle) * r;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width / 2, height / 2);
+        } else if (type === 'swirl_out') {
+            const spiralTurns = 3;
+            const steps = 100;
+            ctx.rect(0, 0, width, height);
+            ctx.moveTo(width / 2, height / 2);
+            for (let i = steps; i >= 0; i--) {
+                const t = (i / steps) * (1 - p);
+                const angle = t * spiralTurns * Math.PI * 2;
+                const r = maxRadius * t;
+                const x = width / 2 + Math.cos(angle) * r;
+                const y = height / 2 + Math.sin(angle) * r;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width / 2, height / 2);
+        } else if (type === 'elastic_in') {
+            // Elastic bounce effect
+            const elasticP = p < 0.5 ?
+                4 * p * p * p :
+                1 - Math.pow(-2 * p + 2, 3) / 2;
+            const r = maxRadius * elasticP;
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+        } else if (type === 'elastic_out') {
+            const elasticP = p < 0.5 ?
+                4 * p * p * p :
+                1 - Math.pow(-2 * p + 2, 3) / 2;
+            ctx.rect(0, 0, width, height);
+            const r = maxRadius * (1 - elasticP);
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
+        } else if (type === 'bounce_in') {
+            // Bounce easing
+            const bounceP = p < 0.5 ?
+                8 * p * p * p * p :
+                1 - Math.pow(-2 * p + 2, 4) / 2;
+            const r = maxRadius * bounceP;
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+        } else if (type === 'bounce_out') {
+            const bounceP = p < 0.5 ?
+                8 * p * p * p * p :
+                1 - Math.pow(-2 * p + 2, 4) / 2;
+            ctx.rect(0, 0, width, height);
+            const r = maxRadius * (1 - bounceP);
+            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
+        }
+
         ctx.fill();
     } else if (type.startsWith('iris_')) {
         ctx.beginPath();
@@ -1467,6 +1643,44 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
                 ctx.lineTo(width / 2, height / 2); // Close to center to fill ring? No.
                 // Just fill circles
             }
+        } else if (type === 'shape_zigzag') {
+            const zigHeight = 40;
+            const zigWidth = 60;
+            const cols = Math.ceil(width / zigWidth);
+            ctx.moveTo(0, 0);
+            for (let i = 0; i <= cols * p * 2; i++) {
+                const x = (i * zigWidth) / 2;
+                const y = (i % 2 === 0) ? 0 : zigHeight;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width * p, height);
+            ctx.lineTo(0, height);
+        } else if (type === 'shape_waves') {
+            const waves = 5;
+            const amplitude = 30;
+            ctx.moveTo(0, 0);
+            for (let x = 0; x <= width * p; x++) {
+                const y = Math.sin((x / width) * Math.PI * waves) * amplitude + amplitude;
+                ctx.lineTo(x, y);
+            }
+            ctx.lineTo(width * p, height);
+            ctx.lineTo(0, height);
+        } else if (type === 'shape_curtain') {
+            const panels = 8;
+            const panelW = width / panels;
+            for (let i = 0; i < panels; i++) {
+                const x = i * panelW;
+                const panelP = Math.max(0, Math.min(1, (p - (i / panels) * 0.3) * 1.5));
+                ctx.fillRect(x, height * (1 - panelP), panelW, height * panelP);
+            }
+        } else if (type === 'shape_shutter') {
+            const shutters = 6;
+            const shutterH = height / shutters;
+            for (let i = 0; i < shutters; i++) {
+                const y = i * shutterH;
+                const shutterP = Math.max(0, Math.min(1, (p - (i / shutters) * 0.2) * 1.3));
+                ctx.fillRect(0, y, width * shutterP, shutterH);
+            }
         }
     } else {
         // Default fallback
@@ -1512,10 +1726,88 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
                     offset, i * sliceHeight, width, sliceHeight
                 );
             }
+        } else if (type === 'glitch_digital') {
+            // Digital artifacts
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const w = Math.random() * 100;
+                const h = Math.random() * 20;
+                ctx.fillStyle = `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, ${intensity / 40})`;
+                ctx.fillRect(x, y, w, h);
+            }
+        } else if (type === 'glitch_scanline') {
+            // Scanline effect
+            for (let y = 0; y < height; y += 2) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${0.3 * (intensity / 20)})`;
+                ctx.fillRect(0, y, width, 1);
+            }
+        } else if (type === 'glitch_noise') {
+            // Static noise
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                if (Math.random() < intensity / 100) {
+                    const noise = Math.random() * 255;
+                    data[i] = noise;
+                    data[i + 1] = noise;
+                    data[i + 2] = noise;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } else if (type === 'glitch_displacement') {
+            // Wave displacement
+            const numSlices = 20;
+            const sliceHeight = height / numSlices;
+            for (let i = 0; i < numSlices; i++) {
+                const offset = Math.sin(i * 0.5 + p * 10) * intensity;
+                ctx.drawImage(ctx.canvas,
+                    0, i * sliceHeight, width, sliceHeight,
+                    offset, i * sliceHeight, width, sliceHeight
+                );
+            }
+        } else if (type === 'glitch_block') {
+            // Blocky compression artifacts
+            const blockSize = 16;
+            for (let x = 0; x < width; x += blockSize) {
+                for (let y = 0; y < height; y += blockSize) {
+                    if (Math.random() < intensity / 100) {
+                        const offset = (Math.random() - 0.5) * blockSize;
+                        ctx.drawImage(ctx.canvas,
+                            x, y, blockSize, blockSize,
+                            x + offset, y, blockSize, blockSize
+                        );
+                    }
+                }
+            }
+        } else if (type === 'glitch_slice') {
+            // Horizontal slicing
+            const slices = 15;
+            for (let i = 0; i < slices; i++) {
+                const y = (height / slices) * i;
+                const h = height / slices;
+                const offset = (Math.random() - 0.5) * intensity * 3;
+                ctx.drawImage(ctx.canvas, 0, y, width, h, offset, y, width, h);
+            }
+        } else if (type === 'glitch_shake') {
+            // Camera shake
+            const offsetX = (Math.random() - 0.5) * intensity;
+            const offsetY = (Math.random() - 0.5) * intensity;
+            ctx.drawImage(ctx.canvas, offsetX, offsetY);
+        } else if (type === 'glitch_warp') {
+            // Warp/distortion
+            const segments = 5;
+            for (let i = 0; i < segments; i++) {
+                const y = (height / segments) * i;
+                const h = height / segments;
+                const scale = 1 + (Math.random() - 0.5) * (intensity / 50);
+                const w = width * scale;
+                ctx.drawImage(ctx.canvas, 0, y, width, h, (width - w) / 2, y, w, h);
+            }
         }
-    } else if (type.startsWith('blur_')) {
+    } else if (type.startsWith('blur_') || type === 'pixelate' || type === 'mosaic' || type === 'crystallize' || type === 'kaleidoscope' || type === 'dreamy') {
         const maxBlur = 20;
-        const currentBlur = type === 'blur_zoom' ? p * maxBlur : Math.sin(p * Math.PI) * maxBlur;
+        const currentBlur = (type === 'blur_zoom' || type === 'dreamy') ? p * maxBlur : Math.sin(p * Math.PI) * maxBlur;
 
         if (type === 'blur_gaussian') {
             ctx.filter = `blur(${currentBlur}px)`;
@@ -1529,21 +1821,144 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
                 const h = height * s;
                 ctx.drawImage(ctx.canvas, (width - w) / 2, (height - h) / 2, w, h);
             }
+        } else if (type === 'blur_motion') {
+            // Motion blur - directional
+            ctx.globalAlpha = 0.2;
+            for (let i = 1; i <= 5; i++) {
+                ctx.drawImage(ctx.canvas, i * 5 * p, 0);
+            }
+        } else if (type === 'blur_radial') {
+            // Radial blur from center
+            ctx.globalAlpha = 0.15;
+            for (let i = 1; i <= 6; i++) {
+                const s = 1 + (i * 0.04 * p);
+                const w = width * s;
+                const h = height * s;
+                ctx.drawImage(ctx.canvas, (width - w) / 2, (height - h) / 2, w, h);
+            }
+        } else if (type === 'blur_directional') {
+            // Diagonal blur
+            ctx.globalAlpha = 0.2;
+            for (let i = 1; i <= 5; i++) {
+                const offset = i * 4 * p;
+                ctx.drawImage(ctx.canvas, offset, offset);
+            }
+        } else if (type === 'pixelate') {
+            // Pixelation effect
+            const pixelSize = Math.max(1, Math.floor(20 * Math.sin(p * Math.PI)));
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(ctx.canvas, 0, 0, width / pixelSize, height / pixelSize);
+            ctx.drawImage(ctx.canvas, 0, 0, width / pixelSize, height / pixelSize, 0, 0, width, height);
+            ctx.imageSmoothingEnabled = true;
+        } else if (type === 'mosaic') {
+            // Mosaic tiles
+            const tileSize = Math.max(8, Math.floor(30 * Math.sin(p * Math.PI)));
+            for (let x = 0; x < width; x += tileSize) {
+                for (let y = 0; y < height; y += tileSize) {
+                    const avgColor = ctx.getImageData(x + tileSize / 2, y + tileSize / 2, 1, 1).data;
+                    ctx.fillStyle = `rgb(${avgColor[0]}, ${avgColor[1]}, ${avgColor[2]})`;
+                    ctx.fillRect(x, y, tileSize, tileSize);
+                }
+            }
+        } else if (type === 'crystallize') {
+            // Crystalline effect
+            const crystalSize = Math.max(15, Math.floor(50 * Math.sin(p * Math.PI)));
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(Math.random() * Math.PI);
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * Math.sin(p * Math.PI)})`;
+                ctx.fillRect(-crystalSize / 2, -crystalSize / 2, crystalSize, crystalSize);
+                ctx.restore();
+            }
+        } else if (type === 'kaleidoscope') {
+            // Kaleidoscope mirror effect
+            const segments = 6;
+            for (let i = 0; i < segments; i++) {
+                ctx.save();
+                ctx.translate(width / 2, height / 2);
+                ctx.rotate((i / segments) * Math.PI * 2);
+                ctx.scale(i % 2 === 0 ? 1 : -1, 1);
+                ctx.globalAlpha = 0.3;
+                ctx.drawImage(ctx.canvas, -width / 2, -height / 2);
+                ctx.restore();
+            }
+        } else if (type === 'dreamy') {
+            // Soft dreamy glow
+            ctx.filter = `blur(${currentBlur}px) brightness(110%)`;
+            ctx.globalAlpha = 0.7;
+            ctx.drawImage(ctx.canvas, 0, 0);
         }
-    } else if (type.startsWith('color_')) {
+    } else if (type.startsWith('color_') || type === 'hue_rotate' || type === 'saturation_fade' || type === 'sepia_fade' || type === 'grayscale_fade' || type === 'invert_fade' || type === 'posterize' || type === 'threshold' || type === 'solarize') {
         const intensity = Math.sin(p * Math.PI);
-        ctx.globalAlpha = intensity;
 
         if (type === 'color_burn') {
             ctx.globalCompositeOperation = 'color-burn';
-            ctx.fillStyle = '#ff0000'; // Dynamic color?
+            ctx.globalAlpha = intensity;
+            ctx.fillStyle = '#ff0000';
             ctx.fillRect(0, 0, width, height);
         } else if (type === 'color_dodge') {
             ctx.globalCompositeOperation = 'color-dodge';
+            ctx.globalAlpha = intensity;
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
+        } else if (type === 'hue_rotate') {
+            const hue = p * 360;
+            ctx.filter = `hue-rotate(${hue}deg)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'saturation_fade') {
+            const sat = 100 - (p * 100);
+            ctx.filter = `saturate(${sat}%)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'sepia_fade') {
+            const sepia = p * 100;
+            ctx.filter = `sepia(${sepia}%)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'grayscale_fade') {
+            const gray = p * 100;
+            ctx.filter = `grayscale(${gray}%)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'invert_fade') {
+            const invert = p * 100;
+            ctx.filter = `invert(${invert}%)`;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'posterize') {
+            // Posterization effect
+            const levels = Math.max(2, Math.floor(8 * (1 - intensity)));
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.floor(data[i] / (256 / levels)) * (256 / levels);
+                data[i + 1] = Math.floor(data[i + 1] / (256 / levels)) * (256 / levels);
+                data[i + 2] = Math.floor(data[i + 2] / (256 / levels)) * (256 / levels);
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } else if (type === 'threshold') {
+            // Black and white threshold
+            const threshold = 128 + (intensity * 100);
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                const val = avg > threshold ? 255 : 0;
+                data[i] = data[i + 1] = data[i + 2] = val;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } else if (type === 'solarize') {
+            // Solarization effect
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            const threshold = 128;
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i] > threshold) data[i] = 255 - data[i];
+                if (data[i + 1] > threshold) data[i + 1] = 255 - data[i + 1];
+                if (data[i + 2] > threshold) data[i + 2] = 255 - data[i + 2];
+            }
+            ctx.putImageData(imageData, 0, 0);
         }
-    } else if (type.startsWith('light_')) {
+    } else if (type.startsWith('light_') || type === 'flash' || type === 'flare' || type === 'glow' || type === 'rays' || type === 'strobe' || type === 'flicker' || type === 'ghosting' || type === 'bloom' || type === 'neon' || type === 'leak') {
         const intensity = Math.sin(p * Math.PI);
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = intensity;
@@ -1555,6 +1970,69 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
             ctx.shadowColor = 'white';
             ctx.shadowBlur = 50;
             ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'flare') {
+            // Lens flare effect
+            const cx = width / 2;
+            const cy = height / 2;
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, width / 2);
+            gradient.addColorStop(0, `rgba(255, 255, 255, ${intensity})`);
+            gradient.addColorStop(0.3, `rgba(255, 200, 100, ${intensity * 0.5})`);
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        } else if (type === 'rays') {
+            // God rays
+            const numRays = 12;
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            for (let i = 0; i < numRays; i++) {
+                ctx.rotate((Math.PI * 2) / numRays);
+                const gradient = ctx.createLinearGradient(0, 0, 0, height);
+                gradient.addColorStop(0, `rgba(255, 255, 200, ${intensity})`);
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(-20, 0, 40, height);
+            }
+            ctx.restore();
+        } else if (type === 'strobe') {
+            // Strobe light (flicker on/off)
+            const strobeOn = Math.floor(p * 10) % 2 === 0;
+            if (strobeOn) {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, width, height);
+            }
+        } else if (type === 'flicker') {
+            // Random flicker
+            const flickerIntensity = Math.random() * intensity;
+            ctx.globalAlpha = flickerIntensity;
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, width, height);
+        } else if (type === 'ghosting') {
+            // Trail/ghosting effect
+            ctx.globalAlpha = 0.3 * intensity;
+            ctx.globalCompositeOperation = 'lighten';
+            ctx.drawImage(ctx.canvas, 10, 0);
+            ctx.drawImage(ctx.canvas, -10, 0);
+        } else if (type === 'bloom') {
+            // Bloom/glow expansion
+            ctx.filter = `blur(${intensity * 20}px) brightness(${150}%)`;
+            ctx.globalAlpha = intensity * 0.5;
+            ctx.drawImage(ctx.canvas, 0, 0);
+        } else if (type === 'neon') {
+            // Neon glow
+            ctx.shadowColor = `hsl(${p * 360}, 100%, 50%)`;
+            ctx.shadowBlur = 30 * intensity;
+            ctx.strokeStyle = `hsl(${p * 360}, 100%, 50%)`;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(50, 50, width - 100, height - 100);
+        } else if (type === 'leak') {
+            // Light leak
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, `rgba(255, 100, 50, ${intensity * 0.5})`);
+            gradient.addColorStop(0.5, `rgba(255, 200, 100, ${intensity * 0.3})`);
+            gradient.addColorStop(1, `rgba(255, 150, 200, ${intensity * 0.5})`);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
         }
     }
 

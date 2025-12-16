@@ -40,8 +40,7 @@ const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
             icon: Music,
             color: 'text-green-400',
             bg: 'bg-green-500/10',
-            border: 'border-green-500/20',
-            comingSoon: true
+            border: 'border-green-500/20'
         }
     ];
 

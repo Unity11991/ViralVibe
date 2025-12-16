@@ -5,6 +5,7 @@
  */
 
 import Groq from "groq-sdk";
+import globalQueue from './aiRequestQueue';
 
 // Cache for video analysis results
 const videoAnalysisCache = new Map();
@@ -36,6 +37,7 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
         ctx.drawImage(videoElement, 0, 0);
 
         const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+        console.log(`[AI Debug] Frame ${timestamp.toFixed(2)}s Captured. Image Size: ${base64Image.length} chars`);
 
         // Extract dominant colors before AI analysis
         const dominantColors = extractDominantColors(ctx, canvas.width, canvas.height);
@@ -43,8 +45,10 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
         const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
         const prompt = `
-            Analyze this video frame and provide:
+            Analyze this video frame image precisely. Do NOT use default or generic values.
+            Look at the specific lighting, colors, and mood of THIS image.
             
+            Return JSON with all values on a scale of -100 to +100 (except Hue which is -180 to 180):
             {
                 "mood": "action" | "calm" | "dramatic" | "happy" | "sad" | "tense",
                 "actionLevel": 0.0-1.0 (how much movement/action is visible),
@@ -52,64 +56,98 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
                 "lighting": "bright" | "dark" | "natural" | "artificial" | "dramatic",
                 "description": "Brief 1-sentence description of what's happening",
                 "colorGrading": {
-                    "brightness": -0.2 to 0.2 (negative = darker, positive = brighter),
-                    "contrast": 0.8 to 1.3 (below 1 = less contrast, above 1 = more contrast),
-                    "saturation": 0.7 to 1.5 (below 1 = desaturated, above 1 = more saturated),
-                    "temperature": -0.15 to 0.15 (negative = cooler/blue, positive = warmer/orange),
-                    "tint": -0.1 to 0.1 (negative = green tint, positive = magenta tint)
+                    "exposure": -100 to 100 (0=normal, negative=darker, positive=brighter),
+                    "contrast": -100 to 100 (0=normal, negative=flat, positive=punchy),
+                    "brightness": -100 to 100 (0=normal, negative=darker, positive=brighter),
+                    "highlights": -100 to 100 (0=normal, negative=dim highlights, positive=boost),
+                    "shadows": -100 to 100 (0=normal, negative=crush blacks, positive=lift shadows),
+                    
+                    "saturation": -100 to 100 (0=normal, negative=desaturated, positive=vibrant),
+                    "vibrance": -100 to 100 (0=normal, negative=muted, positive=popping),
+                    "temp": -100 to 100 (0=normal, -100=cold/blue, 100=warm/orange),
+                    "tint": -100 to 100 (0=normal, -100=green, 100=magenta),
+                    
+                    "hue": -180 to 180 (0=normal, degrees),
+                    "hslSaturation": -100 to 100 (0=normal),
+                    "hslLightness": -100 to 100 (0=normal),
+                    
+                    "sharpen": 0 to 100 (0=off),
+                    "blur": 0 to 100 (0=off),
+                    "vignette": 0 to 100 (0=off),
+                    "grain": 0 to 100 (0=off),
+                    "fade": 0 to 100 (0=off),
+                    "grayscale": 0 to 100 (0=off),
+                    "sepia": 0 to 100 (0=off)
                 }
             }
             
-            Focus on the overall mood, energy, and visual characteristics.
-            
-            For colorGrading suggestions:
-            - Analyze if the scene is underexposed (needs brightness boost) or overexposed (needs reduction)
-            - Check if contrast needs adjustment for better depth
-            - Suggest saturation adjustments based on mood (dramatic = desaturate, happy = boost)
-            - Recommend temperature shifts (outdoor/sunset = warmer, indoor/night = cooler)
-            - Subtle tint adjustments for color balance
+            CRITICAL INSTRUCTIONS:
+            - Use the full -100 to +100 range significantly. Don't just stay around 0.
+            - If it's dark, use Exposure +20 to +50.
+            - If it's dull, use Saturation +20 to +40.
+            - If it's disjointed, use Temp to unify (-20 or +20).
+            - Avoid extreme values like +/-100 unless necessary for style.
             
             IMPORTANT: You must provide the response in valid JSON format with all fields.
         `;
 
-        const makeRequest = async (retries = 3, delay = 2000) => {
-            try {
-                return await groq.chat.completions.create({
-                    messages: [{
-                        role: "user",
-                        content: [
-                            { type: "text", text: prompt },
-                            { type: "image_url", image_url: { url: base64Image } }
-                        ]
-                    }],
-                    model: "meta-llama/llama-4-maverick-17b-128e-instruct",
-                    temperature: 0.7,
-                    max_tokens: 600, // Increased for color grading data
-                    response_format: { type: "json_object" }
-                });
-            } catch (error) {
-                if (error.status === 429 && retries > 0) {
-                    console.warn(`Rate limit hit. Retrying in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return makeRequest(retries - 1, delay * 2);
+        const processRequest = async () => {
+            // Internal retry loop inside the queue slot
+            let currentRetries = 3;
+            let currentDelay = 2000;
+
+            while (true) {
+                try {
+                    const completion = await groq.chat.completions.create({
+                        messages: [{
+                            role: "user",
+                            content: [
+                                { type: "text", text: prompt },
+                                { type: "image_url", image_url: { url: base64Image } }
+                            ]
+                        }],
+                        model: "meta-llama/llama-4-maverick-17b-128e-instruct",
+                        temperature: 0.7,
+                        max_tokens: 1000,
+                        response_format: { type: "json_object" }
+                    });
+                    return completion;
+                } catch (error) {
+                    if (error.status === 429 && currentRetries > 0) {
+                        console.warn(`Rate limit hit. Retrying in ${currentDelay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, currentDelay));
+                        currentRetries--;
+                        currentDelay *= 2;
+                        continue;
+                    }
+                    throw error;
                 }
-                throw error;
             }
         };
 
-        const completion = await makeRequest();
+        const completion = await globalQueue.enqueue(processRequest);
 
         const content = completion.choices[0]?.message?.content;
         if (!content) throw new Error("No content generated");
 
         const analysis = JSON.parse(content);
+        const fallbackGrading = getDefaultColorGrading(analysis.lighting, analysis.mood);
+        const finalColorGrading = { ...fallbackGrading, ...analysis.colorGrading };
+        const usedFallback = !analysis.colorGrading;
+
+        console.log(`[AI Analysis] Frame ${timestamp.toFixed(2)}s:`, {
+            mood: analysis.mood,
+            colorGrading: finalColorGrading,
+            isFallback: usedFallback,
+            rawAI_Grading: analysis.colorGrading
+        });
 
         return {
             ...analysis,
             dominantColors,
             timestamp,
             // Ensure colorGrading exists with defaults if AI didn't provide
-            colorGrading: analysis.colorGrading || getDefaultColorGrading(analysis.lighting, analysis.mood)
+            colorGrading: finalColorGrading
         };
 
     } catch (error) {
@@ -215,7 +253,8 @@ export const analyzeVideoContent = async (videoUrl, sampleCount = 5, apiKey) => 
             frameAnalyses.push(frameAnalysis);
 
             // Rate Limit Protection: Wait 2 seconds between requests
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Note: globalQueue handles the actual API wait, but this keeps the UI loop calm
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
 
         // Aggregate results
@@ -299,8 +338,36 @@ const aggregateFrameAnalyses = (frameAnalyses, videoUrl, duration) => {
         sceneType: dominantSceneType,
         lighting: frameAnalyses[0]?.lighting || 'natural',
         suggestedColorGrade,
+        colorGrading: calculateAverageColorGrading(frameAnalyses),
         frameAnalyses // Keep individual frame data for advanced use
     };
+};
+
+/**
+ * Calculates average color grading from multiple frame analyses
+ */
+const calculateAverageColorGrading = (frameAnalyses) => {
+    if (!frameAnalyses || frameAnalyses.length === 0) return {};
+
+    const validFrames = frameAnalyses.filter(f => f.colorGrading);
+    if (validFrames.length === 0) return {};
+
+    const keys = Object.keys(validFrames[0].colorGrading);
+    const result = {};
+
+    keys.forEach(key => {
+        // Skip non-numeric values just in case
+        if (typeof validFrames[0].colorGrading[key] !== 'number') return;
+
+        const sum = validFrames.reduce((acc, frame) => {
+            return acc + (frame.colorGrading[key] || 0);
+        }, 0);
+
+        // Round to 1 decimal place
+        result[key] = Math.round((sum / validFrames.length) * 10) / 10;
+    });
+
+    return result;
 };
 
 /**
@@ -354,37 +421,54 @@ const rgbToHex = (r, g, b) => {
 /**
  * Generates default color grading adjustments based on lighting and mood
  * Used as fallback when AI doesn't provide suggestions or API key is unavailable
+ * UPDATED: Returns values in -100 to +100 scale
  */
 const getDefaultColorGrading = (lighting, mood) => {
-    // Base adjustments
+    // Base adjustments (0 = normal)
     let adjustments = {
+        exposure: 0,
         brightness: 0,
-        contrast: 1.0,
-        saturation: 1.0,
-        temperature: 0,
-        tint: 0
+        contrast: 0,
+        saturation: 0,
+        vibrance: 0,
+        temp: 0, // Changed from temperature to temp to match prompt
+        tint: 0,
+        highlights: 0,
+        shadows: 0,
+        hue: 0,
+        hslSaturation: 0, // Added to match prompt
+        hslLightness: 0,  // Added to match prompt
+        sharpen: 0,
+        blur: 0,
+        vignette: 0,
+        grain: 0,
+        fade: 0,
+        grayscale: 0,
+        sepia: 0
     };
 
     // Lighting-based adjustments
     switch (lighting) {
         case 'dark':
-            adjustments.brightness = 0.1; // Brighten dark scenes slightly
-            adjustments.contrast = 1.15; // Increase contrast for depth
+            adjustments.brightness = 15; // Brighten dark scenes
+            adjustments.contrast = 20; // Increase contrast for depth
+            adjustments.shadows = 20; // Lift shadows
             break;
         case 'bright':
-            adjustments.brightness = -0.05; // Reduce overly bright scenes
-            adjustments.contrast = 0.95; // Slightly reduce contrast
+            adjustments.brightness = -10; // Reduce overly bright scenes
+            adjustments.highlights = -20; // Recover highlights
             break;
         case 'dramatic':
-            adjustments.contrast = 1.2; // Higher contrast for drama
-            adjustments.saturation = 0.9; // Slightly desaturated
+            adjustments.contrast = 30; // Higher contrast for drama
+            adjustments.saturation = -10; // Slightly desaturated
+            adjustments.vignette = 30; // Add vignette
             break;
         case 'natural':
-            adjustments.temperature = 0.05; // Slightly warm
-            adjustments.saturation = 1.05; // Slightly boost saturation
+            adjustments.temp = 5; // Slightly warm
+            adjustments.vibrance = 15; // Healthy saturation
             break;
         case 'artificial':
-            adjustments.temperature = -0.05; // Slightly cool
+            adjustments.temp = -5; // Slightly cool
             break;
     }
 
@@ -392,39 +476,41 @@ const getDefaultColorGrading = (lighting, mood) => {
     switch (mood) {
         case 'dramatic':
         case 'tense':
-            adjustments.saturation *= 0.85; // Desaturate for tension
-            adjustments.contrast *= 1.1; // More contrast
-            adjustments.temperature -= 0.05; // Cooler tones
+            adjustments.saturation -= 20; // Desaturate for tension
+            adjustments.contrast += 20; // More contrast
+            adjustments.temp -= 10; // Cooler tones
+            adjustments.grain = 20; // Add some grit
             break;
         case 'happy':
-            adjustments.saturation *= 1.15; // Boost saturation
-            adjustments.temperature += 0.08; // Warmer tones
-            adjustments.brightness += 0.03; // Slightly brighter
+            adjustments.saturation += 20; // Boost saturation
+            adjustments.vibrance += 20;
+            adjustments.temp += 15; // Warmer tones
+            adjustments.brightness += 5; // Slightly brighter
             break;
         case 'sad':
-            adjustments.saturation *= 0.8; // Desaturate
-            adjustments.temperature -= 0.08; // Cooler tones
-            adjustments.brightness -= 0.05; // Slightly darker
+            adjustments.saturation -= 40; // Desaturate
+            adjustments.temp -= 15; // Cooler tones
+            adjustments.brightness -= 10; // Slightly darker
+            adjustments.fade = 20; // Faded look
             break;
         case 'calm':
-            adjustments.saturation *= 1.05; // Natural saturation boost
-            adjustments.tint = 0.02; // Slight magenta for calmness
+            adjustments.saturation += 5; // Natural saturation boost
+            adjustments.tint = 5; // Slight magenta for calmness
+            adjustments.blur = 0; // Softness? No, maybe just soft contrast
+            adjustments.contrast = -10; // Softer
             break;
         case 'action':
-            adjustments.saturation *= 1.1; // Vibrant colors
-            adjustments.contrast *= 1.15; // High contrast
-            adjustments.temperature += 0.05; // Warm action tones
+            adjustments.saturation += 15; // Vibrant colors
+            adjustments.contrast += 25; // High contrast
+            adjustments.temp += 10; // Warm action tones
+            adjustments.sharpen = 20; // Sharper details
             break;
     }
 
     // Clamp values to safe ranges
-    return {
-        brightness: Math.max(-0.2, Math.min(0.2, adjustments.brightness)),
-        contrast: Math.max(0.8, Math.min(1.3, adjustments.contrast)),
-        saturation: Math.max(0.7, Math.min(1.5, adjustments.saturation)),
-        temperature: Math.max(-0.15, Math.min(0.15, adjustments.temperature)),
-        tint: Math.max(-0.1, Math.min(0.1, adjustments.tint))
-    };
+    // Let's just return the object, the renderer handles logical clamping usually, 
+    // but robust defaults are good.
+    return adjustments;
 };
 
 /**

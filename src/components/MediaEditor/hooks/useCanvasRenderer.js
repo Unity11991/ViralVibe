@@ -105,7 +105,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
 
         // Use optimized context settings
         const ctx = canvasRef.current.getContext('2d', {
-            willReadFrequently: false,
+            willReadFrequently: true,
             alpha: false,
             desynchronized: true
         });
