@@ -27,6 +27,7 @@ import LimitReachedModal from './components/LimitReachedModal';
 
 import ToolsModal from './components/ToolsModal';
 import ImageEnhancer from './components/ImageEnhancer';
+import AudioStudio from './components/AudioStudio/AudioStudio';
 import MainContent from './components/MainContent';
 import ReferralHandler from './components/ReferralHandler';
 
@@ -71,6 +72,7 @@ function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
   const [showImageEnhancer, setShowImageEnhancer] = useState(false);
+  const [showAudioStudio, setShowAudioStudio] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
 
@@ -83,6 +85,8 @@ function App() {
       setShowVibeBattle(true);
     } else if (toolId === 'image-enhancer') {
       setShowImageEnhancer(true);
+    } else if (toolId === 'audio-studio') {
+      setShowAudioStudio(true);
     }
   };
 
@@ -575,6 +579,13 @@ function App() {
       {showImageEnhancer && (
         <ImageEnhancer
           onClose={() => setShowImageEnhancer(false)}
+        />
+      )}
+
+      {showAudioStudio && (
+        <AudioStudio
+          onClose={() => setShowAudioStudio(false)}
+          isPro={isPro}
         />
       )}
 

@@ -75,7 +75,9 @@ export const analyzeAudioForComposition = async (audioUrl, apiKey) => {
             })),
             mood: aiAnalysis.mood || 'neutral',
             genre: aiAnalysis.genre || 'pop',
-            duration: aiAnalysis.duration || 180
+            // Fix: Use actual audio duration from segments (derived from AudioBuffer)
+            // Fallback to AI duration or 180 only if segments failed
+            duration: (segments.length > 0) ? segments[segments.length - 1].end : (aiAnalysis.duration || 180)
         };
 
         // Cache result
@@ -152,7 +154,14 @@ const analyzeAudioWithAI = async (audioUrl, energyProfile, tempo, apiKey) => {
             "segments": [
                 {
                     "mood": "intro" | "buildup" | "drop" | "breakdown" | "outro",
-                    "description": "Brief description of this section"
+                    "description": "Brief description of this section",
+                    "colorGrading": {
+                         "brightness": 0.0,
+                         "contrast": 1.0,
+                         "saturation": 1.0,
+                         "temperature": 0.0,
+                         "tint": 0.0
+                    }
                 }
             ]
         }

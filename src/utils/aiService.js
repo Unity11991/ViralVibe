@@ -696,3 +696,51 @@ export const analyzeTrend = async (query, apiKey) => {
         throw error;
     }
 };
+
+export const generateAudioScript = async (topic, isPro) => {
+    // Basic settings or default API key if not passed explicitly (assuming Env var or context usually)
+    // For this helper, we'll maintain the signature pattern but might need to fetch key from storage or env if not passed
+    // However, looking at analyzeTrend, it expects apiKey. Let's assume we use the env or a default one for now if not provided,
+    // or rely on the caller to handle it. In App.jsx 'settings' state holds the key.
+    // Ideally, we should pass settings to this function, but for now I'll use the Env variable as fallback
+    // similar to how App.jsx initializes it.
+
+    // Note: The previous tools used settings.apiKey. 
+    // We'll update the signature to accept settings or just use the VITE key for simplicity in this specific block
+    // if we can't easily access the user's custom key. 
+    // BUT, to be consistent, let's grab the key from local storage or ENV.
+
+    const apiKey = localStorage.getItem('viralvibe-api-key') || import.meta.env.VITE_GROQ_API_KEY;
+
+    if (!apiKey) throw new Error("API Key is required");
+
+    const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+
+    const prompt = `
+        You are a professional audio script writer.
+        Topic: "${topic}"
+        
+        Write a concise, engaging script for a short-form audio/video content (approx 30-60 seconds).
+        Include:
+        - Hook (0-5s)
+        - Key Value Points
+        - Call to Action
+        
+        Format it clearly with [Bracketed Cues] for tone/sfx.
+        Do NOT return JSON. Return plain text formatted for reading.
+    `;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 1000,
+        });
+
+        return completion.choices[0]?.message?.content || "Failed to generate script.";
+    } catch (error) {
+        console.error("Script Gen Error:", error);
+        throw error;
+    }
+};

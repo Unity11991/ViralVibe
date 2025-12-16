@@ -100,8 +100,9 @@ export const useExport = (mediaElementRef, mediaType) => {
             const video = mediaElementRef.current; // Main video (background)
 
             // Calculate export dimensions
-            const originalWidth = video.videoWidth || 1920;
-            const originalHeight = video.videoHeight || 1080;
+            // Fix: Handle case where main video is null (e.g. empty canvas project)
+            const originalWidth = video?.videoWidth || 1920;
+            const originalHeight = video?.videoHeight || 1080;
 
             // Handle Crop (if any)
             let finalWidth = originalWidth;
@@ -229,7 +230,7 @@ export const useExport = (mediaElementRef, mediaType) => {
             // 4. Offline Render Loop (Video)
 
             // Let's pause real playback
-            video.pause();
+            if (video) video.pause();
 
             for (let i = 0; i < totalFrames; i++) {
                 if (!isExportingRef.current) break;
@@ -239,7 +240,7 @@ export const useExport = (mediaElementRef, mediaType) => {
                 // 1. Seek Main Video
                 // Check if we need to switch source for main track
                 const mainTrack = tracks.find(t => t.id === 'track-main');
-                if (mainTrack) {
+                if (mainTrack && video) {
                     const activeMainClip = mainTrack.clips.find(c => currentTime >= c.startTime && currentTime < (c.startTime + c.duration));
                     if (activeMainClip) {
                         // Check if source needs update
@@ -266,61 +267,58 @@ export const useExport = (mediaElementRef, mediaType) => {
                         const clipTime = activeMainClip.startOffset + (currentTime - activeMainClip.startTime);
                         video.currentTime = clipTime;
                     }
-                } else {
+                } else if (video) {
                     // Fallback for single source or no main track structure
                     video.currentTime = currentTime;
                 }
 
-                // Robust seek wait
-                // We must wait for the frame to be ready. 
-                // The 'seeked' event fires when the browser has decoding data for the new content.
-                await new Promise(resolve => {
-                    // Check if seeking is already complete (unlikely after immediate set)
-                    if (!video.seeking && Math.abs(video.currentTime - video.currentTime) < 0.001) {
-                        // Wait, video.currentTime vs target? 
-                        // We just set it.
-                        resolve();
-                        return;
-                    }
+                // 2. Create Listeners for ALL videos that need seeking
+                const seekPromises = [];
 
-                    const onSeeked = () => {
-                        resolve();
-                    };
+                // Helper to create seek promise
+                const createSeekPromise = (vidElement) => {
+                    return new Promise(resolve => {
+                        if (!vidElement.seeking && Math.abs(vidElement.currentTime - vidElement.currentTime) < 0.001) {
+                            resolve();
+                            return;
+                        }
+                        const onSeeked = () => resolve();
+                        vidElement.addEventListener('seeked', onSeeked, { once: true });
+                        setTimeout(() => {
+                            vidElement.removeEventListener('seeked', onSeeked);
+                            resolve();
+                        }, 1000);
+                    });
+                };
 
-                    video.addEventListener('seeked', onSeeked, { once: true });
+                // Add main video seek promise if it exists
+                if (video) {
+                    seekPromises.push(createSeekPromise(video));
+                }
 
-                    // Failsafe timeout (e.g. if we are at EOF or browser quirk)
-                    // Increase timeout for 4K handling
-                    setTimeout(() => {
-                        video.removeEventListener('seeked', onSeeked);
-                        resolve();
-                    }, 1000);
-                });
-
-                // 2. Sync Secondary Tracks (Video Elements)
+                // Sync Secondary Tracks & Add Promises
                 if (tracks) {
                     tracks.forEach(track => {
                         if ((track.type === 'video' || track.type === 'sticker') && track.id !== 'track-main') {
                             track.clips.forEach(clip => {
                                 const el = mediaResources?.videoElements?.[clip.id];
                                 if (el) {
-                                    // Calculate where this clip should be
-                                    // Clip starts at clip.startTime in timeline
-                                    // Its content starts at clip.startOffset
                                     if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
                                         const clipTime = clip.startOffset + (currentTime - clip.startTime);
+                                        // Only set/seek if time has changed significantly to avoid jitter? 
+                                        // Actually for export we want exact.
                                         el.currentTime = clipTime;
-                                        // For secondary videos, we also need to wait for seek!
-                                        // This might be slow but ensures frame accuracy.
-                                        // We can't await inside forEach easily. 
+                                        seekPromises.push(createSeekPromise(el));
                                     }
                                 }
                             });
                         }
                     });
+                }
 
-                    // Optimization: We should ideally wait for "canplay" on all active secondary videos.
-                    // For now, assuming fast seek or browser cache.
+                // Wait for ALL videos to be ready
+                if (seekPromises.length > 0) {
+                    await Promise.all(seekPromises);
                 }
 
                 // 3. Update State & Render
@@ -359,7 +357,7 @@ export const useExport = (mediaElementRef, mediaType) => {
             setShowExportModal(false);
 
             // Cleanup: Reset video to start
-            video.currentTime = startTime;
+            if (video) video.currentTime = startTime;
 
         } catch (error) {
             console.error('Video export failed:', error);

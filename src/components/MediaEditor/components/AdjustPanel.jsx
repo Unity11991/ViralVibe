@@ -28,22 +28,29 @@ export const AdjustPanel = ({ adjustments, onUpdate, aiSuggestions }) => {
         if (aiSuggestions) {
             const newAdjustments = { ...adjustments };
 
-            // Multipliers (1.0 is neutral) -> Percentage (-100 to 100)
-            if (aiSuggestions.brightness) newAdjustments.brightness = (aiSuggestions.brightness - 1) * 100;
-            if (aiSuggestions.contrast) newAdjustments.contrast = (aiSuggestions.contrast - 1) * 100;
-            if (aiSuggestions.saturation) newAdjustments.saturation = (aiSuggestions.saturation - 1) * 100;
-            if (aiSuggestions.warmth) newAdjustments.temp = (aiSuggestions.warmth - 1) * 100;
-            if (aiSuggestions.tint) newAdjustments.tint = (aiSuggestions.tint - 1) * 100;
-            if (aiSuggestions.exposure) newAdjustments.exposure = (aiSuggestions.exposure - 1) * 100;
-            if (aiSuggestions.highlights) newAdjustments.highlights = (aiSuggestions.highlights - 1) * 100;
-            if (aiSuggestions.shadows) newAdjustments.shadows = (aiSuggestions.shadows - 1) * 100;
-            if (aiSuggestions.vibrance) newAdjustments.vibrance = (aiSuggestions.vibrance - 1) * 100;
+            // Direct mapping (AI now returns -100 to +100 scale matched to UI)
+            if (aiSuggestions.brightness !== undefined) newAdjustments.brightness = aiSuggestions.brightness;
+            if (aiSuggestions.contrast !== undefined) newAdjustments.contrast = aiSuggestions.contrast;
+            if (aiSuggestions.saturation !== undefined) newAdjustments.saturation = aiSuggestions.saturation;
+            if (aiSuggestions.temp !== undefined) newAdjustments.temp = aiSuggestions.temp;
+            if (aiSuggestions.tint !== undefined) newAdjustments.tint = aiSuggestions.tint;
+            if (aiSuggestions.exposure !== undefined) newAdjustments.exposure = aiSuggestions.exposure;
+            if (aiSuggestions.highlights !== undefined) newAdjustments.highlights = aiSuggestions.highlights;
+            if (aiSuggestions.shadows !== undefined) newAdjustments.shadows = aiSuggestions.shadows;
+            if (aiSuggestions.vibrance !== undefined) newAdjustments.vibrance = aiSuggestions.vibrance;
 
-            // Additives (0.0 is neutral) -> Absolute values (0 to 100)
-            if (aiSuggestions.sharpen) newAdjustments.sharpen = aiSuggestions.sharpen * 100; // Assuming AI returns 0.0-1.0
-            if (aiSuggestions.blur) newAdjustments.blur = aiSuggestions.blur * 100;
-            if (aiSuggestions.vignette) newAdjustments.vignette = aiSuggestions.vignette * 100;
-            if (aiSuggestions.fade) newAdjustments.fade = aiSuggestions.fade * 100;
+            if (aiSuggestions.hue !== undefined) newAdjustments.hue = aiSuggestions.hue;
+            if (aiSuggestions.hslSaturation !== undefined) newAdjustments.hslSaturation = aiSuggestions.hslSaturation;
+            if (aiSuggestions.hslLightness !== undefined) newAdjustments.hslLightness = aiSuggestions.hslLightness;
+
+            // Additives (0 to 100)
+            if (aiSuggestions.sharpen !== undefined) newAdjustments.sharpen = aiSuggestions.sharpen;
+            if (aiSuggestions.blur !== undefined) newAdjustments.blur = aiSuggestions.blur;
+            if (aiSuggestions.vignette !== undefined) newAdjustments.vignette = aiSuggestions.vignette;
+            if (aiSuggestions.grain !== undefined) newAdjustments.grain = aiSuggestions.grain;
+            if (aiSuggestions.fade !== undefined) newAdjustments.fade = aiSuggestions.fade;
+            if (aiSuggestions.grayscale !== undefined) newAdjustments.grayscale = aiSuggestions.grayscale;
+            if (aiSuggestions.sepia !== undefined) newAdjustments.sepia = aiSuggestions.sepia;
 
             onUpdate(newAdjustments);
         }

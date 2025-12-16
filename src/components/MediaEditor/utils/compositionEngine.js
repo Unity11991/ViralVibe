@@ -70,11 +70,24 @@ export const COMPOSITION_STYLES = {
  */
 export const generateComposition = (audioAnalysis, videoAnalyses, style = 'musicVideo', options = {}) => {
     const stylePreset = COMPOSITION_STYLES[style] || COMPOSITION_STYLES.musicVideo;
-    const { beats, tempo, energy, segments, duration } = audioAnalysis;
+    let { beats, tempo, energy, segments, duration } = audioAnalysis;
+
+    // Fix: If duration is missing, try to derive it from segments or beats
+    if (!duration || duration === 0) {
+        if (segments && segments.length > 0) {
+            duration = segments[segments.length - 1].end;
+        } else if (beats && beats.length > 0) {
+            // Estimate duration from last beat + a bit (e.g. 1 bar at 120bpm = 2s)
+            duration = beats[beats.length - 1] + 2;
+        } else {
+            // Last resort fallback
+            duration = 180;
+        }
+    }
 
     // --- Step 1: Clip Matching Algorithm ---
     // Matches clips to audio segments based on mood and energy
-    const clipAssignments = matchClipsToSegments(videoAnalyses, segments, audioAnalysis, stylePreset);
+    const clipAssignments = matchClipsToSegments(videoAnalyses, segments, audioAnalysis, stylePreset, duration);
 
     // --- Step 2: Arrange Clips (Timeline Output) ---
     // Calculates exact timing, duration, and order
@@ -110,14 +123,14 @@ export const generateComposition = (audioAnalysis, videoAnalyses, style = 'music
  * Step 1: Intelligent Clip Matching
  * Scores videos against audio segments to find the best fit
  */
-const matchClipsToSegments = (videoAnalyses, audioSegments, audioAnalysis, stylePreset) => {
+const matchClipsToSegments = (videoAnalyses, audioSegments, audioAnalysis, stylePreset, defaultDuration) => {
     // Safety check
     if (!videoAnalyses || videoAnalyses.length === 0) return [];
 
     // Ensure we have segments
     const safeSegments = (audioSegments && audioSegments.length > 0)
         ? audioSegments
-        : [{ start: 0, end: audioAnalysis.duration || 180, mood: 'neutral', energy: 0.5 }];
+        : [{ start: 0, end: defaultDuration || audioAnalysis.duration || 30, mood: 'neutral', energy: 0.5 }];
 
     const assignments = [];
     const usedVideoIds = new Set();
@@ -216,7 +229,16 @@ const arrangeClipsOnTimeline = (assignments, beats, totalDuration, stylePreset) 
             startTime: currentTime,
             duration: clipDuration,
             startOffset,
-            videoAnalysis: video
+            // Map AI color grading directly to adjustments prop for MediaEditor
+            adjustments: video.colorGrading || {},
+            videoAnalysis: {
+                ...video,
+                colorGrading: video.colorGrading
+            }
+        });
+
+        console.log(`[Composition] Placed Clip ${video.id} at ${currentTime}s`, {
+            inheritedGrading: video.colorGrading
         });
 
         currentTime += clipDuration;
@@ -437,17 +459,31 @@ const applyColorGrading = (clips, stylePreset) => {
             ...clip,
             filter,
             adjustments: {
-                // Use AI-suggested values, scaled by preset strength
+                // Map all AI-suggested values directly, scaled by preset strength
+                // Since AI now returns -100 to +100 (neutral 0), simple multiplication works
                 brightness: (colorGrading.brightness || 0) * strength,
-                contrast: 1 + ((colorGrading.contrast || 1.0) - 1) * strength,
-                saturation: 1 + ((colorGrading.saturation || 1.0) - 1) * strength,
-                temperature: (colorGrading.temperature || 0) * strength,
+                contrast: (colorGrading.contrast || 0) * strength,
+                saturation: (colorGrading.saturation || 0) * strength,
+                temp: (colorGrading.temp || 0) * strength,
                 tint: (colorGrading.tint || 0) * strength,
-                // Additional standard adjustments
-                exposure: 0,
-                highlights: 0,
-                shadows: 0,
-                vibrance: 0
+                exposure: (colorGrading.exposure || 0) * strength,
+                highlights: (colorGrading.highlights || 0) * strength,
+                shadows: (colorGrading.shadows || 0) * strength,
+                vibrance: (colorGrading.vibrance || 0) * strength,
+
+                // Color properties
+                hue: (colorGrading.hue || 0), // Hue shouldn't be scaled by strength usually, or maybe it should? Leaving as is.
+                hslSaturation: (colorGrading.hslSaturation || 0) * strength,
+                hslLightness: (colorGrading.hslLightness || 0) * strength,
+
+                // Style effects - typically 0 to 100
+                sharpen: (colorGrading.sharpen || 0) * strength,
+                blur: (colorGrading.blur || 0) * strength,
+                vignette: (colorGrading.vignette || 0) * strength,
+                grain: (colorGrading.grain || 0) * strength,
+                fade: (colorGrading.fade || 0) * strength,
+                grayscale: (colorGrading.grayscale || 0) * strength,
+                sepia: (colorGrading.sepia || 0) * strength
             }
         };
     });

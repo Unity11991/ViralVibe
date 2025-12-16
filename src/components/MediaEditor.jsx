@@ -1449,11 +1449,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             const filterGroups = {};
             plan.clips.forEach((clip, index) => {
                 const filter = clip.filter || 'normal';
-                if (filter !== 'normal') {
-                    if (!filterGroups[filter]) {
-                        filterGroups[filter] = [];
+                const hasAdjustments = clip.adjustments && Object.keys(clip.adjustments).length > 0;
+
+                // Fix: Allow normal filter if it has custom adjustments (e.g. from AI)
+                if (filter !== 'normal' || hasAdjustments) {
+                    const groupKey = filter === 'normal' ? 'custom' : filter;
+                    if (!filterGroups[groupKey]) {
+                        filterGroups[groupKey] = [];
                     }
-                    filterGroups[filter].push({ clip, index });
+                    filterGroups[groupKey].push({ clip, index });
                 }
             });
 
@@ -1466,7 +1470,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     duration: clip.duration,
                     startOffset: 0,
                     adjustments: clip.adjustments || {},
-                    filter: filter
+                    filter: filter,
+                    rawAI_Grading: clip.videoAnalysis?.colorGrading || {}
                 }));
 
                 return {
@@ -1484,6 +1489,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             setCompositionStatus('Finalizing timeline...');
             setTracks([mainTrack, ...adjustmentTracks, audioTrackObj]);
             setSelectedClipId(null);
+
+            // Critical: Update trim range to match composition duration
+            // This ensures export covers the full length
+            if (plan.duration && plan.duration > 0) {
+                setTrimRange({ start: 0, end: plan.duration });
+            }
 
             setCompositionProgress(100);
             setCompositionSteps(prev => ({ ...prev, current: totalSteps }));
@@ -1764,6 +1775,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             />
         );
     }
+
 
     // Render upload screen if no media (after project created) - but skip for empty projects
     if (!mediaUrl && !isEmptyProject) {
