@@ -107,18 +107,47 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
                     return;
                 }
 
-                const canvas = document.createElement('canvas');
-                // Smaller canvas for better performance
-                const aspect = video.videoWidth / video.videoHeight;
-                const drawHeight = Math.min(height || 40, 30); // Max 30px height
-                const drawWidth = drawHeight * aspect;
+                // HD Video Protection: Cap maximum dimensions
+                // Browser canvas size limits are typically 8192x8192 or 16384x16384
+                // But for thumbnails, we want small sizes anyway
+                const MAX_DIMENSION = 200; // Maximum width or height for safety
 
-                canvas.width = drawWidth;
-                canvas.height = drawHeight;
+                const canvas = document.createElement('canvas');
+                const videoAspect = video.videoWidth / video.videoHeight;
+
+                // Calculate safe thumbnail dimensions
+                let drawHeight = Math.min(height || 40, 30); // Max 30px height preference
+                let drawWidth = drawHeight * videoAspect;
+
+                // Additional safety: If video is extremely wide or aspect causes issues
+                if (drawWidth > MAX_DIMENSION) {
+                    drawWidth = MAX_DIMENSION;
+                    drawHeight = drawWidth / videoAspect;
+                }
+
+                if (drawHeight > MAX_DIMENSION) {
+                    drawHeight = MAX_DIMENSION;
+                    drawWidth = drawHeight * videoAspect;
+                }
+
+                // Ensure we have valid dimensions
+                if (!isFinite(drawWidth) || !isFinite(drawHeight) || drawWidth < 1 || drawHeight < 1) {
+                    console.warn('Invalid thumbnail dimensions calculated, using defaults');
+                    drawWidth = 40;
+                    drawHeight = 30;
+                }
+
+                canvas.width = Math.floor(drawWidth);
+                canvas.height = Math.floor(drawHeight);
+
                 const ctx = canvas.getContext('2d', {
                     willReadFrequently: false,
                     alpha: false
                 });
+
+                if (!ctx) {
+                    throw new Error('Failed to get canvas context');
+                }
 
                 const thumbs = [];
                 const timeStep = duration / thumbCount;
@@ -146,7 +175,9 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
 
                     // Draw with error handling
                     try {
-                        ctx.drawImage(video, 0, 0, drawWidth, drawHeight);
+                        // Clear canvas before drawing
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         // Lower quality JPEG for smaller file size
                         thumbs.push(canvas.toDataURL('image/jpeg', 0.3));
                     } catch (e) {

@@ -50,12 +50,26 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
                 "actionLevel": 0.0-1.0 (how much movement/action is visible),
                 "sceneType": "indoor" | "outdoor" | "studio" | "nature" | "urban",
                 "lighting": "bright" | "dark" | "natural" | "artificial" | "dramatic",
-                "description": "Brief 1-sentence description of what's happening"
+                "description": "Brief 1-sentence description of what's happening",
+                "colorGrading": {
+                    "brightness": -0.2 to 0.2 (negative = darker, positive = brighter),
+                    "contrast": 0.8 to 1.3 (below 1 = less contrast, above 1 = more contrast),
+                    "saturation": 0.7 to 1.5 (below 1 = desaturated, above 1 = more saturated),
+                    "temperature": -0.15 to 0.15 (negative = cooler/blue, positive = warmer/orange),
+                    "tint": -0.1 to 0.1 (negative = green tint, positive = magenta tint)
+                }
             }
             
             Focus on the overall mood, energy, and visual characteristics.
             
-            IMPORTANT: You must provide the response in valid JSON format.
+            For colorGrading suggestions:
+            - Analyze if the scene is underexposed (needs brightness boost) or overexposed (needs reduction)
+            - Check if contrast needs adjustment for better depth
+            - Suggest saturation adjustments based on mood (dramatic = desaturate, happy = boost)
+            - Recommend temperature shifts (outdoor/sunset = warmer, indoor/night = cooler)
+            - Subtle tint adjustments for color balance
+            
+            IMPORTANT: You must provide the response in valid JSON format with all fields.
         `;
 
         const makeRequest = async (retries = 3, delay = 2000) => {
@@ -70,7 +84,7 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
                     }],
                     model: "meta-llama/llama-4-maverick-17b-128e-instruct",
                     temperature: 0.7,
-                    max_tokens: 500,
+                    max_tokens: 600, // Increased for color grading data
                     response_format: { type: "json_object" }
                 });
             } catch (error) {
@@ -93,7 +107,9 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
         return {
             ...analysis,
             dominantColors,
-            timestamp
+            timestamp,
+            // Ensure colorGrading exists with defaults if AI didn't provide
+            colorGrading: analysis.colorGrading || getDefaultColorGrading(analysis.lighting, analysis.mood)
         };
 
     } catch (error) {
@@ -112,7 +128,8 @@ export const analyzeVideoFrame = async (videoElement, timestamp, apiKey) => {
             sceneType: 'unknown',
             lighting: 'natural',
             description: 'Analysis unavailable',
-            timestamp
+            timestamp,
+            colorGrading: getDefaultColorGrading('natural', 'neutral')
         };
     }
 };
@@ -332,6 +349,82 @@ const rgbToHex = (r, g, b) => {
         const hex = x.toString(16);
         return hex.length === 1 ? '0' + hex : hex;
     }).join('');
+};
+
+/**
+ * Generates default color grading adjustments based on lighting and mood
+ * Used as fallback when AI doesn't provide suggestions or API key is unavailable
+ */
+const getDefaultColorGrading = (lighting, mood) => {
+    // Base adjustments
+    let adjustments = {
+        brightness: 0,
+        contrast: 1.0,
+        saturation: 1.0,
+        temperature: 0,
+        tint: 0
+    };
+
+    // Lighting-based adjustments
+    switch (lighting) {
+        case 'dark':
+            adjustments.brightness = 0.1; // Brighten dark scenes slightly
+            adjustments.contrast = 1.15; // Increase contrast for depth
+            break;
+        case 'bright':
+            adjustments.brightness = -0.05; // Reduce overly bright scenes
+            adjustments.contrast = 0.95; // Slightly reduce contrast
+            break;
+        case 'dramatic':
+            adjustments.contrast = 1.2; // Higher contrast for drama
+            adjustments.saturation = 0.9; // Slightly desaturated
+            break;
+        case 'natural':
+            adjustments.temperature = 0.05; // Slightly warm
+            adjustments.saturation = 1.05; // Slightly boost saturation
+            break;
+        case 'artificial':
+            adjustments.temperature = -0.05; // Slightly cool
+            break;
+    }
+
+    // Mood-based adjustments (on top of lighting)
+    switch (mood) {
+        case 'dramatic':
+        case 'tense':
+            adjustments.saturation *= 0.85; // Desaturate for tension
+            adjustments.contrast *= 1.1; // More contrast
+            adjustments.temperature -= 0.05; // Cooler tones
+            break;
+        case 'happy':
+            adjustments.saturation *= 1.15; // Boost saturation
+            adjustments.temperature += 0.08; // Warmer tones
+            adjustments.brightness += 0.03; // Slightly brighter
+            break;
+        case 'sad':
+            adjustments.saturation *= 0.8; // Desaturate
+            adjustments.temperature -= 0.08; // Cooler tones
+            adjustments.brightness -= 0.05; // Slightly darker
+            break;
+        case 'calm':
+            adjustments.saturation *= 1.05; // Natural saturation boost
+            adjustments.tint = 0.02; // Slight magenta for calmness
+            break;
+        case 'action':
+            adjustments.saturation *= 1.1; // Vibrant colors
+            adjustments.contrast *= 1.15; // High contrast
+            adjustments.temperature += 0.05; // Warm action tones
+            break;
+    }
+
+    // Clamp values to safe ranges
+    return {
+        brightness: Math.max(-0.2, Math.min(0.2, adjustments.brightness)),
+        contrast: Math.max(0.8, Math.min(1.3, adjustments.contrast)),
+        saturation: Math.max(0.7, Math.min(1.5, adjustments.saturation)),
+        temperature: Math.max(-0.15, Math.min(0.15, adjustments.temperature)),
+        tint: Math.max(-0.1, Math.min(0.1, adjustments.tint))
+    };
 };
 
 /**

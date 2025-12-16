@@ -96,43 +96,37 @@ export const usePlayback = (duration, onTick) => {
     }, [isPlaying, animate]);
 
     // Sync Logic (Run on every time update)
+    // OPTIMIZED: Throttle sync frequency to reduce overhead
     useEffect(() => {
         // Notify parent (for rendering)
         if (onTick) onTick(currentTime);
 
+        // Batch sync operations and reduce frequency
+        // Only sync every ~5 frames during playback (avoid excessive sync calls)
+        const shouldSync = !isPlaying || Math.floor(currentTime * 30) % 5 === 0;
+
+        if (!shouldSync && isPlaying) return;
+
         // Sync Media Elements
         mediaElementsRef.current.forEach(el => {
-            // Check drift
-            // Note: This assumes media should be exactly at currentTime.
-            // If media has an offset (like in a timeline track), the consumer needs to handle that wrapper
-            // or we need a more complex registration that includes offset.
-            // For now, we assume the consumer manages the media element's src/time mapping or we just sync the "main" video.
-            // Actually, for multi-track, we usually sync the *main* video directly, 
-            // and other clips are handled by the renderer seeking them.
+            if (!el.duration) return; // Only sync if loaded
 
-            // Let's assume registered elements are "Main" videos that match timeline time 1:1 (or close enough)
-            // OR the consumer manually syncs them in onTick.
+            const drift = Math.abs(el.currentTime - currentTime);
 
-            // If we want this hook to handle sync, we need to know the offset.
-            // Let's keep it simple: This hook provides the MASTER CLOCK.
-            // It exposes `currentTime`.
-            // It can optionally "force sync" elements that are supposed to be playing.
+            // OPTIMIZATION: Increase drift tolerance to reduce seek operations
+            // Only sync if drift is significant (> 0.3s)
+            if (drift > 0.3) {
+                el.currentTime = currentTime;
+            }
 
-            if (el.duration) { // Only sync if loaded
-                const drift = Math.abs(el.currentTime - currentTime);
-                if (drift > 0.2) {
-                    el.currentTime = currentTime;
-                }
+            if (isPlaying && el.paused) {
+                el.play().catch(() => { });
+            } else if (!isPlaying && !el.paused) {
+                el.pause();
+            }
 
-                if (isPlaying && el.paused) {
-                    el.play().catch(() => { });
-                } else if (!isPlaying && !el.paused) {
-                    el.pause();
-                }
-
-                if (el.playbackRate !== playbackRate) {
-                    el.playbackRate = playbackRate;
-                }
+            if (el.playbackRate !== playbackRate) {
+                el.playbackRate = playbackRate;
             }
         });
 
