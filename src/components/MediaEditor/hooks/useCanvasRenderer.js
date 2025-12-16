@@ -99,7 +99,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
      * OPTIMIZED FOR HD VIDEO with performance monitoring
      */
     const render = useCallback((state, options) => {
-        if (!canvasRef.current || !mediaElementRef.current) return;
+        if (!canvasRef.current) return; // Only need canvas, media can come from timeline
 
         const startTime = performance.now();
 
@@ -109,6 +109,8 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
             alpha: false,
             desynchronized: true
         });
+
+        // Media may be null for empty canvas - renderFrame handles this via visibleLayers
         const media = mediaElementRef.current;
 
         // Get performance-based settings

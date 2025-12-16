@@ -29,12 +29,19 @@ import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
 import ExportModal from './MediaEditor/components/modals/ExportModal';
 import { AutoCompositePanel } from './MediaEditor/components/panels/AutoCompositePanel';
 import { CompositionLoadingModal } from './MediaEditor/components/modals/CompositionLoadingModal';
+import { ProjectCreationModal } from './MediaEditor/components/modals/ProjectCreationModal';
+import { getDefaultAspectRatio } from './MediaEditor/utils/aspectRatios';
 
 /**
  * MediaEditor - Professional Video & Image Editor
  * Rebuilt with 3-pane layout and advanced timeline
  */
 const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initialAdjustments, suggestedFilter, isPro = false }) => {
+    // Project Creation State
+    const [showProjectCreation, setShowProjectCreation] = useState(!initialMediaFile);
+    const [projectAspectRatio, setProjectAspectRatio] = useState(getDefaultAspectRatio());
+    const [isEmptyProject, setIsEmptyProject] = useState(false); // Track if user chose empty canvas
+
     // Auto-Composite State
     const [showAutoComposite, setShowAutoComposite] = useState(false);
     const [showCompositionLoading, setShowCompositionLoading] = useState(false);
@@ -537,7 +544,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
     // Update render state ref whenever relevant state changes AND render immediately
     useEffect(() => {
-        if (!mediaUrl || !canvasRef.current) return;
+        // Render if we have canvas AND either (main media OR timeline clips)
+        if (!canvasRef.current) return;
+
+        const hasTimelineClips = tracks.some(t => t.clips && t.clips.length > 0);
+        if (!mediaUrl && !hasTimelineClips) return; // Skip only if no media AND no timeline clips
+
 
         const mainTrack = tracks.find(t => t.id === 'track-main');
         const globalState = {
@@ -562,8 +574,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
         const newState = getFrameState(currentTime, tracks, mediaResources, globalState);
 
-
-
         renderStateRef.current = newState;
 
         // Render immediately
@@ -575,6 +585,38 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // We just need to sync secondary videos and audio manually in the render/tick loop if usePlayback doesn't handle them all.
     // usePlayback handles registered elements.
     // For dynamic elements (secondary tracks), we should register them or sync them in an effect.
+
+    // Pre-load video/image elements for all clips when tracks change
+    useEffect(() => {
+        tracks.forEach(track => {
+            if (track.type === 'video' || track.type === 'sticker') {
+                track.clips.forEach(clip => {
+                    // Create video element if not exists
+                    if (clip.type === 'video' && !videoElementsRef.current[clip.id]) {
+                        const video = document.createElement('video');
+                        video.src = clip.source;
+                        video.muted = !!(clip.muted || clip.audioDetached);
+                        video.crossOrigin = 'anonymous';
+                        video.preload = 'metadata';
+                        videoElementsRef.current[clip.id] = video;
+
+                        // Load video metadata
+                        video.load();
+                    }
+                });
+            } else if (track.type === 'image') {
+                track.clips.forEach(clip => {
+                    // Create image element if not exists
+                    if (!imageElementsRef.current[clip.id]) {
+                        const img = new Image();
+                        img.src = clip.source || clip.thumbnail;
+                        img.crossOrigin = 'anonymous';
+                        imageElementsRef.current[clip.id] = img;
+                    }
+                });
+            }
+        });
+    }, [tracks]);
 
     // Separate Cleanup Effect to avoid running on every frame
     useEffect(() => {
@@ -649,20 +691,21 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         };
 
-        // Sync Secondary Videos (and Animated Stickers)
+        // Sync Secondary Videos (and Animated Stickers) + ALL videos on empty canvas
         tracks.forEach(track => {
-            if ((track.type !== 'video' && track.type !== 'sticker') || track.id === 'track-main') return;
+            // Skip non-video tracks, but INCLUDE track-main for empty canvas projects
+            if (track.type !== 'video' && track.type !== 'sticker') return;
 
             const activeClip = track.clips.find(c =>
                 currentTime >= c.startTime && currentTime < (c.startTime + c.duration)
             );
 
             if (activeClip) {
+                // Create video element if not already exists
                 if (!videoElementsRef.current[activeClip.id]) {
                     const video = document.createElement('video');
                     video.src = activeClip.source;
-                    video.muted = true;
-                    video.muted = false;
+                    video.muted = !!(activeClip.muted || activeClip.audioDetached); // Respect muting
                     video.crossOrigin = 'anonymous';
                     videoElementsRef.current[activeClip.id] = video;
                 }
@@ -685,7 +728,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 }
 
                 // Check Muted
-                const shouldMute = !!activeClip.muted;
+                const shouldMute = !!(activeClip.muted || activeClip.audioDetached);
                 if (video.muted !== shouldMute) video.muted = shouldMute;
 
                 if (isPlaying && video.paused) video.play().catch(() => { });
@@ -1683,8 +1726,47 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         addClipToNewTrack('adjustment', clipData);
     }, [tracks, addClipToNewTrack]);
 
-    // Render upload screen if no media
-    if (!mediaUrl) {
+    // Handle project creation
+    const handleCreateProject = useCallback((aspectRatio, mediaFile) => {
+        setProjectAspectRatio(aspectRatio);
+
+        if (mediaFile) {
+            // Load media with the selected aspect ratio
+            setIsEmptyProject(false);
+            loadMedia(mediaFile);
+        } else {
+            // Initialize empty timeline with blank canvas
+            setIsEmptyProject(true);
+            initializeTimeline(null, 'video', 10);
+
+            // Initialize canvas with proper sizing after a short delay to ensure container is rendered
+            setTimeout(() => {
+                if (containerRef.current && canvasRef.current) {
+                    const container = containerRef.current;
+                    const containerWidth = container.clientWidth || 800;
+                    const containerHeight = container.clientHeight || 600;
+                    const aspectRatioValue = aspectRatio.dimensions.width / aspectRatio.dimensions.height;
+
+                    initializeCanvas(containerWidth, containerHeight, aspectRatioValue, 0);
+                }
+            }, 100);
+        }
+
+        setShowProjectCreation(false);
+    }, [containerRef, canvasRef, loadMedia, initializeTimeline, initializeCanvas]);
+
+    // Show project creation screen if no media and not skipped
+    if (showProjectCreation) {
+        return (
+            <ProjectCreationModal
+                onCreateProject={handleCreateProject}
+                onClose={onClose}
+            />
+        );
+    }
+
+    // Render upload screen if no media (after project created) - but skip for empty projects
+    if (!mediaUrl && !isEmptyProject) {
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl">
                 <div className="max-w-md w-full p-8 bg-[#1a1a1f] rounded-3xl border border-white/10 shadow-2xl text-center">
@@ -1692,9 +1774,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         <Video size={32} className="text-blue-400" />
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">Media Editor</h2>
-                    <p className="text-white/50 mb-8">Upload a video or image to start editing.</p>
+                    <p className="text-white/50 mb-4">Canvas: {projectAspectRatio.name} ({projectAspectRatio.ratio})</p>
+                    <p className="text-white/30 mb-8">{projectAspectRatio.dimensions.width}×{projectAspectRatio.dimensions.height}</p>
                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,video/*" className="hidden" />
-                    <Button onClick={() => fileInputRef.current?.click()} variant="primary" className="w-full" icon={Upload}>Select File</Button>
+                    <Button onClick={() => fileInputRef.current?.click()} variant="primary" className="w-full" icon={Upload}>Import Media</Button>
                     <Button onClick={onClose} variant="ghost" className="w-full mt-4" icon={X}>Close</Button>
                 </div>
             </div>
