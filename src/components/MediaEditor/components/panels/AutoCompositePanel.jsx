@@ -36,6 +36,7 @@ export const AutoCompositePanel = ({
     const [selectedVideos, setSelectedVideos] = useState([]);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [previewMode, setPreviewMode] = useState(false);
+    const [muteOriginalAudio, setMuteOriginalAudio] = useState(true); // New: Mute original video audio by default
 
     // Filter media library
     const audioTracks = mediaLibrary.filter(item => item.type === 'audio');
@@ -85,7 +86,7 @@ export const AutoCompositePanel = ({
      */
     const handleApply = () => {
         if (compositionPlan && onApplyComposition) {
-            onApplyComposition(compositionPlan, selectedAudio, selectedVideos);
+            onApplyComposition(compositionPlan, selectedAudio, selectedVideos, { muteOriginalAudio });
             onClose?.();
         }
     };
@@ -287,6 +288,20 @@ export const AutoCompositePanel = ({
                                             onChange={(e) => updateOptions({ beatSyncSensitivity: e.target.value / 100 })}
                                         />
                                         <span>{Math.round(options.beatSyncSensitivity * 100)}%</span>
+                                    </div>
+
+                                    <div className="option-group checkbox-group">
+                                        <label>
+                                            <input
+                                                type="checkbox"
+                                                checked={muteOriginalAudio}
+                                                onChange={(e) => setMuteOriginalAudio(e.target.checked)}
+                                            />
+                                            <span>Mute Original Video Audio</span>
+                                        </label>
+                                        <p className="option-description">
+                                            When enabled, original audio from selected videos will be muted in the timeline.
+                                        </p>
                                     </div>
                                 </div>
                             )}
