@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-import { Play, Pause, Square, Mic, Upload, Download, Wand2, Volume2, Settings2, ArrowLeft, MessageSquare, Plus } from 'lucide-react';
+import { Play, Pause, Square, Mic, Upload, Download, Wand2, Volume2, Settings2, ArrowLeft, MessageSquare, Plus, Repeat, Scissors, Layers } from 'lucide-react';
 import AudioTimeline from './AudioTimeline';
+import TakesManager from './TakesManager';
 import { generateAudioScript } from '../../utils/aiService';
 
 const VOICE_OPTIONS = [
@@ -25,10 +26,11 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [analyserNode, setAnalyserNode] = useState(null);
 
     // Multi-track State
+    // Multi-track State
     const [tracks, setTracks] = useState([
-        { id: crypto.randomUUID(), name: 'Voiceover', clips: [], volume: 1, muted: false },
-        { id: crypto.randomUUID(), name: 'Music', clips: [], volume: 0.8, muted: false },
-        { id: crypto.randomUUID(), name: 'SFX', clips: [], volume: 1, muted: false },
+        { id: crypto.randomUUID(), name: 'Voiceover', clips: [], volume: 1, muted: false, isArmed: true, takes: [] },
+        { id: crypto.randomUUID(), name: 'Music', clips: [], volume: 0.8, muted: false, isArmed: false, takes: [] },
+        { id: crypto.randomUUID(), name: 'SFX', clips: [], volume: 1, muted: false, isArmed: false, takes: [] },
     ]);
 
     // Playback State
@@ -39,8 +41,12 @@ const AudioStudio = ({ onClose, isPro }) => {
 
     // Recording State
     const [isRecording, setIsRecording] = useState(false);
-    const mediaRecorderRef = useRef(null);
-    const chunksRef = useRef([]);
+    const [recordingMode, setRecordingMode] = useState('standard'); // 'standard', 'punch', 'loop'
+    const [punchRange, setPunchRange] = useState({ in: 0, out: 0, active: false });
+    const [loopRange, setLoopRange] = useState({ start: 0, end: 10, active: false });
+    const activeRecordersRef = useRef(new Map()); // trackId -> MediaRecorder
+    const activeStreamsRef = useRef(new Map()); // trackId -> Stream
+    const chunksRef = useRef(new Map()); // trackId -> chunks[]
 
     // Effects State
     const [voiceClarity, setVoiceClarity] = useState(false);
@@ -55,6 +61,9 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [ttsText, setTtsText] = useState('');
     const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0].value);
     const [isGeneratingTTS, setIsGeneratingTTS] = useState(false);
+
+    // UI State
+    const [showTakesForTrack, setShowTakesForTrack] = useState(null);
 
     const startTimeRef = useRef(0);
     const pauseTimeRef = useRef(0);
@@ -81,18 +90,20 @@ const AudioStudio = ({ onClose, isPro }) => {
     }, []);
 
     // Helper to add clip
-    const addClipToTrack = (buffer, name = 'Clip') => {
+    const addClipToTrack = (buffer, name = 'Clip', trackId = null, startTime = currentTime) => {
         const newClip = {
             id: crypto.randomUUID(),
             name,
             buffer,
             duration: buffer.duration,
-            startTime: currentTime,
+            startTime: startTime,
         };
 
-        setTracks(prev => {
+        updateTracksWithHistory(prev => {
             return prev.map((track, index) => {
-                if (index === 0) {
+                // If trackId is provided, add to that track. 
+                // If not, add to first track (legacy behavior / upload)
+                if (trackId ? track.id === trackId : index === 0) {
                     return {
                         ...track,
                         clips: [...track.clips, newClip]
@@ -102,7 +113,7 @@ const AudioStudio = ({ onClose, isPro }) => {
             });
         });
 
-        const end = currentTime + buffer.duration;
+        const end = startTime + buffer.duration;
         if (end > duration) setDuration(end);
     };
 
@@ -179,7 +190,32 @@ const AudioStudio = ({ onClose, isPro }) => {
                 const now = audioContext.currentTime;
                 let played = now - startTimeRef.current;
 
-                if (played >= duration && duration > 0) {
+                // Loop Logic
+                if (recordingMode === 'loop' && loopRange.active && played >= loopRange.end) {
+                    // Loop back
+                    const loopDuration = loopRange.end - loopRange.start;
+                    // Reset context time reference to simulate jump
+                    // This is complex with WebAudio, simpler to just stop/start or use offset
+                    // For now, simpler implementation: Stop, seek to start, play again instantly
+
+                    if (isRecording) {
+                        // If recording, we need to finish current take and start new one
+                        // This requires async handling which is hard in AF loop. 
+                        // TODO: Implement seamless loop recording
+                        console.log("Loop point reached during recording - creating take...");
+                        // For MVP: Just wrap visually, actual audio might be continuous
+                    }
+
+                    // Simple Seek for playback
+                    const newStartTime = audioContext.currentTime - loopRange.start;
+                    startTimeRef.current = newStartTime;
+                    played = loopRange.start;
+
+                    // Re-trigger sources for loop if needed (complex)
+                    // For this task, we'll assume linear playback just updates UI time
+                }
+
+                if (played >= duration && duration > 0 && !isRecording) {
                     setIsPlaying(false);
                     setActiveSources([]);
                     setCurrentTime(duration);
@@ -202,38 +238,142 @@ const AudioStudio = ({ onClose, isPro }) => {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
 
+    // Track Arming
+    const toggleTrackArm = (trackId) => {
+        updateTracksWithHistory(prev => prev.map(t =>
+            t.id === trackId ? { ...t, isArmed: !t.isArmed } : t
+        ));
+    };
+
     // Recording Logic
     const toggleRecording = async () => {
         if (!isRecording) {
+            // Start Recording
+            const armedTracks = tracks.filter(t => t.isArmed);
+            if (armedTracks.length === 0) {
+                alert("Please arm at least one track to record.");
+                return;
+            }
+
             try {
+                // If in punch mode, we might want to start playback from before the punch point
+                // For now, let's just start from current time for simplicity, or handle pre-roll later.
+
+                // Start playback if not already playing
+                if (!isPlaying) {
+                    togglePlayback();
+                }
+
+                // Initialize recorders for all armed tracks
+                // Note: Currently sharing one mic stream for all tracks as browser doesn't easily split inputs
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const mediaRecorder = new MediaRecorder(stream);
-                mediaRecorderRef.current = mediaRecorder;
-                chunksRef.current = [];
 
-                mediaRecorder.ondataavailable = (e) => {
-                    chunksRef.current.push(e.data);
-                };
+                const recordingStartTime = audioContext.currentTime - startTimeRef.current; // Capture precise timeline time
 
-                mediaRecorder.onstop = async () => {
-                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                    const arrayBuffer = await blob.arrayBuffer();
-                    const buffer = await audioContext.decodeAudioData(arrayBuffer);
-                    addClipToTrack(buffer, "Recorded Audio");
+                armedTracks.forEach(track => {
+                    const mediaRecorder = new MediaRecorder(stream);
+                    const trackChunks = [];
 
-                    stream.getTracks().forEach(track => track.stop());
-                };
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) trackChunks.push(e.data);
+                    };
 
-                mediaRecorder.start();
+                    mediaRecorder.onstop = async () => {
+                        const blob = new Blob(trackChunks, { type: 'audio/webm' });
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+
+                        // Calculate where the clip should go
+                        // In standard mode: starts where recording started
+                        // In punch mode: might need trimming if we recorded longer
+                        // In loop mode: we handle "takes"
+                        if (recordingMode === 'loop') {
+                            const newTake = {
+                                id: crypto.randomUUID(),
+                                timestamp: Date.now(),
+                                arrayBuffer: arrayBuffer, // Store raw buffer or decoded? ArrayBuffer allows on-demand decode
+                                startTime: loopRange.start, // It belongs to the loop start
+                                duration: buffer.duration
+                            };
+
+                            setTracks(prev => prev.map(t => { // Use setTracks directly for intermediate stream, or updateTracksWithHistory if we want to undo the whole take creation? 
+                                // Ideally loop takes should be undoable
+                                if (t.id === track.id) {
+                                    return { ...t, takes: [...t.takes, newTake] };
+                                }
+                                return t;
+                            }));
+
+                            // Automatically show takes manager for this track
+                            setShowTakesForTrack(track.id);
+                        } else {
+                            // Standard or Punch Mode
+                            // TODO: If Punch, trim buffer to punch in/out if necessary
+                            // For now, just placing it
+                            // For now, just placing it
+                            // FIX: Use captured recordingStartTime
+                            addClipToTrack(buffer, `Rec ${new Date().toLocaleTimeString()}`, track.id, recordingStartTime);
+                        }
+
+                        // Cleanup stream only if it's the last one? 
+                        // Actually we used one stream for all, so we should stop it once all are done.
+                        // But since we create new MediaRecorder per track on SAME stream, we need to be careful.
+                        // For this iteration let's just use the stream reference directly.
+                    };
+
+                    activeRecordersRef.current.set(track.id, mediaRecorder);
+                    chunksRef.current.set(track.id, trackChunks);
+                    mediaRecorder.start();
+                });
+
+                activeStreamsRef.current.set('main', stream); // Store main stream to stop later
                 setIsRecording(true);
+
             } catch (error) {
                 console.error("Microphone access error:", error);
                 alert("Could not access microphone.");
             }
         } else {
-            mediaRecorderRef.current.stop();
+            // Stop Recording
+            activeRecordersRef.current.forEach(recorder => {
+                if (recorder.state !== 'inactive') recorder.stop();
+            });
+            activeRecordersRef.current.clear();
+
+            const stream = activeStreamsRef.current.get('main');
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                activeStreamsRef.current.clear();
+            }
+
             setIsRecording(false);
+            if (isPlaying) stopPlayback();
         }
+    };
+
+    // Takes Management
+    const handleSelectTake = (trackId, take) => {
+        // Create a clip from the take
+        audioContext.decodeAudioData(take.arrayBuffer.slice(0)).then(buffer => {
+            addClipToTrack(buffer, `Take ${take.id.substring(0, 4)}`, trackId, take.startTime);
+        });
+        setShowTakesForTrack(null);
+    };
+
+    const handleDeleteTake = (trackId, takeId) => {
+        updateTracksWithHistory(prev => prev.map(t =>
+            t.id === trackId
+                ? { ...t, takes: t.takes.filter(take => take.id !== takeId) }
+                : t
+        ));
+    };
+
+    const handlePlayTake = async (take) => {
+        const buffer = await audioContext.decodeAudioData(take.arrayBuffer.slice(0));
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(gainNode);
+        source.start();
     };
 
     // AI Script Generation
@@ -298,6 +438,84 @@ const AudioStudio = ({ onClose, isPro }) => {
         const seconds = Math.floor(time % 60);
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
+
+    // Undo/Redo State
+    const [history, setHistory] = useState([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+
+    // Initial History
+    useEffect(() => {
+        if (history.length === 0 && tracks.length > 0) {
+            setHistory([tracks]);
+            setHistoryIndex(0);
+        }
+    }, []);
+
+    // Helper to update tracks with history
+    const updateTracksWithHistory = (newTracksOrFunc) => {
+        setTracks(prevTracks => {
+            const newTracks = typeof newTracksOrFunc === 'function' ? newTracksOrFunc(prevTracks) : newTracksOrFunc;
+
+            // Add to history
+            const newHistory = history.slice(0, historyIndex + 1);
+            newHistory.push(newTracks);
+            setHistory(newHistory);
+            setHistoryIndex(newHistory.length - 1);
+
+            return newTracks;
+        });
+    };
+
+    const undo = () => {
+        if (historyIndex > 0) {
+            setHistoryIndex(prev => prev - 1);
+            setTracks(history[historyIndex - 1]);
+        }
+    };
+
+    const redo = () => {
+        if (historyIndex < history.length - 1) {
+            setHistoryIndex(prev => prev + 1);
+            setTracks(history[historyIndex + 1]);
+        }
+    };
+
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ignore if typing in an input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+
+            // Undo/Redo
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    redo();
+                } else {
+                    undo();
+                }
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                redo();
+                return;
+            }
+
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent scrolling
+                togglePlayback();
+            } else if (e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                toggleRecording();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPlaying, isRecording, tracks, recordingMode, loopRange, punchRange, history, historyIndex]);
 
     return (
         <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white flex flex-col overflow-hidden">
@@ -393,7 +611,7 @@ const AudioStudio = ({ onClose, isPro }) => {
                     <div className="flex-1 p-4">
                         <AudioTimeline
                             tracks={tracks}
-                            setTracks={setTracks}
+                            setTracks={updateTracksWithHistory}
                             currentTime={currentTime}
                             duration={duration}
                             onSeek={(time) => {
@@ -404,7 +622,21 @@ const AudioStudio = ({ onClose, isPro }) => {
                                 }
                             }}
                             isPlaying={isPlaying}
+                            onToggleArm={toggleTrackArm}
+                            punchRange={punchRange}
+                            loopRange={loopRange}
+                            onToggleTakes={(trackId) => setShowTakesForTrack(trackId)}
                         />
+
+                        {/* Takes Manager Popup */}
+                        <TakesManager
+                            tracks={tracks}
+                            selectedTrackId={showTakesForTrack}
+                            onSelectTake={handleSelectTake}
+                            onDeleteTake={handleDeleteTake}
+                            onPlayTake={handlePlayTake}
+                        />
+
                     </div>
                 </div>
 
@@ -515,6 +747,34 @@ const AudioStudio = ({ onClose, isPro }) => {
                     <span className="text-white/40 mx-2">/</span>
                     <span className="text-white/60">{formatTime(duration)}</span>
                 </div>
+
+                {/* Mode Controls */}
+                <div className="flex items-center gap-2 bg-white/5 p-1 rounded-lg">
+                    <button
+                        onClick={() => setRecordingMode('standard')}
+                        className={`p-2 rounded transition-colors ${recordingMode === 'standard' ? 'bg-blue-600 text-white' : 'text-white/50 hover:text-white'}`}
+                        title="Standard Mode"
+                    ><Mic size={16} /></button>
+                    <button
+                        onClick={() => {
+                            setRecordingMode('loop');
+                            setLoopRange(prev => ({ ...prev, active: !prev.active }));
+                        }}
+                        className={`p-2 rounded transition-colors ${recordingMode === 'loop' ? 'bg-yellow-600 text-white' : 'text-white/50 hover:text-white'}`}
+                        title="Loop Recording"
+                    ><Repeat size={16} /></button>
+                    <button
+                        onClick={() => {
+                            setRecordingMode('punch');
+                            setPunchRange(prev => ({ ...prev, active: !prev.active }));
+                        }}
+                        className={`p-2 rounded transition-colors ${recordingMode === 'punch' ? 'bg-red-600 text-white' : 'text-white/50 hover:text-white'}`}
+                        title="Punch-In/Out"
+                    ><Scissors size={16} /></button>
+                </div>
+
+                <div className="h-8 w-px bg-white/10 mx-2"></div>
+
 
                 {/* Export */}
                 <button className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all">
