@@ -13,7 +13,11 @@ const AudioTimeline = ({
     currentTime,
     duration,
     onSeek,
-    isPlaying
+    isPlaying,
+    onToggleArm,
+    punchRange,
+    loopRange,
+    onToggleTakes
 }) => {
     const timelineRef = useRef(null);
     const [draggedClip, setDraggedClip] = useState(null);
@@ -53,8 +57,11 @@ const AudioTimeline = ({
     };
 
     // Handle Scroll
+    const [scrollTop, setScrollTop] = useState(0);
+
     const handleScroll = (e) => {
         setScrollLeft(e.target.scrollLeft);
+        setScrollTop(e.target.scrollTop);
     };
 
     // Add a new track
@@ -78,6 +85,22 @@ const AudioTimeline = ({
         setDraggedClip({ trackId, clipId, startX: e.clientX });
         setSelectedClipId(clipId);
     };
+
+    // Delete Selected Clip
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipId) {
+                setTracks(prev => prev.map(track => ({
+                    ...track,
+                    clips: track.clips.filter(c => c.id !== selectedClipId)
+                })));
+                setSelectedClipId(null);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedClipId, setTracks]);
 
     const handleMouseMove = (e) => {
         if (!draggedClip) return;
@@ -163,8 +186,8 @@ const AudioTimeline = ({
                     <div className="h-8 bg-[#18181b] border-b border-white/5 shrink-0"></div>
 
                     {/* Headers List */}
-                    <div className="flex-1 overflow-hidden">
-                        <div className="flex flex-col" style={{ transform: `translateY(0)` }}> {/* Sync scroll if needed */}
+                    <div className="flex-1 overflow-hidden relative">
+                        <div className="flex flex-col absolute top-0 left-0 right-0" style={{ transform: `translateY(${-scrollTop}px)` }}> {/* Sync scroll */}
                             {tracks.map((track) => (
                                 <div
                                     key={track.id}
@@ -172,7 +195,15 @@ const AudioTimeline = ({
                                     style={{ height: TRACK_HEIGHT }}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-bold text-white/90 truncate">{track.name}</span>
+                                        <input
+                                            type="text"
+                                            value={track.name}
+                                            onChange={(e) => {
+                                                const newName = e.target.value;
+                                                setTracks(tracks.map(t => t.id === track.id ? { ...t, name: newName } : t));
+                                            }}
+                                            className="text-sm font-bold text-white/90 bg-transparent border-none outline-none focus:text-white focus:bg-white/5 rounded px-1 -ml-1 w-full truncate transition-colors"
+                                        />
                                         <button onClick={() => removeTrack(track.id)} className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 text-white/30 hover:text-red-400 rounded transition-all">
                                             <Trash2 size={14} />
                                         </button>
@@ -185,6 +216,22 @@ const AudioTimeline = ({
                                         >
                                             {track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                                         </button>
+                                        <button
+                                            onClick={() => onToggleArm(track.id)}
+                                            className={`p-2 rounded-lg transition-colors ${track.isArmed ? "bg-red-500 text-white animate-pulse" : "bg-white/5 text-white/50 hover:text-white hover:bg-white/10"}`}
+                                            title="Arm for Recording"
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border-2 border-current ${track.isArmed ? "bg-white" : ""}`} />
+                                        </button>
+                                        {track.takes && track.takes.length > 0 && (
+                                            <button
+                                                onClick={() => onToggleTakes(track.id)}
+                                                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                                                title="View Takes"
+                                            >
+                                                <MoreVertical size={16} />
+                                            </button>
+                                        )}
                                         <div className="flex-1 flex flex-col gap-1">
                                             <input
                                                 type="range" min="0" max="1" step="0.1"
@@ -222,6 +269,30 @@ const AudioTimeline = ({
                             onMouseDown={handleTimelineMouseDown}
                         >
                             {rulerMarkers}
+                            {/* Loop Region Overlay */}
+                            {loopRange?.active && (
+                                <div
+                                    className="absolute top-0 bottom-0 bg-yellow-500/10 border-x-2 border-yellow-500/50 pointer-events-none z-0"
+                                    style={{
+                                        left: loopRange.start * PIXELS_PER_SECOND,
+                                        width: (loopRange.end - loopRange.start) * PIXELS_PER_SECOND
+                                    }}
+                                >
+                                    <div className="absolute top-0 left-0 bg-yellow-500/50 text-[10px] text-black px-1 font-bold">LOOP</div>
+                                </div>
+                            )}
+                            {/* Punch Region Overlay */}
+                            {punchRange?.active && (
+                                <div
+                                    className="absolute top-0 bottom-0 bg-red-500/10 border-x-2 border-red-500/50 pointer-events-none z-0"
+                                    style={{
+                                        left: punchRange.in * PIXELS_PER_SECOND,
+                                        width: (punchRange.out - punchRange.in) * PIXELS_PER_SECOND
+                                    }}
+                                >
+                                    <div className="absolute top-0 right-0 bg-red-500/50 text-[10px] text-white px-1 font-bold">PUNCH</div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Tracks Area */}
@@ -262,8 +333,23 @@ const AudioTimeline = ({
                                                     width={clip.duration * PIXELS_PER_SECOND}
                                                     height={TRACK_HEIGHT - 24}
                                                     isSelected={selectedClipId === clip.id}
+                                                    // Fade Props
+                                                    fadeSeconds={clip.fade || { in: 0, out: 0 }}
+                                                    onFadeChange={(newFade) => {
+                                                        setTracks(prevTracks => prevTracks.map(t => {
+                                                            if (t.id === track.id) {
+                                                                return {
+                                                                    ...t,
+                                                                    clips: t.clips.map(c =>
+                                                                        c.id === clip.id ? { ...c, fade: newFade } : c
+                                                                    )
+                                                                };
+                                                            }
+                                                            return t;
+                                                        }));
+                                                    }}
                                                 />
-                                                <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                                     <span className="text-[10px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm truncate max-w-[80%]">
                                                         {clip.name}
                                                     </span>
