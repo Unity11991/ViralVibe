@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Square, Mic, Upload, Download, Wand2, Volume2, Settings2, ArrowLeft } from 'lucide-react';
+import { Play, Pause, Square, Mic, Upload, Download, Wand2, Volume2, Settings2, ArrowLeft, Sparkles } from 'lucide-react';
 import AudioVisualizer from './AudioVisualizer';
 import { generateAudioScript } from '../../utils/aiService';
+import { generateMusic, blobToAudioBuffer, downloadAudio, getMusicPrompts } from '../../utils/musicGenService';
 
 const AudioStudio = ({ onClose, isPro }) => {
     // Audio Context State
@@ -30,6 +31,13 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [scriptTopic, setScriptTopic] = useState('');
     const [generatedScript, setGeneratedScript] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+
+    // AI Music Generation State
+    const [musicPrompt, setMusicPrompt] = useState('');
+    const [musicDuration, setMusicDuration] = useState(15);
+    const [isGeneratingMusic, setIsGeneratingMusic] = useState(false);
+    const [musicProgress, setMusicProgress] = useState({ status: '', message: '', progress: 0 });
+    const [generatedMusicBlob, setGeneratedMusicBlob] = useState(null);
 
     const startTimeRef = useRef(0);
     const pauseTimeRef = useRef(0);
@@ -203,6 +211,56 @@ const AudioStudio = ({ onClose, isPro }) => {
         }
     };
 
+    // AI Music Generation Handler
+    const handleGenerateMusic = async () => {
+        if (!musicPrompt.trim()) return;
+
+        setIsGeneratingMusic(true);
+        setMusicProgress({ status: 'starting', message: 'Initializing music generation...', progress: 10 });
+
+        try {
+            const onProgress = (progressData) => {
+                setMusicProgress(progressData);
+            };
+
+            setMusicProgress({ status: 'generating', message: 'Generating music...', progress: 30 });
+            const musicBlob = await generateMusic(musicPrompt, musicDuration, onProgress);
+
+            setGeneratedMusicBlob(musicBlob);
+            setMusicProgress({ status: 'processing', message: 'Loading audio...', progress: 80 });
+
+            // Convert to AudioBuffer and load into player
+            const buffer = await blobToAudioBuffer(musicBlob, audioContext);
+            setAudioBuffer(buffer);
+            setDuration(buffer.duration);
+            setCurrentTime(0);
+            pauseTimeRef.current = 0;
+
+            setMusicProgress({ status: 'complete', message: 'Music ready!', progress: 100 });
+
+            // Reset progress after 2 seconds
+            setTimeout(() => {
+                setMusicProgress({ status: '', message: '', progress: 0 });
+            }, 2000);
+        } catch (error) {
+            console.error("Music generation error:", error);
+            setMusicProgress({ status: 'error', message: error.message || 'Failed to generate music', progress: 0 });
+            alert("Failed to generate music: " + error.message);
+        } finally {
+            setIsGeneratingMusic(false);
+        }
+    };
+
+    // Handle download of generated music
+    const handleDownloadMusic = () => {
+        if (generatedMusicBlob) {
+            const filename = `music-${musicPrompt.slice(0, 20).replace(/[^a-z0-9]/gi, '-').toLowerCase()}.wav`;
+            downloadAudio(generatedMusicBlob, filename);
+        } else if (audioBuffer) {
+            alert('Download feature available for AI-generated music only.');
+        }
+    };
+
     // Volume Control
     useEffect(() => {
         if (gainNode) {
@@ -245,8 +303,8 @@ const AudioStudio = ({ onClose, isPro }) => {
                         <button
                             onClick={isRecording ? stopRecording : startRecording}
                             className={`flex flex-col items-center justify-center p-3 md:p-4 rounded-xl transition-all border ${isRecording
-                                    ? 'bg-red-500/20 border-red-500 animate-pulse'
-                                    : 'bg-white/5 hover:bg-white/10 border-white/20'
+                                ? 'bg-red-500/20 border-red-500 animate-pulse'
+                                : 'bg-white/5 hover:bg-white/10 border-white/20'
                                 }`}
                         >
                             <Mic size={20} className={`mb-2 ${isRecording ? 'text-red-500' : 'text-red-400'}`} />
@@ -287,6 +345,81 @@ const AudioStudio = ({ onClose, isPro }) => {
                                 className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
                             />
                         </div>
+                    </div>
+                </div>
+
+                {/* AI Music Generation */}
+                <div className="space-y-4">
+                    <h3 className="text-xs md:text-sm font-semibold text-white/50 uppercase tracking-wider flex items-center gap-2">
+                        <Sparkles size={14} className="text-pink-400" /> AI Music Gen
+                    </h3>
+
+                    <div className="space-y-3">
+                        <input
+                            type="text"
+                            placeholder="Describe your music (e.g., 'upbeat electronic dance music')"
+                            value={musicPrompt}
+                            onChange={(e) => setMusicPrompt(e.target.value)}
+                            className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-sm focus:border-pink-500/50 outline-none transition-colors"
+                        />
+
+                        {/* Quick Prompts */}
+                        <div className="flex flex-wrap gap-2">
+                            {getMusicPrompts().slice(0, 4).map((item, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={() => setMusicPrompt(item.prompt)}
+                                    className="text-xs px-2 py-1 bg-white/5 hover:bg-pink-500/20 rounded-lg transition-colors border border-white/10 hover:border-pink-500/50"
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Duration Slider */}
+                        <div className="p-3 bg-white/5 rounded-xl space-y-2">
+                            <div className="flex justify-between text-xs text-white/70">
+                                <span>Duration</span>
+                                <span>{musicDuration}s</span>
+                            </div>
+                            <input
+                                type="range" min="5" max="30" step="5"
+                                value={musicDuration}
+                                onChange={(e) => setMusicDuration(parseInt(e.target.value))}
+                                className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-pink-500"
+                            />
+                        </div>
+
+                        <button
+                            onClick={handleGenerateMusic}
+                            disabled={isGeneratingMusic || !musicPrompt}
+                            className="w-full py-2 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                        >
+                            {isGeneratingMusic ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <Sparkles size={16} />
+                            )}
+                            {isGeneratingMusic ? 'Generating...' : 'Generate Music'}
+                        </button>
+
+                        {/* Progress Indicator */}
+                        {musicProgress.message && (
+                            <div className={`p-3 rounded-xl border ${musicProgress.status === 'error'
+                                ? 'bg-red-500/10 border-red-500/30'
+                                : 'bg-pink-500/10 border-pink-500/30'
+                                }`}>
+                                <p className="text-xs text-white/80 mb-2">{musicProgress.message}</p>
+                                {musicProgress.progress > 0 && musicProgress.status !== 'error' && (
+                                    <div className="w-full bg-black/30 rounded-full h-1.5">
+                                        <div
+                                            className="bg-gradient-to-r from-pink-500 to-purple-500 h-1.5 rounded-full transition-all duration-300"
+                                            style={{ width: `${musicProgress.progress}%` }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -372,7 +505,11 @@ const AudioStudio = ({ onClose, isPro }) => {
                         {isPlaying ? <Pause size={24} md:size={32} fill="currentColor" /> : <Play size={24} md:size={32} fill="currentColor" className="ml-1" />}
                     </button>
 
-                    <button className="p-3 md:p-4 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all disabled:opacity-50">
+                    <button
+                        onClick={handleDownloadMusic}
+                        className="p-3 md:p-4 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all disabled:opacity-50"
+                        disabled={!audioBuffer}
+                    >
                         <Download size={18} md:size={20} />
                     </button>
                 </div>
