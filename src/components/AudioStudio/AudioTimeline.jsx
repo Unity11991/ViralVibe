@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Volume2, VolumeX, Plus, Trash2, MoreVertical } from 'lucide-react';
+import { Volume2, VolumeX, Plus, Trash2, MoreVertical, Scissors, Sliders, Activity, Wand2 } from 'lucide-react';
 import WaveformClip from './WaveformClip';
 
 const TRACK_HEIGHT = 90;
@@ -17,11 +17,27 @@ const AudioTimeline = ({
     onToggleArm,
     punchRange,
     loopRange,
-    onToggleTakes
+    onToggleTakes,
+    onSplitClip,
+    onUpdateClip,
+    onSelectClip,
+    onSelectTrack,
+    onUpdateAutomation,
+    showSpectrogram,
+    onToggleSpectrogram
 }) => {
     const timelineRef = useRef(null);
     const [draggedClip, setDraggedClip] = useState(null);
+
     const [selectedClipId, setSelectedClipId] = useState(null);
+    const [automationTrackId, setAutomationTrackId] = useState(null); // Track ID with active automation editing
+    const [draggedAutoPoint, setDraggedAutoPoint] = useState(null); // { trackId, index, startY, startVal }
+
+    // Sync internal selection with parent if needed or just notify
+    const handleSelectClip = (trackId, clipId) => {
+        setSelectedClipId(clipId);
+        onSelectClip && onSelectClip(trackId, clipId);
+    };
     const [scrollLeft, setScrollLeft] = useState(0);
 
     const [isScrubbing, setIsScrubbing] = useState(false);
@@ -83,7 +99,7 @@ const AudioTimeline = ({
     const handleClipMouseDown = (e, trackId, clipId) => {
         e.stopPropagation();
         setDraggedClip({ trackId, clipId, startX: e.clientX });
-        setSelectedClipId(clipId);
+        handleSelectClip(trackId, clipId);
     };
 
     // Delete Selected Clip
@@ -94,7 +110,7 @@ const AudioTimeline = ({
                     ...track,
                     clips: track.clips.filter(c => c.id !== selectedClipId)
                 })));
-                setSelectedClipId(null);
+                handleSelectClip(null, null); // Deselect
             }
         };
 
@@ -128,7 +144,44 @@ const AudioTimeline = ({
 
     const handleMouseUp = () => {
         setDraggedClip(null);
+        setDraggedAutoPoint(null);
     };
+
+    const handleAutoPointMove = (e) => {
+        if (!draggedAutoPoint) return;
+
+        // Calculate new Y value
+        // We need track top offset? No, we are tracking delta or absolute Y relative to track.
+        // Actually, easiest is to capture initial Y and update value by delta.
+
+        const deltaY = e.clientY - draggedAutoPoint.startY;
+        const deltaVal = deltaY / TRACK_HEIGHT; // negative deltaY means Up (increase val) -> No, Y is down (0 at top).
+        // Y=0 -> Val=1. Y=H -> Val=0.
+        // deltaY > 0 (down) -> Val decreases.
+
+        let newVal = draggedAutoPoint.startVal - deltaVal;
+        newVal = Math.max(0, Math.min(1, newVal));
+
+        setTracks(prev => prev.map(t => {
+            if (t.id !== draggedAutoPoint.trackId) return t;
+            const newPoints = [...(t.automation?.volume || [])];
+            if (newPoints[draggedAutoPoint.index]) {
+                newPoints[draggedAutoPoint.index] = { ...newPoints[draggedAutoPoint.index], value: newVal };
+            }
+            return { ...t, automation: { ...t.automation, volume: newPoints } };
+        }));
+    };
+
+    useEffect(() => {
+        if (draggedAutoPoint) {
+            window.addEventListener('mousemove', handleAutoPointMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            return () => {
+                window.removeEventListener('mousemove', handleAutoPointMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+            };
+        }
+    }, [draggedAutoPoint]);
 
     useEffect(() => {
         if (draggedClip) {
@@ -171,6 +224,24 @@ const AudioTimeline = ({
                     <div className="h-4 w-px bg-white/10"></div>
                     <span className="text-xs text-white/40 font-mono">{tracks.length} Tracks</span>
                 </div>
+
+                <div className="flex items-center gap-2 ml-auto mr-4">
+                    <button
+                        onClick={onToggleSpectrogram}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showSpectrogram ? 'bg-purple-600/20 text-purple-400 border-purple-600/30' : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'}`}
+                        title="Toggle Spectrogram Visualization"
+                    >
+                        <Wand2 size={14} /> Spectrum
+                    </button>
+                    <button
+                        onClick={onSplitClip}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-xs font-medium transition-colors border border-white/10"
+                        title="Split Clip at Playhead"
+                    >
+                        <Scissors size={14} /> Split
+                    </button>
+                </div>
+
                 <button
                     onClick={addTrack}
                     className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-lg text-xs font-medium transition-colors border border-blue-600/20"
@@ -223,6 +294,23 @@ const AudioTimeline = ({
                                         >
                                             <div className={`w-4 h-4 rounded-full border-2 border-current ${track.isArmed ? "bg-white" : ""}`} />
                                         </button>
+
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setAutomationTrackId(automationTrackId === track.id ? null : track.id); }}
+                                            className={`p-2 rounded-lg transition-colors ${automationTrackId === track.id ? "bg-yellow-500/20 text-yellow-400" : "bg-white/5 text-white/50 hover:text-yellow-400 hover:bg-white/10"}`}
+                                            title="Toggle Automation"
+                                        >
+                                            <Activity size={16} />
+                                        </button>
+                                        <div className="flex-1"></div>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onSelectTrack(track.id); }}
+                                            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-blue-400 transition-colors"
+                                            title="Track Effects & Mixing"
+                                        >
+                                            <Sliders size={16} />
+                                        </button>
+
                                         {track.takes && track.takes.length > 0 && (
                                             <button
                                                 onClick={() => onToggleTakes(track.id)}
@@ -246,7 +334,7 @@ const AudioTimeline = ({
                                     </div>
 
                                     {/* Track Color Indicator */}
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500/50 to-purple-500/50 opacity-50"></div>
+                                    < div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500/50 to-purple-500/50 opacity-50" ></div>
                                 </div>
                             ))}
                         </div>
@@ -333,20 +421,36 @@ const AudioTimeline = ({
                                                     width={clip.duration * PIXELS_PER_SECOND}
                                                     height={TRACK_HEIGHT - 24}
                                                     isSelected={selectedClipId === clip.id}
+                                                    // Editing Props
+                                                    startTime={clip.startTime}
+                                                    duration={clip.duration}
+                                                    offset={clip.offset}
+                                                    speed={clip.speed}
+                                                    clipId={clip.id}
+                                                    trackId={track.id}
+                                                    showSpectrogram={showSpectrogram}
+                                                    onUpdateClip={onUpdateClip}
                                                     // Fade Props
-                                                    fadeSeconds={clip.fade || { in: 0, out: 0 }}
+                                                    fadeSeconds={{ in: clip.fadeIn || 0, out: clip.fadeOut || 0 }}
                                                     onFadeChange={(newFade) => {
-                                                        setTracks(prevTracks => prevTracks.map(t => {
-                                                            if (t.id === track.id) {
-                                                                return {
-                                                                    ...t,
-                                                                    clips: t.clips.map(c =>
-                                                                        c.id === clip.id ? { ...c, fade: newFade } : c
-                                                                    )
-                                                                };
-                                                            }
-                                                            return t;
-                                                        }));
+                                                        // Call onUpdateClip if available, else local setTracks? 
+                                                        // Better to use onUpdateClip for consistency if parent supports it
+                                                        if (onUpdateClip) {
+                                                            onUpdateClip(track.id, clip.id, { fadeIn: newFade.in, fadeOut: newFade.out });
+                                                        } else {
+                                                            // Fallback
+                                                            setTracks(prevTracks => prevTracks.map(t => {
+                                                                if (t.id === track.id) {
+                                                                    return {
+                                                                        ...t,
+                                                                        clips: t.clips.map(c =>
+                                                                            c.id === clip.id ? { ...c, fadeIn: newFade.in, fadeOut: newFade.out } : c
+                                                                        )
+                                                                    };
+                                                                }
+                                                                return t;
+                                                            }));
+                                                        }
                                                     }}
                                                 />
                                                 <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -356,6 +460,68 @@ const AudioTimeline = ({
                                                 </div>
                                             </div>
                                         ))}
+
+                                        {/* Automation Overlay */}
+                                        {automationTrackId === track.id && (
+                                            <div className="absolute inset-0 z-40">
+                                                <svg
+                                                    className="w-full h-full overflow-visible"
+                                                    onMouseDown={(e) => {
+                                                        if (e.target.tagName !== 'circle') {
+                                                            e.stopPropagation();
+                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                            const x = e.clientX - rect.left;
+                                                            const y = e.clientY - rect.top;
+                                                            const time = x / PIXELS_PER_SECOND;
+                                                            const value = 1 - (y / TRACK_HEIGHT);
+
+                                                            const newPoint = { time, value: Math.max(0, Math.min(1, value)) };
+                                                            const points = [...(track.automation?.volume || [])];
+                                                            points.push(newPoint);
+                                                            // Sort? Best to keep sorted for render but update handler handles storage.
+                                                            // Local update first for responsiveness
+                                                            onUpdateAutomation(track.id, 'volume', points);
+                                                        }
+                                                    }}
+                                                >
+                                                    {/* Background Line (Unity) */}
+                                                    <line x1="0" y1={0} x2="10000" y2={0} stroke="white" strokeOpacity="0.1" strokeDasharray="4" />
+
+                                                    <polyline
+                                                        points={(track.automation?.volume || [])
+                                                            .sort((a, b) => a.time - b.time)
+                                                            .map(p => `${p.time * PIXELS_PER_SECOND},${(1 - p.value) * TRACK_HEIGHT}`)
+                                                            .join(' ')}
+                                                        fill="none"
+                                                        stroke="#EAB308"
+                                                        strokeWidth="2"
+                                                        strokeOpacity="0.8"
+                                                    />
+                                                    {(track.automation?.volume || []).map((p, i) => (
+                                                        <circle
+                                                            key={i}
+                                                            cx={p.time * PIXELS_PER_SECOND}
+                                                            cy={(1 - p.value) * TRACK_HEIGHT}
+                                                            r={5}
+                                                            fill="#EAB308"
+                                                            className="cursor-pointer hover:stroke-white hover:stroke-2"
+                                                            onMouseDown={(e) => {
+                                                                e.stopPropagation();
+                                                                setDraggedAutoPoint({ trackId: track.id, index: i, startY: e.clientY, startVal: p.value });
+                                                            }}
+                                                            onDoubleClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const newPoints = (track.automation?.volume || []).filter((_, idx) => idx !== i);
+                                                                onUpdateAutomation(track.id, 'volume', newPoints);
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </svg>
+                                                <div className="absolute top-2 right-2 px-2 py-1 bg-yellow-500/20 text-yellow-500 text-[10px] font-bold rounded pointer-events-none">
+                                                    AUTOMATION EDITING
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -370,8 +536,8 @@ const AudioTimeline = ({
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
 
