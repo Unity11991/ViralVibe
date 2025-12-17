@@ -30,17 +30,32 @@ export const generateMusic = async (prompt, duration = 15, onProgress = null) =>
             });
         }
 
-        // Call Supabase Edge Function
-        const { data, error } = await supabase.functions.invoke('generate-music', {
-            body: { prompt, duration: validDuration }
+        // Get Supabase URL and anon key
+        const { data: { session } } = await supabase.auth.getSession();
+        const supabaseUrl = supabase.supabaseUrl;
+        const supabaseKey = supabase.supabaseKey;
+
+        // Use direct fetch to get binary response properly
+        const functionUrl = `${supabaseUrl}/functions/v1/generate-music`;
+
+        const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                duration: validDuration
+            })
         });
 
-        if (error) {
+        if (!response.ok) {
             // Check if model is loading
-            if (error.context?.status === 503) {
-                const responseData = error.context?.body;
-                if (responseData?.loading) {
-                    const estimatedTime = responseData.estimated_time || 20;
+            if (response.status === 503) {
+                const data = await response.json();
+                if (data.loading) {
+                    const estimatedTime = data.estimated_time || 20;
 
                     if (onProgress) {
                         onProgress({
@@ -56,11 +71,30 @@ export const generateMusic = async (prompt, duration = 15, onProgress = null) =>
                 }
             }
 
-            throw new Error(error.message || 'Failed to generate music');
+            // Try to get error message
+            let errorMsg = 'Failed to generate music';
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error || errorData.message || errorMsg;
+            } catch (e) {
+                // Response wasn't JSON
+            }
+
+            throw new Error(errorMsg);
         }
 
-        // Data should be a blob
-        if (!data) {
+        if (onProgress) {
+            onProgress({
+                status: 'processing',
+                message: 'Processing audio...',
+                progress: 80
+            });
+        }
+
+        // Get the audio blob
+        const audioBlob = await response.blob();
+
+        if (!audioBlob || audioBlob.size === 0) {
             throw new Error('No audio data received');
         }
 
@@ -68,8 +102,6 @@ export const generateMusic = async (prompt, duration = 15, onProgress = null) =>
             onProgress({ status: 'complete', message: 'Music generated!', progress: 100 });
         }
 
-        // Convert response to blob if needed
-        const audioBlob = data instanceof Blob ? data : new Blob([data], { type: 'audio/wav' });
         return audioBlob;
 
     } catch (error) {
