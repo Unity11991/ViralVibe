@@ -1,137 +1,133 @@
-// Supabase Edge Function for Music Generation
-// Proxies requests to Hugging Face MusicGen API to avoid CORS issues
-
-const HF_API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small";
-
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 Deno.serve(async (req) => {
-    // Handle CORS preflight
+    // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+        return new Response('ok', { headers: corsHeaders })
     }
 
     try {
-        // Parse request body
-        let body;
-        try {
-            body = await req.json();
-        } catch (e) {
-            console.error('Failed to parse request body:', e);
+        const { prompt, duration = 10, temperature = 1.0 } = await req.json()
+
+        // Validate inputs
+        if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
             return new Response(
-                JSON.stringify({ error: 'Invalid JSON in request body' }),
-                {
-                    status: 400,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
-            );
+                JSON.stringify({ error: 'Please provide a valid music description.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
-        const { prompt, duration = 15 } = body;
-
-        if (!prompt || typeof prompt !== 'string') {
-            console.error('Invalid prompt:', prompt);
+        if (![5, 10, 15, 30].includes(duration)) {
             return new Response(
-                JSON.stringify({ error: 'Invalid prompt provided' }),
-                {
-                    status: 400,
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                }
-            );
+                JSON.stringify({ error: 'Duration must be 5, 10, 15, or 30 seconds.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
-        // Validate duration
-        const validDuration = Math.min(Math.max(duration, 5), 30);
+        // Get Hugging Face API key from environment
+        const apiKey = Deno.env.get('HUGGINGFACE_API_KEY')
+        if (!apiKey) {
+            return new Response(
+                JSON.stringify({ error: 'Hugging Face API key not configured on server.' }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
 
-        console.log(`Generating music: "${prompt}" (${validDuration}s)`);
+        console.log(`[MusicGen] Generating ${duration}s music for prompt: "${prompt.substring(0, 50)}..."`)
 
         // Call Hugging Face API
-        const response = await fetch(HF_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                inputs: prompt,
-                parameters: {
-                    max_length: Math.floor(validDuration * 50),
-                    temperature: 0.9,
-                    top_k: 250,
-                    top_p: 0.95,
-                }
-            }),
-        });
+        const response = await fetch(
+            'https://api-inference.huggingface.co/models/facebook/musicgen-small',
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    inputs: prompt.trim(),
+                    parameters: {
+                        max_new_tokens: Math.floor(duration * 50),
+                        temperature: temperature,
+                    }
+                }),
+            }
+        )
 
-        console.log('Hugging Face Response Status:', response.status);
-
-        if (!response.ok) {
-            // Model might be loading
-            if (response.status === 503) {
-                let data;
-                try {
-                    data = await response.json();
-                } catch (e) {
-                    console.error('Failed to parse 503 response:', e);
-                    data = { estimated_time: 20 };
-                }
-
-                console.log('Model loading, estimated time:', data.estimated_time);
-
+        // Handle model loading state
+        if (response.status === 503) {
+            const errorData = await response.json()
+            if (errorData.error && errorData.error.includes('loading')) {
+                const estimatedTime = errorData.estimated_time || 20
                 return new Response(
                     JSON.stringify({
-                        loading: true,
-                        estimated_time: data.estimated_time || 20,
-                        message: 'Model is warming up...'
+                        error: 'MODEL_LOADING',
+                        message: 'The AI model is loading. Please try again in a minute.',
+                        estimated_time: estimatedTime
                     }),
-                    {
-                        status: 503,
-                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                    }
-                );
+                    { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
             }
-
-            // Try to get error details
-            let errorText;
-            try {
-                errorText = await response.text();
-            } catch (e) {
-                errorText = 'Unable to read error response';
-            }
-
-            console.error(`Hugging Face Error (${response.status}):`, errorText);
-            throw new Error(`Hugging Face API error: ${response.statusText}`);
         }
 
-        // Get audio blob
-        const audioBlob = await response.blob();
-        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        // Handle rate limiting
+        if (response.status === 429) {
+            return new Response(
+                JSON.stringify({
+                    error: 'RATE_LIMIT',
+                    message: 'Rate limit exceeded. Please wait a moment and try again.'
+                }),
+                { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
 
-        // Return audio with proper headers
+        // Handle authentication errors
+        if (response.status === 401 || response.status === 403) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid Hugging Face API key configuration.' }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Handle other errors
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            return new Response(
+                JSON.stringify({ error: errorData.error || `API request failed with status ${response.status}` }),
+                { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Get audio blob from response
+        const audioBlob = await response.blob()
+
+        // Verify we got actual audio data
+        if (audioBlob.size === 0) {
+            return new Response(
+                JSON.stringify({ error: 'Received empty audio file from API.' }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        console.log(`[MusicGen] Successfully generated ${audioBlob.size} bytes of audio`)
+
+        // Return the audio blob
         return new Response(audioBlob, {
             headers: {
                 ...corsHeaders,
                 'Content-Type': 'audio/wav',
-                'Cache-Control': 'public, max-age=3600',
-            },
-        });
+                'Content-Length': audioBlob.size.toString(),
+            }
+        })
 
     } catch (error) {
-        console.error('Music generation error:', error);
-        console.error('Error stack:', error.stack);
-
+        console.error('[MusicGen] Error:', error)
         return new Response(
-            JSON.stringify({
-                error: error.message || 'Failed to generate music',
-                details: error.toString(),
-                stack: error.stack
-            }),
-            {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            }
-        );
+            JSON.stringify({ error: (error as Error).message || 'Failed to generate music' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
     }
-});
+})

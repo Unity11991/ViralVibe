@@ -1,155 +1,168 @@
 /**
- * MusicGen Service - Supabase Edge Function Integration
- * Free AI music generation from text using Meta's MusicGen model
- * Uses Supabase Edge Function to avoid CORS issues
+ * Music Generation Service
+ * Integrates with Hugging Face's MusicGen model via Supabase Edge Function
  */
 
 import { supabase } from '../lib/supabase';
 
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
+
 /**
- * Generate music from text prompt using Supabase Edge Function
+ * Generate music from a text prompt using Hugging Face's MusicGen model
  * @param {string} prompt - Text description of the music to generate
- * @param {number} duration - Duration in seconds (default: 15, max: 30)
- * @param {function} onProgress - Optional progress callback
+ * @param {Object} options - Generation options
+ * @param {number} options.duration - Duration in seconds (5, 10, 15, or 30)
+ * @param {number} options.temperature - Creativity level (0.8 - 1.2, default 1.0)
  * @returns {Promise<Blob>} - Audio blob (WAV format)
  */
-export const generateMusic = async (prompt, duration = 15, onProgress = null) => {
+export const generateMusic = async (prompt, options = {}) => {
     if (!prompt || prompt.trim().length === 0) {
-        throw new Error("Music description is required");
+        throw new Error('Please provide a music description.');
     }
 
+    const { duration = 10, temperature = 1.0 } = options;
+
     // Validate duration
-    const validDuration = Math.min(Math.max(duration, 5), 30);
+    if (![5, 10, 15, 30].includes(duration)) {
+        throw new Error('Duration must be 5, 10, 15, or 30 seconds.');
+    }
 
-    try {
-        if (onProgress) {
-            onProgress({
-                status: 'starting',
-                message: 'Connecting to music generation service...',
-                progress: 10
+    const payload = {
+        prompt: prompt.trim(),
+        duration: duration,
+        temperature: temperature,
+    };
+
+    // Retry logic with exponential backoff
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            // Call Supabase Edge Function instead of direct API
+            const { data, error } = await supabase.functions.invoke('generate-music', {
+                body: payload,
             });
-        }
 
-        // Get Supabase URL and anon key
-        const { data: { session } } = await supabase.auth.getSession();
-        const supabaseUrl = supabase.supabaseUrl;
-        const supabaseKey = supabase.supabaseKey;
+            if (error) {
+                // Check for specific error types
+                if (error.message && error.message.includes('MODEL_LOADING')) {
+                    throw new Error('MODEL_LOADING:20');
+                }
+                if (error.message && error.message.includes('RATE_LIMIT')) {
+                    throw new Error('RATE_LIMIT:Rate limit exceeded. Please wait a moment and try again.');
+                }
+                throw new Error(error.message || 'Failed to generate music');
+            }
 
-        // Use direct fetch to get binary response properly
-        const functionUrl = `${supabaseUrl}/functions/v1/generate-music`;
+            // The data should be the audio blob
+            if (!data) {
+                throw new Error('No audio data received from server.');
+            }
 
-        const response = await fetch(functionUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseKey}`,
-            },
-            body: JSON.stringify({
-                prompt: prompt,
-                duration: validDuration
-            })
-        });
+            // Convert the response to a Blob if it isn't already
+            let audioBlob;
+            if (data instanceof Blob) {
+                audioBlob = data;
+            } else {
+                // If data is ArrayBuffer or similar, convert it
+                audioBlob = new Blob([data], { type: 'audio/wav' });
+            }
 
-        if (!response.ok) {
-            // Check if model is loading
-            if (response.status === 503) {
-                const data = await response.json();
-                if (data.loading) {
-                    const estimatedTime = data.estimated_time || 20;
+            // Verify we got actual audio data
+            if (audioBlob.size === 0) {
+                throw new Error('Received empty audio file from server.');
+            }
 
-                    if (onProgress) {
-                        onProgress({
-                            status: 'loading',
-                            message: `Model is warming up... (~${Math.ceil(estimatedTime)}s)`,
-                            progress: 20
-                        });
-                    }
+            return audioBlob;
 
-                    // Wait and retry
-                    await new Promise(resolve => setTimeout(resolve, estimatedTime * 1000));
-                    return generateMusic(prompt, duration, onProgress); // Retry
+        } catch (error) {
+            lastError = error;
+
+            // Don't retry on validation errors
+            if (error.message.includes('Please provide a music description')) {
+                throw error;
+            }
+
+            // Handle model loading - wait and retry
+            if (error.message.startsWith('MODEL_LOADING:')) {
+                const waitTime = parseInt(error.message.split(':')[1]) * 1000;
+                console.log(`Model is loading, waiting ${waitTime / 1000}s before retry ${attempt}/${MAX_RETRIES}...`);
+
+                if (attempt < MAX_RETRIES) {
+                    await sleep(waitTime);
+                    continue;
+                } else {
+                    throw new Error('Model is still loading. Please try again in a minute.');
                 }
             }
 
-            // Try to get error message
-            let errorMsg = 'Failed to generate music';
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.error || errorData.message || errorMsg;
-            } catch (e) {
-                // Response wasn't JSON
+            // Handle rate limiting - wait and retry
+            if (error.message.startsWith('RATE_LIMIT:')) {
+                if (attempt < MAX_RETRIES) {
+                    const retryDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
+                    console.log(`Rate limited, waiting ${retryDelay / 1000}s before retry ${attempt}/${MAX_RETRIES}...`);
+                    await sleep(retryDelay);
+                    continue;
+                } else {
+                    throw new Error('Rate limit exceeded. Please try again in a few minutes.');
+                }
             }
 
-            throw new Error(errorMsg);
+            // For other errors, retry with exponential backoff
+            if (attempt < MAX_RETRIES) {
+                const retryDelay = INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
+                console.log(`Attempt ${attempt} failed, retrying in ${retryDelay / 1000}s...`);
+                await sleep(retryDelay);
+            }
         }
-
-        if (onProgress) {
-            onProgress({
-                status: 'processing',
-                message: 'Processing audio...',
-                progress: 80
-            });
-        }
-
-        // Get the audio blob
-        const audioBlob = await response.blob();
-
-        if (!audioBlob || audioBlob.size === 0) {
-            throw new Error('No audio data received');
-        }
-
-        if (onProgress) {
-            onProgress({ status: 'complete', message: 'Music generated!', progress: 100 });
-        }
-
-        return audioBlob;
-
-    } catch (error) {
-        console.error("MusicGen Error:", error);
-        throw new Error(`Music generation failed: ${error.message}`);
     }
+
+    // All retries exhausted
+    throw new Error(lastError?.message || 'Failed to generate music after multiple attempts. Please try again later.');
 };
 
 /**
- * Convert audio blob to AudioBuffer for Web Audio API
- * @param {Blob} blob - Audio blob
- * @param {AudioContext} audioContext - Web Audio API context
- * @returns {Promise<AudioBuffer>}
+ * Sleep utility for retry delays
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
  */
-export const blobToAudioBuffer = async (blob, audioContext) => {
-    const arrayBuffer = await blob.arrayBuffer();
-    return await audioContext.decodeAudioData(arrayBuffer);
-};
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Download audio blob as file
- * @param {Blob} blob - Audio blob
- * @param {string} filename - Filename for download
+ * Get suggested prompts for inspiration
+ * @returns {Array<string>} - Array of example prompts
  */
-export const downloadAudio = (blob, filename = "generated-music.wav") => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-};
-
-/**
- * Get suggested music prompts for inspiration
- * @returns {Array<Object>} - Array of prompt suggestions
- */
-export const getMusicPrompts = () => {
+export const getSuggestedPrompts = () => {
     return [
-        { label: "Upbeat Dance", prompt: "upbeat electronic dance music with energetic beats" },
-        { label: "Calm Piano", prompt: "calm and peaceful piano melody, relaxing ambient" },
-        { label: "Epic Cinematic", prompt: "epic cinematic orchestral music with dramatic strings" },
-        { label: "Lo-fi Chill", prompt: "lo-fi hip hop chill beats, relaxed and mellow" },
-        { label: "Rock Energy", prompt: "energetic rock music with electric guitar and drums" },
-        { label: "Jazz Smooth", prompt: "smooth jazz with saxophone and piano" },
-        { label: "Reggae Vibes", prompt: "reggae music with relaxed tropical vibes" },
-        { label: "Classical", prompt: "classical orchestral music with violin and cello" },
+        'upbeat electronic dance music with synth',
+        'calm acoustic guitar melody',
+        'epic orchestral soundtrack',
+        'lo-fi hip hop beats',
+        'energetic rock with drums and guitar',
+        'ambient space music with pads',
+        'jazz piano improvisation',
+        'tropical house with steel drums',
+        'cinematic trailer music',
+        'chill wave synth background'
     ];
+};
+
+/**
+ * Validate and sanitize user prompt
+ * @param {string} prompt - User input prompt
+ * @returns {string} - Sanitized prompt
+ */
+export const sanitizePrompt = (prompt) => {
+    if (!prompt) return '';
+
+    // Remove excessive whitespace
+    let sanitized = prompt.trim().replace(/\s+/g, ' ');
+
+    // Limit length to prevent API issues
+    const MAX_LENGTH = 200;
+    if (sanitized.length > MAX_LENGTH) {
+        sanitized = sanitized.substring(0, MAX_LENGTH);
+    }
+
+    return sanitized;
 };
