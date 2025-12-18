@@ -6,6 +6,11 @@ import TakesManager from './TakesManager';
 import { generateAudioScript } from '../../utils/aiService';
 import { VirtualInstrument } from './VirtualInstrument';
 import PianoRoll from './PianoRoll';
+import { renderAudio } from './AudioExporter';
+import LoudnessMeter from './LoudnessMeter';
+import AudioExportModal from './AudioExportModal';
+
+import { Loader2 } from 'lucide-react';
 
 const VOICE_OPTIONS = [
     { name: 'Joanna (US Female)', value: 'Joanna' },
@@ -97,6 +102,11 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [showTakesForTrack, setShowTakesForTrack] = useState(null);
     const [showSpectrogram, setShowSpectrogram] = useState(false); // Toggle Spectral View
     const [editingMidiClip, setEditingMidiClip] = useState(null); // { trackId, clipId } for Piano Roll
+
+    const [isExporting, setIsExporting] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportSettings, setExportSettings] = useState({ format: 'WAV' });
+    const [exportProgress, setExportProgress] = useState(0);
 
     const startTimeRef = useRef(0);
     const pauseTimeRef = useRef(0);
@@ -291,9 +301,69 @@ const AudioStudio = ({ onClose, isPro }) => {
             }
             return t;
         }));
+
+        const end = startTime + newClip.duration;
+        if (end > duration) setDuration(end);
     };
 
 
+
+    // Export Handler
+    const handleExport = async () => {
+        let exportDuration = duration;
+
+        // Recalculate duration if 0
+        if (exportDuration <= 0) {
+            tracks.forEach(t => {
+                t.clips.forEach(c => {
+                    const end = c.startTime + c.duration;
+                    if (end > exportDuration) exportDuration = end;
+                });
+            });
+        }
+
+        if (exportDuration <= 0) {
+            alert("Project is empty. Add clips to export.");
+            return;
+        }
+
+        setIsExporting(true);
+        setExportProgress(0);
+
+        // Fake progress for UX
+        const progressInterval = setInterval(() => {
+            setExportProgress(prev => {
+                if (prev >= 90) return prev;
+                return prev + 5;
+            });
+        }, 200);
+
+        try {
+            const blob = await renderAudio(tracks, exportDuration);
+
+            clearInterval(progressInterval);
+            setExportProgress(100);
+
+            // Short delay to show 100%
+            await new Promise(r => setTimeout(r, 500));
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `project_mix.${exportSettings.format.toLowerCase()}`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            setShowExportModal(false);
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Export failed. See console for details.");
+        } finally {
+            clearInterval(progressInterval);
+            setIsExporting(false);
+            setExportProgress(0);
+        }
+    };
 
     // File Upload Handler
     const handleFileUpload = async (e) => {
@@ -1613,10 +1683,28 @@ const AudioStudio = ({ onClose, isPro }) => {
 
 
                 {/* Export */}
-                <button className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all">
+                <button
+                    onClick={() => setShowExportModal(true)}
+                    className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all"
+                    title="Export Mix"
+                >
                     <Download size={18} />
                 </button>
             </div>
+
+            <AudioExportModal
+                show={showExportModal}
+                onClose={() => setShowExportModal(false)}
+                isExporting={isExporting}
+                progress={exportProgress}
+                onExport={handleExport}
+                settings={exportSettings}
+                onSettingsChange={setExportSettings}
+                onCancel={() => {
+                    setIsExporting(false);
+                    setShowExportModal(false);
+                }}
+            />
         </div >
     );
 };
