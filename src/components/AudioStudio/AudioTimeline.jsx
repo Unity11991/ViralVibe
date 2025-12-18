@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Volume2, VolumeX, Plus, Trash2, MoreVertical, Scissors, Sliders, Activity, Wand2 } from 'lucide-react';
+import { Volume2, VolumeX, Plus, Trash2, MoreVertical, Scissors, Sliders, Activity, Wand2, X, Piano } from 'lucide-react';
 import WaveformClip from './WaveformClip';
+import AudioVisualizer from './AudioVisualizer';
 
 const TRACK_HEIGHT = 90;
 const HEADER_WIDTH = 220;
@@ -24,7 +25,11 @@ const AudioTimeline = ({
     onSelectTrack,
     onUpdateAutomation,
     showSpectrogram,
-    onToggleSpectrogram
+    onToggleSpectrogram,
+    analyser,
+    onAddInstrumentTrack,
+    onAddMidiClip,
+    onEditMidiClip
 }) => {
     const timelineRef = useRef(null);
     const [draggedClip, setDraggedClip] = useState(null);
@@ -248,6 +253,12 @@ const AudioTimeline = ({
                 >
                     <Plus size={14} /> Add Track
                 </button>
+                <button
+                    onClick={onAddInstrumentTrack}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-green-600/10 hover:bg-green-600/20 text-green-400 rounded-lg text-xs font-medium transition-colors border border-green-600/20 ml-2"
+                >
+                    <Piano size={14} /> Add Inst
+                </button>
             </div>
 
             <div className="flex-1 flex overflow-hidden relative">
@@ -403,62 +414,104 @@ const AudioTimeline = ({
                                     key={track.id}
                                     className="absolute w-full border-b border-white/5"
                                     style={{ top: index * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                                    onDoubleClick={(e) => {
+                                        if (track.type === 'midi') {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const x = e.clientX - rect.left;
+                                            const time = x / PIXELS_PER_SECOND;
+                                            onAddMidiClip(track.id, time);
+                                        }
+                                    }}
                                 >
                                     {/* Clips */}
                                     <div className="relative w-full h-full">
                                         {track.clips.map(clip => (
-                                            <div
-                                                key={clip.id}
-                                                className="absolute top-3 bottom-3 group"
-                                                style={{
-                                                    left: clip.startTime * PIXELS_PER_SECOND,
-                                                    width: clip.duration * PIXELS_PER_SECOND
-                                                }}
-                                                onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
-                                            >
-                                                <WaveformClip
-                                                    buffer={clip.buffer}
-                                                    width={clip.duration * PIXELS_PER_SECOND}
-                                                    height={TRACK_HEIGHT - 24}
-                                                    isSelected={selectedClipId === clip.id}
-                                                    // Editing Props
-                                                    startTime={clip.startTime}
-                                                    duration={clip.duration}
-                                                    offset={clip.offset}
-                                                    speed={clip.speed}
-                                                    clipId={clip.id}
-                                                    trackId={track.id}
-                                                    showSpectrogram={showSpectrogram}
-                                                    onUpdateClip={onUpdateClip}
-                                                    // Fade Props
-                                                    fadeSeconds={{ in: clip.fadeIn || 0, out: clip.fadeOut || 0 }}
-                                                    onFadeChange={(newFade) => {
-                                                        // Call onUpdateClip if available, else local setTracks? 
-                                                        // Better to use onUpdateClip for consistency if parent supports it
-                                                        if (onUpdateClip) {
-                                                            onUpdateClip(track.id, clip.id, { fadeIn: newFade.in, fadeOut: newFade.out });
-                                                        } else {
-                                                            // Fallback
-                                                            setTracks(prevTracks => prevTracks.map(t => {
-                                                                if (t.id === track.id) {
-                                                                    return {
-                                                                        ...t,
-                                                                        clips: t.clips.map(c =>
-                                                                            c.id === clip.id ? { ...c, fadeIn: newFade.in, fadeOut: newFade.out } : c
-                                                                        )
-                                                                    };
-                                                                }
-                                                                return t;
-                                                            }));
-                                                        }
+                                            track.type !== 'midi' ? (
+                                                <div
+                                                    key={clip.id}
+                                                    className="absolute top-3 bottom-3 group"
+                                                    style={{
+                                                        left: clip.startTime * PIXELS_PER_SECOND,
+                                                        width: clip.duration * PIXELS_PER_SECOND
                                                     }}
-                                                />
-                                                <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                                    <span className="text-[10px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm truncate max-w-[80%]">
-                                                        {clip.name}
-                                                    </span>
+                                                    onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
+                                                >
+                                                    <WaveformClip
+                                                        buffer={clip.buffer}
+                                                        width={clip.duration * PIXELS_PER_SECOND}
+                                                        height={TRACK_HEIGHT - 24}
+                                                        isSelected={selectedClipId === clip.id}
+                                                        // Editing Props
+                                                        startTime={clip.startTime}
+                                                        duration={clip.duration}
+                                                        offset={clip.offset}
+                                                        speed={clip.speed}
+                                                        clipId={clip.id}
+                                                        trackId={track.id}
+                                                        showSpectrogram={showSpectrogram}
+                                                        onUpdateClip={onUpdateClip}
+                                                        // Fade Props
+                                                        fadeSeconds={{ in: clip.fadeIn || 0, out: clip.fadeOut || 0 }}
+                                                        onFadeChange={(newFade) => {
+                                                            if (onUpdateClip) {
+                                                                onUpdateClip(track.id, clip.id, { fadeIn: newFade.in, fadeOut: newFade.out });
+                                                            } else {
+                                                                setTracks(prevTracks => prevTracks.map(t => {
+                                                                    if (t.id === track.id) {
+                                                                        return {
+                                                                            ...t,
+                                                                            clips: t.clips.map(c =>
+                                                                                c.id === clip.id ? { ...c, fadeIn: newFade.in, fadeOut: newFade.out } : c
+                                                                            )
+                                                                        };
+                                                                    }
+                                                                    return t;
+                                                                }));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                                        <span className="text-[10px] font-medium text-white/90 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm truncate max-w-[80%]">
+                                                            {clip.name}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            ) : (
+                                                // MIDI Clip Rendering
+                                                <div
+                                                    key={clip.id}
+                                                    className="absolute top-1 bottom-1 group bg-green-900/50 border border-green-500/50 rounded overflow-hidden cursor-pointer"
+                                                    style={{
+                                                        left: clip.startTime * PIXELS_PER_SECOND,
+                                                        width: clip.duration * PIXELS_PER_SECOND
+                                                    }}
+                                                    onMouseDown={(e) => handleClipMouseDown(e, track.id, clip.id)}
+                                                    onDoubleClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditMidiClip(track.id, clip.id);
+                                                    }}
+                                                >
+                                                    {/* Mini Piano Roll View */}
+                                                    <div className="absolute inset-0 opacity-50">
+                                                        {clip.notes && clip.notes.map(n => (
+                                                            <div
+                                                                key={n.id}
+                                                                className="absolute bg-green-400 h-[2px]"
+                                                                style={{
+                                                                    left: (n.startTime / clip.duration) * 100 + '%',
+                                                                    width: (n.duration / clip.duration) * 100 + '%',
+                                                                    top: (1 - (n.pitch % 12) / 12) * 100 + '%' // Rough pitch viz
+                                                                }}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <div className="absolute top-0 left-0 right-0 p-1.5 flex justify-between items-start">
+                                                        <span className="text-[10px] font-medium text-green-100 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur-sm truncate">
+                                                            {clip.name}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )
                                         ))}
 
                                         {/* Automation Overlay */}
@@ -537,6 +590,42 @@ const AudioTimeline = ({
                     </div>
                 </div>
             </div >
+
+            {/* Spectrogram Overlay */}
+            {/* Spectrogram Overlay */}
+            {
+                showSpectrogram && (
+                    <div className="absolute inset-0 z-50 bg-[#0a0a0a] flex flex-col">
+                        {/* Header */}
+                        <div className="h-10 border-b border-white/10 flex items-center justify-between px-4 bg-[#18181b] shrink-0">
+                            <span className="text-xs font-bold text-white/70 uppercase tracking-wider flex items-center gap-2">
+                                <Wand2 size={14} className="text-purple-400" /> Spectral Display
+                            </span>
+                            <button
+                                onClick={onToggleSpectrogram}
+                                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
+                            >
+                                <VolumeX size={16} className="rotate-45" /> {/* Using VolumeX as X icon or just X */}
+                            </button>
+                        </div>
+
+                        {/* Visualizer Content */}
+                        <div className="flex-1 relative bg-black">
+                            <AudioVisualizer analyser={analyser} isPlaying={isPlaying} />
+
+                            {/* Legend / Info */}
+                            <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-3 py-2 rounded-lg border border-white/10 text-[10px] text-white/50 space-y-1 pointer-events-none">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-red-500"></div> <span>High Intensity</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500"></div> <span>Low Intensity</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div >
     );
 };

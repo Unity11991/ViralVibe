@@ -4,6 +4,8 @@ import { Play, Pause, Square, Mic, Upload, Download, Wand2, Volume2, Settings2, 
 import AudioTimeline from './AudioTimeline';
 import TakesManager from './TakesManager';
 import { generateAudioScript } from '../../utils/aiService';
+import { VirtualInstrument } from './VirtualInstrument';
+import PianoRoll from './PianoRoll';
 
 const VOICE_OPTIONS = [
     { name: 'Joanna (US Female)', value: 'Joanna' },
@@ -74,6 +76,8 @@ const AudioStudio = ({ onClose, isPro }) => {
     const activeRecordersRef = useRef(new Map()); // trackId -> MediaRecorder
     const activeStreamsRef = useRef(new Map()); // trackId -> Stream
     const chunksRef = useRef(new Map()); // trackId -> chunks[]
+    const trackNodesRef = useRef(new Map()); // trackId -> [{ eqLow, eqMid, eqHigh, ... }]
+    const instrumentsRef = useRef(new Map()); // trackId -> VirtualInstrument
 
     // Effects State
     const [voiceClarity, setVoiceClarity] = useState(false);
@@ -92,6 +96,7 @@ const AudioStudio = ({ onClose, isPro }) => {
     // UI State
     const [showTakesForTrack, setShowTakesForTrack] = useState(null);
     const [showSpectrogram, setShowSpectrogram] = useState(false); // Toggle Spectral View
+    const [editingMidiClip, setEditingMidiClip] = useState(null); // { trackId, clipId } for Piano Roll
 
     const startTimeRef = useRef(0);
     const pauseTimeRef = useRef(0);
@@ -116,6 +121,89 @@ const AudioStudio = ({ onClose, isPro }) => {
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
     }, []);
+
+    // Real-time Effect Updates
+    useEffect(() => {
+        if (!isPlaying || !audioContext) return;
+
+        // Update Track Effects
+        tracks.forEach(track => {
+            const nodesList = trackNodesRef.current.get(track.id);
+            if (!nodesList) return;
+
+            const effects = track.effects;
+
+            nodesList.forEach(nodes => {
+                // Update EQ
+                if (nodes.eqLow) nodes.eqLow.gain.setTargetAtTime(effects.eq.low, audioContext.currentTime, 0.1);
+                if (nodes.eqMid) nodes.eqMid.gain.setTargetAtTime(effects.eq.mid, audioContext.currentTime, 0.1);
+                if (nodes.eqHigh) nodes.eqHigh.gain.setTargetAtTime(effects.eq.high, audioContext.currentTime, 0.1);
+
+                // Update Compressor
+                if (nodes.compressor && effects.compressor.active) {
+                    nodes.compressor.threshold.setTargetAtTime(effects.compressor.threshold, audioContext.currentTime, 0.1);
+                    nodes.compressor.ratio.setTargetAtTime(effects.compressor.ratio, audioContext.currentTime, 0.1);
+                }
+
+                // Update Cleaning
+                if (effects.cleaning && effects.cleaning.active) {
+                    if (nodes.lowCut) nodes.lowCut.frequency.setTargetAtTime(effects.cleaning.lowCut, audioContext.currentTime, 0.1);
+                    if (nodes.highCut) nodes.highCut.frequency.setTargetAtTime(effects.cleaning.highCut, audioContext.currentTime, 0.1);
+                }
+
+                // Update De-esser
+                if (effects.deesser && effects.deesser.active) {
+                    if (nodes.dsLp) nodes.dsLp.frequency.setTargetAtTime(effects.deesser.frequency, audioContext.currentTime, 0.1);
+                    if (nodes.dsHp) nodes.dsHp.frequency.setTargetAtTime(effects.deesser.frequency, audioContext.currentTime, 0.1);
+                    if (nodes.dsComp) nodes.dsComp.threshold.setTargetAtTime(effects.deesser.threshold, audioContext.currentTime, 0.1);
+                }
+
+                // Update Reverb Mix
+                if (nodes.reverbDry && nodes.reverbWet) {
+                    const mix = effects.reverb.active ? effects.reverb.mix : 0;
+                    nodes.reverbDry.gain.setTargetAtTime(1 - mix, audioContext.currentTime, 0.1);
+                    nodes.reverbWet.gain.setTargetAtTime(mix, audioContext.currentTime, 0.1);
+                }
+
+                // Update Delay
+                if (nodes.delayNode && nodes.delayFeedback && nodes.delayDry && nodes.delayWet) {
+                    const mix = effects.delay.active ? effects.delay.mix : 0;
+                    if (effects.delay.active) {
+                        nodes.delayNode.delayTime.setTargetAtTime(effects.delay.time, audioContext.currentTime, 0.1);
+                        nodes.delayFeedback.gain.setTargetAtTime(effects.delay.feedback, audioContext.currentTime, 0.1);
+                    }
+                    nodes.delayDry.gain.setTargetAtTime(1 - mix, audioContext.currentTime, 0.1);
+                    nodes.delayWet.gain.setTargetAtTime(mix, audioContext.currentTime, 0.1);
+                }
+
+                // Update Volume
+                if (nodes.trackGain) {
+                    nodes.trackGain.gain.setTargetAtTime(track.volume, audioContext.currentTime, 0.1);
+                }
+            });
+        });
+
+        // Update Clip Properties (Speed, Pitch)
+        activeSources.forEach(source => {
+            if (source.trackId && source.clipId) {
+                const track = tracks.find(t => t.id === source.trackId);
+                if (track) {
+                    const clip = track.clips.find(c => c.id === source.clipId);
+                    if (clip) {
+                        // Update Speed
+                        if (source.playbackRate.value !== clip.speed) {
+                            source.playbackRate.setTargetAtTime(clip.speed || 1.0, audioContext.currentTime, 0.1);
+                        }
+                        // Update Pitch
+                        if (source.detune.value !== clip.pitch) {
+                            source.detune.setTargetAtTime(clip.pitch || 0, audioContext.currentTime, 0.1);
+                        }
+                    }
+                }
+            }
+        });
+
+    }, [tracks, isPlaying, audioContext, activeSources]);
 
     // Helper to add clip
     const addClipToTrack = (buffer, name = 'Clip', trackId = null, startTime = currentTime) => {
@@ -164,6 +252,49 @@ const AudioStudio = ({ onClose, isPro }) => {
         if (end > duration) setDuration(end);
     };
 
+    // Add Instrument Track
+    const addInstrumentTrack = () => {
+        const newTrack = {
+            id: crypto.randomUUID(),
+            name: `Inst ${tracks.length + 1}`,
+            type: 'midi',
+            clips: [],
+            volume: 0.8,
+            muted: false,
+            isArmed: false,
+            effects: { ...defaultEffects },
+            automation: { volume: [] }
+        };
+        updateTracksWithHistory(prev => [...prev, newTrack]);
+
+        // Create Instrument Instance
+        if (audioContext) {
+            const inst = new VirtualInstrument(audioContext);
+            instrumentsRef.current.set(newTrack.id, inst);
+        }
+    };
+
+    // Add MIDI Clip
+    const addMidiClip = (trackId, startTime) => {
+        const newClip = {
+            id: crypto.randomUUID(),
+            name: 'MIDI Clip',
+            type: 'midi',
+            startTime: startTime,
+            duration: 4, // 4 seconds / 4 beats default
+            notes: [] // { pitch, startTime, duration, velocity }
+        };
+
+        updateTracksWithHistory(prev => prev.map(t => {
+            if (t.id === trackId) {
+                return { ...t, clips: [...t.clips, newClip] };
+            }
+            return t;
+        }));
+    };
+
+
+
     // File Upload Handler
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
@@ -208,6 +339,10 @@ const AudioStudio = ({ onClose, isPro }) => {
                     // Apply Speed & Pitch
                     source.playbackRate.value = clip.speed || 1.0;
                     source.detune.value = clip.pitch || 0;
+
+                    // Attach metadata for real-time updates
+                    source.trackId = track.id;
+                    source.clipId = clip.id;
 
                     const trackGain = audioContext.createGain();
                     // Initial volume
@@ -282,22 +417,45 @@ const AudioStudio = ({ onClose, isPro }) => {
                         delay: { active: false, time: 0.3, feedback: 0.4, mix: 0 }
                     };
 
+                    // Store nodes for real-time updates
+                    const trackNodes = {
+                        eqLow: null,
+                        eqMid: null,
+                        eqHigh: null,
+                        compressor: null,
+                        lowCut: null,
+                        highCut: null,
+                        dsLp: null,
+                        dsHp: null,
+                        dsComp: null,
+                        reverbDry: null,
+                        reverbWet: null,
+                        delayDry: null,
+                        delayWet: null,
+                        delayNode: null,
+                        delayFeedback: null,
+                        trackGain: trackGain
+                    };
+
                     // 1. EQ
                     const eqLow = audioContext.createBiquadFilter();
                     eqLow.type = 'lowshelf';
                     eqLow.frequency.value = 320;
                     eqLow.gain.value = effects.eq.low;
+                    trackNodes.eqLow = eqLow;
 
                     const eqMid = audioContext.createBiquadFilter();
                     eqMid.type = 'peaking';
                     eqMid.frequency.value = 1000;
                     eqMid.Q.value = 0.7;
                     eqMid.gain.value = effects.eq.mid;
+                    trackNodes.eqMid = eqMid;
 
                     const eqHigh = audioContext.createBiquadFilter();
                     eqHigh.type = 'highshelf';
                     eqHigh.frequency.value = 3200;
                     eqHigh.gain.value = effects.eq.high;
+                    trackNodes.eqHigh = eqHigh;
 
                     // 2. Compressor
                     const compressor = audioContext.createDynamicsCompressor();
@@ -305,6 +463,7 @@ const AudioStudio = ({ onClose, isPro }) => {
                         compressor.threshold.value = effects.compressor.threshold;
                         compressor.ratio.value = effects.compressor.ratio;
                     }
+                    trackNodes.compressor = compressor;
 
                     // Chain EQ -> Comp
                     source.connect(eqLow);
@@ -327,6 +486,9 @@ const AudioStudio = ({ onClose, isPro }) => {
                         lastNode.connect(lowCut);
                         lowCut.connect(highCut);
                         lastNode = highCut;
+
+                        trackNodes.lowCut = lowCut;
+                        trackNodes.highCut = highCut;
                     }
 
                     // 2b. De-Esser
@@ -356,6 +518,10 @@ const AudioStudio = ({ onClose, isPro }) => {
                         dsComp.connect(dsOut);
 
                         lastNode = dsOut;
+
+                        trackNodes.dsLp = lp;
+                        trackNodes.dsHp = hp;
+                        trackNodes.dsComp = dsComp;
                     }
 
                     // 3. Reverb (Parallel Mix)
@@ -372,6 +538,9 @@ const AudioStudio = ({ onClose, isPro }) => {
 
                         reverbDry.gain.value = 1 - effects.reverb.mix;
                         reverbWet.gain.value = effects.reverb.mix;
+
+                        trackNodes.reverbDry = reverbDry;
+                        trackNodes.reverbWet = reverbWet;
 
                         lastNode.connect(reverbInput);
                         reverbInput.connect(reverbDry);
@@ -402,6 +571,11 @@ const AudioStudio = ({ onClose, isPro }) => {
 
                         delayDry.gain.value = 1 - effects.delay.mix;
                         delayWet.gain.value = effects.delay.mix;
+
+                        trackNodes.delayDry = delayDry;
+                        trackNodes.delayWet = delayWet;
+                        trackNodes.delayNode = delayNode;
+                        trackNodes.delayFeedback = feedback;
 
                         lastNode.connect(delayInput);
                         delayInput.connect(delayDry);
@@ -447,6 +621,12 @@ const AudioStudio = ({ onClose, isPro }) => {
                     lastNode.connect(autoGain);
                     autoGain.connect(trackGain);
                     trackGain.connect(gainNode);
+
+                    // Store nodes for this track
+                    if (!trackNodesRef.current.has(track.id)) {
+                        trackNodesRef.current.set(track.id, []);
+                    }
+                    trackNodesRef.current.get(track.id).push(trackNodes);
 
                     let startWhen = 0;
                     let offset = 0;
@@ -503,6 +683,45 @@ const AudioStudio = ({ onClose, isPro }) => {
                 });
             });
 
+            // Schedule MIDI Notes
+            tracks.forEach(track => {
+                if (track.type === 'midi' && !track.muted) {
+                    let inst = instrumentsRef.current.get(track.id);
+                    if (!inst) {
+                        inst = new VirtualInstrument(audioContext);
+                        instrumentsRef.current.set(track.id, inst);
+                    }
+
+                    // Connect Instrument to Mix
+                    // Create Track Gain for volume control
+                    const trackGain = audioContext.createGain();
+                    trackGain.gain.value = track.volume;
+                    trackGain.connect(gainNode);
+
+                    inst.connect(trackGain);
+
+                    // Store gain node for real-time volume updates
+                    if (!trackNodesRef.current.has(track.id)) {
+                        trackNodesRef.current.set(track.id, []);
+                    }
+                    trackNodesRef.current.get(track.id).push({ trackGain }); // Add to updates list
+
+                    track.clips.forEach(clip => {
+                        const clipStart = clip.startTime;
+                        if (clipStart + clip.duration < currentTime) return; // Already played
+
+                        clip.notes.forEach(note => {
+                            const noteTime = clipStart + note.startTime;
+                            if (noteTime >= currentTime) {
+                                // Schedule
+                                const when = startTime + (noteTime - currentTime);
+                                inst.playNote(note.pitch, when, note.duration, note.velocity);
+                            }
+                        });
+                    });
+                }
+            });
+
             setActiveSources(newSources);
             setIsPlaying(true);
 
@@ -554,6 +773,7 @@ const AudioStudio = ({ onClose, isPro }) => {
             try { s.stop(); } catch (e) { }
         });
         setActiveSources([]);
+        trackNodesRef.current.clear();
         setIsPlaying(false);
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
@@ -1041,6 +1261,7 @@ const AudioStudio = ({ onClose, isPro }) => {
                             onUpdateAutomation={handleUpdateAutomation}
                             showSpectrogram={showSpectrogram}
                             onToggleSpectrogram={() => setShowSpectrogram(!showSpectrogram)}
+                            analyser={analyserNode}
                             currentTime={currentTime}
                             onSelectClip={(trackId, clipId) => { setSelectedClip(clipId ? { trackId, clipId } : null); setSelectedTrackId(null); }}
                             onSelectTrack={(trackId) => { setSelectedTrackId(trackId); setSelectedClip(null); }}
@@ -1057,7 +1278,27 @@ const AudioStudio = ({ onClose, isPro }) => {
                             punchRange={punchRange}
                             loopRange={loopRange}
                             onToggleTakes={(trackId) => setShowTakesForTrack(trackId)}
+                            onAddInstrumentTrack={addInstrumentTrack}
+                            onAddMidiClip={addMidiClip}
+                            onEditMidiClip={(trackId, clipId) => setEditingMidiClip({ trackId, clipId })}
                         />
+
+                        {/* Piano Roll Modal */}
+                        {editingMidiClip && (() => {
+                            const track = tracks.find(t => t.id === editingMidiClip.trackId);
+                            const clip = track?.clips.find(c => c.id === editingMidiClip.clipId);
+                            if (track && clip) {
+                                return (
+                                    <PianoRoll
+                                        clip={clip}
+                                        instrument={instrumentsRef.current.get(track.id)}
+                                        onClose={() => setEditingMidiClip(null)}
+                                        onUpdateClip={(updatedClip) => handleUpdateClip(track.id, clip.id, updatedClip)}
+                                    />
+                                );
+                            }
+                            return null;
+                        })()}
 
                         {/* Takes Manager Popup */}
                         <TakesManager
