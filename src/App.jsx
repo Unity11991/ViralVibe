@@ -37,6 +37,7 @@ import TermsAndConditions from './pages/policies/TermsAndConditions';
 import RefundPolicy from './pages/policies/RefundPolicy';
 import ShippingPolicy from './pages/policies/ShippingPolicy';
 import ContactUs from './pages/policies/ContactUs';
+import AboutModal from './components/AboutModal';
 import Footer from './components/Footer';
 import IntelligenceHub from './components/IntelligenceHub';
 
@@ -77,6 +78,7 @@ function App() {
   const [showAudioStudio, setShowAudioStudio] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
   const [premiumTab, setPremiumTab] = useState('brand-voice');
 
   const handleToolSelect = (toolId, tabId = 'brand-voice') => {
@@ -607,6 +609,11 @@ function App() {
         onLogin={() => setShowAuthModal(true)}
       />
 
+      <AboutModal
+        isOpen={showAboutModal}
+        onClose={() => setShowAboutModal(false)}
+      />
+
       <PremiumHub
         isOpen={showPremiumHub}
         onClose={() => setShowPremiumHub(false)}
@@ -672,6 +679,7 @@ function App() {
             setShowToolsModal={setShowToolsModal}
             setShowShareModal={setShowShareModal}
             onSelectTool={handleToolSelect}
+            onAboutClick={() => setShowAboutModal(true)}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />

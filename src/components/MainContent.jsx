@@ -43,7 +43,8 @@ const MainContent = ({
     setStreak,
     setLastLoginDate,
     setShowShareModal,
-    onSelectTool
+    onSelectTool,
+    onAboutClick
 }) => {
     const navigate = useNavigate();
     const resultsRef = useRef(null);
@@ -120,6 +121,7 @@ const MainContent = ({
                             }
                         }}
                         onIntelligenceClick={() => navigate('/intelligence')}
+                        onAboutClick={onAboutClick}
                     />
                 </header>
 
@@ -201,8 +203,8 @@ const MainContent = ({
                                 </div>
 
                                 {/* Ad Banner */}
-                                <div className="mt-auto pt-6">
-                                    <AdBanner slotId="1146521123" />
+                                <div className="mt-auto">
+                                    <AdBanner slotId="1146521123" className="mt-6" />
                                 </div>
                             </div>
                         </div>
@@ -234,6 +236,7 @@ const MainContent = ({
                                     onSelectTool={onSelectTool}
                                     user={user}
                                     onOpenAuth={() => setShowAuthModal(true)}
+                                    onTrendsClick={() => setCurrentView('trending')}
                                 />
                             )}
                         </div>

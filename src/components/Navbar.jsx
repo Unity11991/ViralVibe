@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { History, Coins, Sun, Moon, LogOut, User, Sparkles, TrendingUp, Globe, Menu, X } from 'lucide-react';
+import { History, Coins, Sun, Moon, LogOut, User, Sparkles, TrendingUp, Globe, Menu, X, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick, onPremiumClick, onIntelligenceClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick, onPremiumClick, onIntelligenceClick, onAboutClick }) => {
     const { user } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -79,7 +79,7 @@ const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme,
                     </button>
                 )}
 
-                {/* Desktop Actions (History, Theme) */}
+                {/* Desktop Actions (History, Theme, About) */}
                 <div className="hidden md:flex items-center gap-2">
                     <button
                         onClick={onHistoryClick}
@@ -99,6 +99,14 @@ const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme,
                         ) : (
                             <Moon size={18} className="group-hover:-rotate-12 transition-transform" />
                         )}
+                    </button>
+
+                    <button
+                        onClick={onAboutClick}
+                        className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all border border-white/10 hover:border-white/20 group"
+                        title="About GoVyral"
+                    >
+                        <Info size={18} className="group-hover:scale-110 transition-transform" />
                     </button>
                 </div>
 
@@ -138,6 +146,7 @@ const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme,
                     <div className="h-px bg-white/10 my-1" />
                     <MobileMenuItem onClick={onHistoryClick} icon={History} label="History" />
                     <MobileMenuItem onClick={toggleTheme} icon={theme === 'dark' ? Sun : Moon} label={theme === 'dark' ? 'Light Mode' : 'Dark Mode'} />
+                    <MobileMenuItem onClick={onAboutClick} icon={Info} label="About GoVyral" />
                     {!user && (
                         <div className="px-3 py-2 text-xs text-slate-500 text-center">
                             Free Generations: {Math.max(0, 3 - (guestUsageCount || 0))}/3
