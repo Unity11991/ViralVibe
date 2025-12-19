@@ -11,6 +11,7 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
     const [zoom, setZoom] = useState(1);
     const [isPlaying, setIsPlaying] = useState(false);
     const scrollRef = useRef(null);
+    const [scrollTop, setScrollTop] = useState(0);
     const [selectedNoteId, setSelectedNoteId] = useState(null);
 
     // Generate Keys (Top to Bottom: High to Low)
@@ -23,21 +24,20 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
 
     const handleGridClick = (e) => {
         const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left + scrollRef.current.scrollLeft;
-        const y = e.clientY - rect.top + scrollRef.current.scrollTop;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
 
         const noteIndex = Math.floor(y / KEY_HEIGHT);
+        if (noteIndex < 0 || noteIndex >= keys.length) return;
+
         const midi = keys[noteIndex].midi;
 
         const beat = Math.floor(x / BEAT_WIDTH);
-        const startTime = beat * 0.5; // Assuming 120 BPM, 1 beat = 0.5s? No, let's stick to seconds or beats.
-        // Let's use SECONDS for simplicity in engine, but GRID is usually beats.
-        // For MVP, let's say 1 grid unit = 0.25s (16th note at 60BPM) or just 0.25s.
 
         const newNote = {
             id: crypto.randomUUID(),
             pitch: midi,
-            startTime: beat * 0.25,
+            startTime: beat * 0.25, // 16th notes
             duration: 0.25,
             velocity: 0.8
         };
@@ -61,6 +61,25 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
         }
     };
 
+    const handlePlay = () => {
+        if (!instrument || notes.length === 0) return;
+        setIsPlaying(true);
+
+        const now = instrument.ctx.currentTime;
+        notes.forEach(note => {
+            instrument.playNote(note.pitch, now + note.startTime, note.duration, note.velocity);
+        });
+
+        // Auto stop UI state
+        const duration = Math.max(...notes.map(n => n.startTime + n.duration)) || 4;
+        setTimeout(() => setIsPlaying(false), duration * 1000);
+    };
+
+    const handleStop = () => {
+        setIsPlaying(false);
+        // Note: VirtualInstrument doesn't support stopAll yet, so audio might continue for release tail
+    };
+
     return (
         <div className="fixed inset-0 z-[60] bg-[#0a0a0a] flex flex-col">
             {/* Header */}
@@ -68,8 +87,18 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
                 <div className="flex items-center gap-4">
                     <h2 className="text-lg font-bold text-white">Piano Roll - {clip.name}</h2>
                     <div className="flex items-center gap-2 bg-white/5 p-1 rounded-lg">
-                        <button className="p-2 hover:bg-white/10 rounded text-white/70"><Play size={16} /></button>
-                        <button className="p-2 hover:bg-white/10 rounded text-white/70"><Square size={16} /></button>
+                        <button
+                            onClick={handlePlay}
+                            className={`p-2 rounded transition-colors ${isPlaying ? 'bg-green-500/20 text-green-400' : 'hover:bg-white/10 text-white/70'}`}
+                        >
+                            <Play size={16} fill={isPlaying ? "currentColor" : "none"} />
+                        </button>
+                        <button
+                            onClick={handleStop}
+                            className="p-2 hover:bg-white/10 rounded text-white/70"
+                        >
+                            <Square size={16} fill="currentColor" />
+                        </button>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -90,7 +119,7 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
             <div className="flex-1 flex overflow-hidden">
                 {/* Piano Keys (Left) */}
                 <div className="w-24 bg-[#121214] border-r border-white/10 overflow-hidden relative shrink-0">
-                    <div className="absolute top-0 left-0 right-0" style={{ transform: `translateY(-${scrollRef.current?.scrollTop || 0}px)` }}>
+                    <div className="absolute top-0 left-0 right-0" style={{ transform: `translateY(-${scrollTop}px)` }}>
                         {keys.map(k => (
                             <div
                                 key={k.midi}
@@ -106,12 +135,7 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
                 <div
                     className="flex-1 bg-[#0f0f12] overflow-auto relative custom-scrollbar"
                     ref={scrollRef}
-                    onScroll={(e) => {
-                        // Sync keys scroll?
-                        // We need to force update or use a ref for keys container
-                        // Simpler: just let React re-render or use onScroll to set state if perf allows
-                        // For MVP, let's rely on native scroll sync via state or ref
-                    }}
+                    onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
                 >
                     <div
                         className="relative min-w-[2000px]"
@@ -132,9 +156,6 @@ const PianoRoll = ({ clip, onClose, onUpdateClip, instrument }) => {
 
                         {/* Notes */}
                         {notes.map(note => {
-                            // Find Y position based on pitch
-                            // keys is ordered High to Low.
-                            // Index in keys array = (MaxMidi - note.pitch) ? No, keys array is explicit.
                             const keyIndex = keys.findIndex(k => k.midi === note.pitch);
                             const top = keyIndex * KEY_HEIGHT;
                             const left = (note.startTime / 0.25) * BEAT_WIDTH;
