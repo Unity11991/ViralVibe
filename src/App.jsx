@@ -31,7 +31,7 @@ import AudioStudio from './components/AudioStudio/AudioStudio';
 import MainContent from './components/MainContent';
 import ReferralHandler from './components/ReferralHandler';
 
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import PrivacyPolicy from './pages/policies/PrivacyPolicy';
 import TermsAndConditions from './pages/policies/TermsAndConditions';
 import RefundPolicy from './pages/policies/RefundPolicy';
@@ -42,6 +42,7 @@ import IntelligenceHub from './components/IntelligenceHub';
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -92,6 +93,8 @@ function App() {
     } else if (toolId === 'premium-hub') {
       setPremiumTab(tabId);
       setShowPremiumHub(true);
+    } else if (toolId === 'intelligence-hub') {
+      navigate('/intelligence');
     }
   };
   // Settings State

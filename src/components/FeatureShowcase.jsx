@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown } from 'lucide-react';
+import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown, Globe } from 'lucide-react';
 
 const FeatureShowcase = ({ onSelectTool, user, onOpenAuth }) => {
     const [activePremiumIndex, setActivePremiumIndex] = useState(0);
@@ -111,6 +111,64 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth }) => {
                     Everything you need to go viral, in one place.
                 </p>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+                {/* Highlighted: Viral Intelligence */}
+                <button
+                    onClick={() => onSelectTool('intelligence-hub')}
+                    className="group relative p-6 rounded-[2rem] text-left transition-all duration-500 hover:scale-[1.02] overflow-hidden bg-slate-900 border border-cyan-500/30 hover:border-cyan-400/50 shadow-lg shadow-cyan-500/10"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform duration-500">
+                                <Globe size={28} />
+                            </div>
+                            <div className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold uppercase tracking-wider animate-pulse">
+                                New
+                            </div>
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-cyan-300 transition-colors">
+                            Viral Intelligence
+                        </h3>
+                        <p className="text-slate-400 group-hover:text-slate-300 transition-colors">
+                            Real-time trend analysis and market insights.
+                        </p>
+                    </div>
+                </button>
+
+                {/* Highlighted: Trend Alerts */}
+                <button
+                    onClick={() => {
+                        if (!user) {
+                            onOpenAuth();
+                        } else {
+                            onSelectTool('premium-hub', 'trend-alerts');
+                        }
+                    }}
+                    className="group relative p-6 rounded-[2rem] text-left transition-all duration-500 hover:scale-[1.02] overflow-hidden bg-slate-900 border border-rose-500/30 hover:border-rose-400/50 shadow-lg shadow-rose-500/10"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 group-hover:scale-110 transition-transform duration-500">
+                                <TrendingUp size={28} />
+                            </div>
+                            <div className="px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                                <Sparkles size={10} /> Hot
+                            </div>
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-rose-300 transition-colors">
+                            Trend Alerts
+                        </h3>
+                        <p className="text-slate-400 group-hover:text-slate-300 transition-colors">
+                            Catch viral waves before they peak.
+                        </p>
+                    </div>
+                </button>
+            </div>
+
+            <h3 className="text-xl font-bold text-white/80 mb-4 px-2">Creative Tools</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {features.map((feature) => {
