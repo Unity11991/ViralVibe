@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { X, Sparkles, MessageCircle, Layers, Eye, Split, Palette, ArrowRight, Check, Lock, Repeat, Hash, UserCircle, Anchor, Calendar, Mail, MessageSquare, Type, TrendingUp, Clock, FileText, BarChart2, Play, Instagram, LogOut, Copy, Music, PlayCircle, Smile, Film } from 'lucide-react';
 import { generatePremiumContent } from '../utils/aiService';
@@ -31,8 +31,8 @@ const FEATURES = [
 
 const COST_PER_USE = 50;
 
-const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoins, onOpenAdModal, isPro }) => {
-    const [activeTab, setActiveTab] = useState('brand-voice');
+const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoins, onOpenAdModal, isPro, initialTab = 'brand-voice' }) => {
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [loading, setLoading] = useState(false);
     const [showScheduler, setShowScheduler] = useState(false);
     const [schedulerContent, setSchedulerContent] = useState('');
@@ -61,6 +61,12 @@ const PremiumHub = ({ isOpen, onClose, settings, image, coinBalance, onSpendCoin
         };
         checkConnection();
     }, []);
+
+    useEffect(() => {
+        if (isOpen && initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [isOpen, initialTab]);
 
     const handleOpenScheduler = (content, date = '', time = '', hashtags = '', music = '', captionsList = [], hashtagsList = [], musicList = []) => {
         setSchedulerContent(content);

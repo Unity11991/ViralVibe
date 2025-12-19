@@ -8,6 +8,7 @@ import Navbar from './Navbar';
 import Dashboard from './Dashboard';
 import TrendingSidebar from './TrendingSidebar';
 import AdBanner from './AdBanner';
+import FeatureShowcase from './FeatureShowcase';
 
 const MainContent = ({
     currentView,
@@ -41,7 +42,8 @@ const MainContent = ({
     setCoinBalance,
     setStreak,
     setLastLoginDate,
-    setShowShareModal
+    setShowShareModal,
+    onSelectTool
 }) => {
     const navigate = useNavigate();
     const resultsRef = useRef(null);
@@ -87,7 +89,10 @@ const MainContent = ({
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                             <Zap className="text-white" size={20} fill="currentColor" />
                         </div>
-                        <h1 className="text-2xl font-bold tracking-tight text-primary hidden md:block">GoVyral - AI Social Media Caption Generator</h1>
+                        <h1 className="text-2xl font-bold tracking-tight text-primary hidden md:flex items-baseline">
+                            GoVyral
+                            <span className="text-xs ml-1 opacity-50 font-medium">beta</span>
+                        </h1>
                     </div>
 
                     <Navbar
@@ -223,13 +228,11 @@ const MainContent = ({
                                     />
                                 </div>
                             ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-secondary">
-                                    <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
-                                        <Sparkles size={40} className="text-primary/20" />
-                                    </div>
-                                    <h3 className="text-xl font-medium text-primary mb-2">Ready to Create?</h3>
-                                    <p className="max-w-xs mx-auto">Upload an image and configure your settings to see AI-generated insights here.</p>
-                                </div>
+                                <FeatureShowcase
+                                    onSelectTool={onSelectTool}
+                                    user={user}
+                                    onOpenAuth={() => setShowAuthModal(true)}
+                                />
                             )}
                         </div>
 

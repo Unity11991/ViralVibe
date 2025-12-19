@@ -42,6 +42,7 @@ import IntelligenceHub from './components/IntelligenceHub';
 
 function App() {
   const location = useLocation();
+  const { user } = useAuth();
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -75,8 +76,9 @@ function App() {
   const [showAudioStudio, setShowAudioStudio] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [premiumTab, setPremiumTab] = useState('brand-voice');
 
-  const handleToolSelect = (toolId) => {
+  const handleToolSelect = (toolId, tabId = 'brand-voice') => {
     setShowToolsModal(false);
     if (toolId === 'video-editor') {
       setMediaEditorConfig({ file: image, text: '', adjustments: null, suggestedFilter: null });
@@ -87,11 +89,11 @@ function App() {
       setShowImageEnhancer(true);
     } else if (toolId === 'audio-studio') {
       setShowAudioStudio(true);
+    } else if (toolId === 'premium-hub') {
+      setPremiumTab(tabId);
+      setShowPremiumHub(true);
     }
   };
-
-  const { user } = useAuth();
-
   // Settings State
   const [settings, setSettings] = useState({
     apiKey: import.meta.env.VITE_GROQ_API_KEY || '',
@@ -608,18 +610,11 @@ function App() {
         settings={settings}
         image={image}
         coinBalance={coinBalance}
-        isPro={isPro}
         onSpendCoins={handleSpendCoins}
-
+        onOpenAdModal={() => setShowAdModal(true)}
+        isPro={isPro}
+        initialTab={premiumTab}
       />
-
-      <ProgressPopup
-        isVisible={isAnalyzing}
-        progress={progress}
-        currentStep={currentStep}
-        elapsedTime={elapsedTime}
-      />
-
       <HistoryPanel
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
@@ -673,7 +668,7 @@ function App() {
             guestUsageCount={guestUsageCount}
             setShowToolsModal={setShowToolsModal}
             setShowShareModal={setShowShareModal}
-
+            onSelectTool={handleToolSelect}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />
