@@ -1,105 +1,109 @@
-// Helper to render Spectrogram
+
+/**
+ * Renders a spectrogram for a given AudioBuffer.
+ * @param {AudioBuffer} buffer - The audio buffer to analyze.
+ * @param {number} width - Target width of the image.
+ * @param {number} height - Target height of the image.
+ * @returns {Promise<string>} - Resolves with a Data URL of the generated image.
+ */
 export const renderSpectrogram = async (buffer, width, height) => {
+    if (!buffer) return null;
+
     const offlineCtx = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
     const source = offlineCtx.createBufferSource();
     source.buffer = buffer;
 
-    // Analyzer configuration
     const analyser = offlineCtx.createAnalyser();
-    analyser.fftSize = 1024; // Resolution
+    analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0;
 
+    // Use ScriptProcessor to capture FFT data
+    // BufferSize 2048 means we get a callback every ~46ms (at 44.1k)
+    const bufferSize = 2048;
+    const scriptProcessor = offlineCtx.createScriptProcessor(bufferSize, 1, 1);
+
+    const fftData = [];
+
+    scriptProcessor.onaudioprocess = () => {
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(data);
+        fftData.push(data);
+    };
+
     source.connect(analyser);
+    analyser.connect(scriptProcessor);
+    scriptProcessor.connect(offlineCtx.destination);
+
     source.start(0);
 
-    // We can't step-render easily with OfflineContext as it speeds through.
-    // Instead, we manually iterate the channel data and perform FFT logic 
-    // OR we use a separate rendering approach.
-    // simpler approach for Web: 
-    // Use `web-audio-api` script processor? Deprecated.
-    // Use raw math on Float32Array channel data.
+    await offlineCtx.startRendering();
 
-    /* 
-       Basic JS FFT Implementation for Spectrogram 
-       (Simplified for size constraint, robust enough for visual)
-    */
-
-    const channelData = buffer.getChannelData(0);
+    // Draw to Canvas
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
 
-    // Fill Black
-    ctx.fillStyle = 'black';
+    // Draw Background
+    ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, width, height);
 
-    // Params
-    const step = Math.floor(channelData.length / width);
-    const fftSize = 256; // Low res for speed
+    if (fftData.length === 0) return canvas.toDataURL();
 
-    // We will cheat slightly: Mapping Amplitude/Frequency crudely directly from time domain is hard.
-    // We need real FFT.
-    // Let's use a very simplified approach:
-    // "Zero Crossing Rate" for color/frequency approximation + Amplitude for brightness? 
-    // No, users want to see "phone ringing" (distinct high freq).
+    // Render
+    // We have fftData.length columns (time) and fftData[0].length rows (frequency)
+    // We need to map this to width x height
 
-    // Let's assume we can't implement full FFT library here in one go.
-    // We'll create a "Fake" spectrogram that visualizes amplitude (brightness) and local variation (color).
-    // High variation (high freq) -> Blue/Purple. Low variation (bass) -> Red/Orange.
-    // This provides a "Spectral-like" view.
+    const timeSteps = fftData.length;
+    const binCount = fftData[0].length;
 
-    // Real implementation requires importing an FFT lib or writing 50 lines of FFT code.
-    // I will write a minimal DFT for columns.
-
+    // Create ImageData
     const imgData = ctx.createImageData(width, height);
     const data = imgData.data;
 
     for (let x = 0; x < width; x++) {
-        const start = x * step;
-        const slice = channelData.slice(start, start + fftSize);
+        // Map x to time index
+        const timeIndex = Math.floor((x / width) * timeSteps);
+        const spectrum = fftData[Math.min(timeIndex, timeSteps - 1)];
 
-        // Simple Real-DFT for a few bins (Height rows)
-        // We only calculate e.g. 50 bins and stretch.
-        const bins = new Float32Array(height);
-
-        for (let k = 0; k < height; k++) {
-            // Frequency k
-            let real = 0;
-            let imag = 0;
-            // Sample fewer points for speed
-            for (let n = 0; n < slice.length; n += 4) {
-                const angle = -2 * Math.PI * k * n / slice.length;
-                real += slice[n] * Math.cos(angle);
-                imag += slice[n] * Math.sin(angle);
-            }
-            const magnitude = Math.sqrt(real * real + imag * imag);
-            bins[k] = magnitude; // Normally needs log scale
-        }
-
-        // Draw column
         for (let y = 0; y < height; y++) {
-            const val = Math.min(255, bins[height - 1 - y] * 10); // Check orientation
-            const idx = (x + y * width) * 4;
+            // Map y to frequency bin
+            // y=0 is top (high freq), y=height is bottom (low freq)
+            // spectrum[0] is low freq.
+            // So map (height - 1 - y) to bin index.
 
-            // Heatmap Color: 
-            // Low (Blue), Mid (Green), High (Red)
-            // Here 'val' is intensity.
-            // We want Frequency (y) to map to position, Intensity (val) to brightness/color.
+            // Linear scale
+            const binIndex = Math.floor(((height - 1 - y) / height) * binCount);
 
-            // Standard Spectrogram:
-            // X = time, Y = freq. Color = Intensity.
+            // Log scale (optional, better for audio)
+            // const binIndex = Math.floor(binCount * (1 - Math.log(y + 1) / Math.log(height + 1))); 
 
-            const intensity = val;
+            const value = spectrum[Math.min(binIndex, binCount - 1)];
 
-            // Color mapping based on intensity
-            data[idx] = intensity; // R
-            data[idx + 1] = intensity * 0.5; // G
-            data[idx + 2] = 255 - intensity; // B
-            data[idx + 3] = 255; // Alpha
+            // Color Map (Heatmap: Blue -> Green -> Red)
+            let r = 0, g = 0, b = 0;
+            if (value < 5) {
+                // Silence / Noise floor
+                r = 0; g = 0; b = 0;
+            } else if (value < 128) {
+                // Blue to Green
+                b = 255 - (value * 2);
+                g = value * 2;
+            } else {
+                // Green to Red
+                g = 255 - ((value - 128) * 2);
+                r = (value - 128) * 2;
+            }
+
+            const pixelIndex = (y * width + x) * 4;
+            data[pixelIndex] = r;
+            data[pixelIndex + 1] = g;
+            data[pixelIndex + 2] = b;
+            data[pixelIndex + 3] = 255; // Alpha
         }
     }
 
     ctx.putImageData(imgData, 0, 0);
+
     return canvas.toDataURL();
 };

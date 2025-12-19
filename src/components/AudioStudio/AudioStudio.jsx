@@ -9,7 +9,7 @@ import PianoRoll from './PianoRoll';
 import { renderAudio } from './AudioExporter';
 import LoudnessMeter from './LoudnessMeter';
 import AudioExportModal from './AudioExportModal';
-
+import AudioLibrary from './AudioLibrary';
 import { Loader2 } from 'lucide-react';
 
 const VOICE_OPTIONS = [
@@ -107,6 +107,9 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportSettings, setExportSettings] = useState({ format: 'WAV' });
     const [exportProgress, setExportProgress] = useState(0);
+
+    // Audio Library State
+    const [libraryFiles, setLibraryFiles] = useState([]); // { name, buffer, duration, format }
 
     const startTimeRef = useRef(0);
     const pauseTimeRef = useRef(0);
@@ -365,14 +368,40 @@ const AudioStudio = ({ onClose, isPro }) => {
         }
     };
 
-    // File Upload Handler
-    const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
 
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = await audioContext.decodeAudioData(arrayBuffer);
-        addClipToTrack(buffer, file.name);
+
+    // Library Upload Handler
+    const handleLibraryUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        for (const file of files) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const buffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                setLibraryFiles(prev => [...prev, {
+                    name: file.name,
+                    buffer: buffer,
+                    duration: buffer.duration,
+                    format: file.type.split('/')[1] || 'AUDIO'
+                }]);
+            } catch (err) {
+                console.error("Failed to load audio:", file.name, err);
+            }
+        }
+    };
+
+    const handleLibraryDelete = (index) => {
+        setLibraryFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Handle Drop from Library to Timeline
+    const handleLibraryDrop = (trackId, fileIndex, time) => {
+        const file = libraryFiles[fileIndex];
+        if (file && file.buffer) {
+            addClipToTrack(file.buffer, file.name, trackId, time);
+        }
     };
 
     // Play/Pause Logic
@@ -1255,17 +1284,14 @@ const AudioStudio = ({ onClose, isPro }) => {
                         <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Inputs</h3>
 
                         {/* Upload */}
-                        <label className="block">
-                            <input
-                                type="file"
-                                accept="audio/*"
-                                onChange={handleFileUpload}
-                                className="hidden"
+                        {/* Audio Library */}
+                        <div className="pt-2">
+                            <AudioLibrary
+                                files={libraryFiles}
+                                onUpload={handleLibraryUpload}
+                                onDelete={handleLibraryDelete}
                             />
-                            <div className="w-full py-3 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg font-medium text-sm hover:opacity-90 transition-all cursor-pointer flex items-center justify-center gap-2">
-                                <Upload size={16} /> Upload Audio
-                            </div>
-                        </label>
+                        </div>
 
                         {/* Record */}
                         <button
@@ -1351,6 +1377,7 @@ const AudioStudio = ({ onClose, isPro }) => {
                             onAddInstrumentTrack={addInstrumentTrack}
                             onAddMidiClip={addMidiClip}
                             onEditMidiClip={(trackId, clipId) => setEditingMidiClip({ trackId, clipId })}
+                            onLibraryDrop={handleLibraryDrop}
                         />
 
                         {/* Piano Roll Modal */}
@@ -1551,6 +1578,8 @@ const AudioStudio = ({ onClose, isPro }) => {
                                 Select a clip to edit properties
                             </div>
                         )}
+
+
 
                         {/* Effects */}
                         <div className="space-y-4 pt-6 border-t border-white/5">

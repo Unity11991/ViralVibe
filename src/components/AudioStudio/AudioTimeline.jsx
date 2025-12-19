@@ -29,12 +29,13 @@ const AudioTimeline = ({
     analyser,
     onAddInstrumentTrack,
     onAddMidiClip,
-    onEditMidiClip
+    onEditMidiClip,
+    onLibraryDrop
 }) => {
     const timelineRef = useRef(null);
     const [draggedClip, setDraggedClip] = useState(null);
-
     const [selectedClipId, setSelectedClipId] = useState(null);
+
     const [automationTrackId, setAutomationTrackId] = useState(null); // Track ID with active automation editing
     const [draggedAutoPoint, setDraggedAutoPoint] = useState(null); // { trackId, index, startY, startVal }
 
@@ -420,6 +421,25 @@ const AudioTimeline = ({
                                             const x = e.clientX - rect.left;
                                             const time = x / PIXELS_PER_SECOND;
                                             onAddMidiClip(track.id, time);
+                                        }
+                                    }}
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'copy';
+                                    }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        const data = e.dataTransfer.getData('application/viralvibe-audio');
+                                        if (data) {
+                                            try {
+                                                const { index } = JSON.parse(data);
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                const x = e.clientX - rect.left;
+                                                const time = Math.max(0, x / PIXELS_PER_SECOND);
+                                                onLibraryDrop(track.id, index, time);
+                                            } catch (err) {
+                                                console.error("Drop failed", err);
+                                            }
                                         }
                                     }}
                                 >
