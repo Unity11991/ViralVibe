@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown, Globe } from 'lucide-react';
+import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown, Globe, Layers, Eye, Split, Palette, Repeat, Hash, UserCircle, Anchor, Calendar, Mail, MessageSquare, Type, Smile, Film } from 'lucide-react';
 import audioWaveImg from '../assets/audio-wave.png';
 import videoTimelineImg from '../assets/video-timeline.png';
 import imagePixelsImg from '../assets/image-pixels.png';
@@ -9,6 +9,20 @@ import brandVoiceImg from '../assets/brand-voice.png';
 import smartSchedulerImg from '../assets/smart-scheduler.png';
 import scriptGeneratorImg from '../assets/script-generator.png';
 import deepAnalyticsImg from '../assets/deep-analytics.png';
+import carouselArchitectImg from '../assets/carousel-architect.png';
+import competitorSpyImg from '../assets/competitor-spy.png';
+import abSimulatorImg from '../assets/ab-simulator.png';
+import visualGlowUpImg from '../assets/visual-glow-up.png';
+import repurposeProImg from '../assets/repurpose-pro.png';
+import hashtagHelixImg from '../assets/hashtag-helix.png';
+import bioDoctorImg from '../assets/bio-doctor.png';
+import hookMasterImg from '../assets/hook-master.png';
+import contentCalendarImg from '../assets/content-calendar.png';
+import emailArchitectImg from '../assets/email-architect.png';
+import responseBotImg from '../assets/response-bot.png';
+import thumbnailTextImg from '../assets/thumbnail-text.png';
+import memeMakerImg from '../assets/meme-maker.png';
+import storyboarderImg from '../assets/storyboarder.png';
 
 const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
     const [activePremiumIndex, setActivePremiumIndex] = useState(0);
@@ -23,6 +37,146 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             bg: 'bg-pink-500/20',
             border: 'border-pink-500/30',
             image: brandVoiceImg
+        },
+        {
+            id: 'carousel',
+            title: 'Carousel Architect',
+            description: 'Create engaging carousel posts effortlessly.',
+            icon: Layers,
+            color: 'text-purple-400',
+            bg: 'bg-purple-500/20',
+            border: 'border-purple-500/30',
+            image: carouselArchitectImg
+        },
+        {
+            id: 'competitor',
+            title: 'Competitor Spy',
+            description: 'Analyze competitor strategies and performance.',
+            icon: Eye,
+            color: 'text-blue-400',
+            bg: 'bg-blue-500/20',
+            border: 'border-blue-500/30',
+            image: competitorSpyImg
+        },
+        {
+            id: 'ab-test',
+            title: 'A/B Simulator',
+            description: 'Test content variations before posting.',
+            icon: Split,
+            color: 'text-green-400',
+            bg: 'bg-green-500/20',
+            border: 'border-green-500/30',
+            image: abSimulatorImg
+        },
+        {
+            id: 'glow-up',
+            title: 'Visual Glow Up',
+            description: 'Enhance your visuals with AI magic.',
+            icon: Palette,
+            color: 'text-orange-400',
+            bg: 'bg-orange-500/20',
+            border: 'border-orange-500/30',
+            image: visualGlowUpImg
+        },
+        {
+            id: 'repurpose',
+            title: 'Repurpose Pro',
+            description: 'Transform content for multiple platforms.',
+            icon: Repeat,
+            color: 'text-cyan-400',
+            bg: 'bg-cyan-500/20',
+            border: 'border-cyan-500/30',
+            image: repurposeProImg
+        },
+        {
+            id: 'hashtag',
+            title: 'Hashtag Helix',
+            description: 'Generate viral hashtag combinations.',
+            icon: Hash,
+            color: 'text-yellow-400',
+            bg: 'bg-yellow-500/20',
+            border: 'border-yellow-500/30',
+            image: hashtagHelixImg
+        },
+        {
+            id: 'bio',
+            title: 'Bio Doctor',
+            description: 'Optimize your profile bio for conversion.',
+            icon: UserCircle,
+            color: 'text-teal-400',
+            bg: 'bg-teal-500/20',
+            border: 'border-teal-500/30',
+            image: bioDoctorImg
+        },
+        {
+            id: 'hooks',
+            title: 'Hook Master',
+            description: 'Craft scroll-stopping hooks instantly.',
+            icon: Anchor,
+            color: 'text-red-400',
+            bg: 'bg-red-500/20',
+            border: 'border-red-500/30',
+            image: hookMasterImg
+        },
+        {
+            id: 'calendar',
+            title: 'Content Calendar',
+            description: 'Plan and organize your content schedule.',
+            icon: Calendar,
+            color: 'text-indigo-400',
+            bg: 'bg-indigo-500/20',
+            border: 'border-indigo-500/30',
+            image: contentCalendarImg
+        },
+        {
+            id: 'email',
+            title: 'Email Architect',
+            description: 'Design high-converting email campaigns.',
+            icon: Mail,
+            color: 'text-emerald-400',
+            bg: 'bg-emerald-500/20',
+            border: 'border-emerald-500/30',
+            image: emailArchitectImg
+        },
+        {
+            id: 'response',
+            title: 'Response Bot',
+            description: 'Automate intelligent community engagement.',
+            icon: MessageSquare,
+            color: 'text-sky-400',
+            bg: 'bg-sky-500/20',
+            border: 'border-sky-500/30',
+            image: responseBotImg
+        },
+        {
+            id: 'thumbnail',
+            title: 'Thumbnail Text',
+            description: 'Create click-worthy thumbnail overlays.',
+            icon: Type,
+            color: 'text-fuchsia-400',
+            bg: 'bg-fuchsia-500/20',
+            border: 'border-fuchsia-500/30',
+            image: thumbnailTextImg
+        },
+        {
+            id: 'meme-maker',
+            title: 'Meme Maker AI',
+            description: 'Generate viral memes in seconds.',
+            icon: Smile,
+            color: 'text-yellow-400',
+            bg: 'bg-yellow-500/20',
+            border: 'border-yellow-500/30',
+            image: memeMakerImg
+        },
+        {
+            id: 'storyboarder',
+            title: 'Storyboarder',
+            description: 'Visualize your video concepts.',
+            icon: Film,
+            color: 'text-indigo-400',
+            bg: 'bg-indigo-500/20',
+            border: 'border-indigo-500/30',
+            image: storyboarderImg
         },
         {
             id: 'trend-alerts',

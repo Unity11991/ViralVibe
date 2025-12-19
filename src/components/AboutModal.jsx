@@ -1,6 +1,8 @@
 import React from 'react';
 import { X, Github, Twitter, Linkedin, Mail, Globe, Sparkles, Code, Heart, Zap } from 'lucide-react';
 
+import sawanProfileImg from '../assets/sawan-profile.png';
+
 const AboutModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
@@ -40,9 +42,13 @@ const AboutModal = ({ isOpen, onClose }) => {
                     {/* Creator Section */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 backdrop-blur-md">
                         <div className="flex items-start gap-5">
-                            {/* Avatar Placeholder */}
-                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-slate-700 to-slate-600 border-2 border-white/10 flex items-center justify-center shrink-0">
-                                <UserIcon className="text-white/20" size={40} />
+                            {/* Avatar */}
+                            <div className="w-20 h-20 rounded-full border-2 border-white/10 overflow-hidden shrink-0 shadow-lg">
+                                <img
+                                    src={sawanProfileImg}
+                                    alt="Sawan Chouhan"
+                                    className="w-full h-full object-cover"
+                                />
                             </div>
 
                             <div className="flex-1">
@@ -90,22 +96,7 @@ const AboutModal = ({ isOpen, onClose }) => {
     );
 };
 
-const UserIcon = ({ className, size }) => (
-    <svg
-        className={className}
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    >
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-    </svg>
-);
+
 
 const SocialLink = ({ href, icon: Icon, label }) => (
     <a
