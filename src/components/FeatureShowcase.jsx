@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown, Globe } from 'lucide-react';
 
-const FeatureShowcase = ({ onSelectTool, user, onOpenAuth }) => {
+const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
     const [activePremiumIndex, setActivePremiumIndex] = useState(0);
 
     const premiumFeatures = [
@@ -139,13 +139,7 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth }) => {
 
                 {/* Highlighted: Trend Alerts */}
                 <button
-                    onClick={() => {
-                        if (!user) {
-                            onOpenAuth();
-                        } else {
-                            onSelectTool('premium-hub', 'trend-alerts');
-                        }
-                    }}
+                    onClick={onTrendsClick}
                     className="group relative p-6 rounded-[2rem] text-left transition-all duration-500 hover:scale-[1.02] overflow-hidden bg-slate-900 border border-rose-500/30 hover:border-rose-400/50 shadow-lg shadow-rose-500/10"
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -272,7 +266,7 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth }) => {
 
             <div className="mt-auto pt-10 text-center animate-fade-in opacity-50 hover:opacity-100 transition-opacity" style={{ animationDelay: '500ms' }}>
                 <p className="text-white/30 text-xs font-medium uppercase tracking-widest">
-                    Powered by ViralVibe AI Engine v2.0
+                    Powered by GoVyral AI Engine v2.0
                 </p>
             </div>
         </div>
