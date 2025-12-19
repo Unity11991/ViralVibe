@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Sparkles, Image as ImageIcon, Music, Swords, ArrowRight, MessageCircle, TrendingUp, Clock, FileText, BarChart2, Crown, Globe } from 'lucide-react';
+import audioWaveImg from '../assets/audio-wave.png';
+import videoTimelineImg from '../assets/video-timeline.png';
+import imagePixelsImg from '../assets/image-pixels.png';
+import viralIntelligenceImg from '../assets/viral-intelligence.png';
+import trendAlertsImg from '../assets/trend-alerts.png';
+import brandVoiceImg from '../assets/brand-voice.png';
+import smartSchedulerImg from '../assets/smart-scheduler.png';
+import scriptGeneratorImg from '../assets/script-generator.png';
+import deepAnalyticsImg from '../assets/deep-analytics.png';
 
 const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
     const [activePremiumIndex, setActivePremiumIndex] = useState(0);
@@ -12,7 +21,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             icon: MessageCircle,
             color: 'text-pink-400',
             bg: 'bg-pink-500/20',
-            border: 'border-pink-500/30'
+            border: 'border-pink-500/30',
+            image: brandVoiceImg
         },
         {
             id: 'trend-alerts',
@@ -21,7 +31,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             icon: TrendingUp,
             color: 'text-rose-400',
             bg: 'bg-rose-500/20',
-            border: 'border-rose-500/30'
+            border: 'border-rose-500/30',
+            image: trendAlertsImg
         },
         {
             id: 'smart-scheduler',
@@ -30,7 +41,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             icon: Clock,
             color: 'text-amber-400',
             bg: 'bg-amber-500/20',
-            border: 'border-amber-500/30'
+            border: 'border-amber-500/30',
+            image: smartSchedulerImg
         },
         {
             id: 'script-generator',
@@ -39,7 +51,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             icon: FileText,
             color: 'text-lime-400',
             bg: 'bg-lime-500/20',
-            border: 'border-lime-500/30'
+            border: 'border-lime-500/30',
+            image: scriptGeneratorImg
         },
         {
             id: 'analytics',
@@ -48,7 +61,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             icon: BarChart2,
             color: 'text-violet-400',
             bg: 'bg-violet-500/20',
-            border: 'border-violet-500/30'
+            border: 'border-violet-500/30',
+            image: deepAnalyticsImg
         }
     ];
 
@@ -68,7 +82,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             color: 'text-emerald-400',
             gradient: 'from-emerald-500/10 to-teal-500/5',
             border: 'border-emerald-500/20',
-            delay: '0'
+            delay: '0',
+            image: audioWaveImg
         },
         {
             id: 'video-editor',
@@ -78,7 +93,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             color: 'text-blue-400',
             gradient: 'from-blue-500/10 to-indigo-500/5',
             border: 'border-blue-500/20',
-            delay: '100'
+            delay: '100',
+            image: videoTimelineImg
         },
         // Premium Carousel Slot
         {
@@ -94,7 +110,8 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
             color: 'text-purple-400',
             gradient: 'from-purple-500/10 to-fuchsia-500/5',
             border: 'border-purple-500/20',
-            delay: '300'
+            delay: '300',
+            image: imagePixelsImg
         }
     ];
 
@@ -118,6 +135,16 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
                     onClick={() => onSelectTool('intelligence-hub')}
                     className="group relative p-6 rounded-[2rem] text-left transition-all duration-500 hover:scale-[1.02] overflow-hidden bg-slate-900 border border-cyan-500/30 hover:border-cyan-400/50 shadow-lg shadow-cyan-500/10"
                 >
+                    {/* Midground Image */}
+                    <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity duration-500 pointer-events-none">
+                        <img
+                            src={viralIntelligenceImg}
+                            alt=""
+                            className="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f12] via-[#0f0f12]/40 to-transparent" />
+                    </div>
+
                     <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     <div className="relative z-10 flex flex-col h-full">
                         <div className="flex items-center justify-between mb-4">
@@ -142,6 +169,16 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
                     onClick={onTrendsClick}
                     className="group relative p-6 rounded-[2rem] text-left transition-all duration-500 hover:scale-[1.02] overflow-hidden bg-slate-900 border border-rose-500/30 hover:border-rose-400/50 shadow-lg shadow-rose-500/10"
                 >
+                    {/* Midground Image */}
+                    <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity duration-500 pointer-events-none">
+                        <img
+                            src={trendAlertsImg}
+                            alt=""
+                            className="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f12] via-[#0f0f12]/40 to-transparent" />
+                    </div>
+
                     <div className="absolute inset-0 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     <div className="relative z-10 flex flex-col h-full">
                         <div className="flex items-center justify-between mb-4">
@@ -188,6 +225,18 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
                                 <div className="relative h-full bg-[#0f0f12] rounded-[1.9rem] p-6 flex flex-col justify-between overflow-hidden">
                                     {/* Shimmer Effect */}
                                     <div className="absolute inset-0 translate-x-[-100%] group-hover:animate-shimmer z-0 pointer-events-none" />
+
+                                    {/* Midground Image */}
+                                    {activeFeature.image && (
+                                        <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity duration-500 pointer-events-none">
+                                            <img
+                                                src={activeFeature.image}
+                                                alt=""
+                                                className="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f12] via-[#0f0f12]/40 to-transparent" />
+                                        </div>
+                                    )}
 
                                     <div className="relative z-10">
                                         <div className="flex justify-between items-start mb-6">
@@ -238,10 +287,22 @@ const FeatureShowcase = ({ onSelectTool, user, onOpenAuth, onTrendsClick }) => {
                                 group relative p-6 rounded-[2rem] border text-left transition-all duration-300
                                 bg-gradient-to-br ${feature.gradient} ${feature.border}
                                 hover:scale-[1.02] hover:shadow-2xl hover:border-white/20 hover:bg-white/[0.02]
-                                animate-fade-in-up
+                                animate-fade-in-up overflow-hidden
                             `}
                             style={{ animationDelay: `${feature.delay}ms` }}
                         >
+                            {/* Midground Image */}
+                            {feature.image && (
+                                <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity duration-500 pointer-events-none">
+                                    <img
+                                        src={feature.image}
+                                        alt=""
+                                        className="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f12] via-[#0f0f12]/40 to-transparent" />
+                                </div>
+                            )}
+
                             <div className="relative z-10">
                                 <div className={`w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg`}>
                                     <feature.icon size={28} className={feature.color} />
