@@ -142,66 +142,68 @@ const MainContent = ({
                     <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
 
                         {/* Left Column: Controls (Scrollable) */}
-                        <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-20 lg:pb-0">
-                            <div className="space-y-2">
-                                <h2 className="text-4xl font-light tracking-tight text-primary">
-                                    Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
-                                </h2>
-                                <p className="text-secondary text-lg">Upload, customize, and let AI handle the rest.</p>
-                            </div>
+                        <div className="lg:col-span-5 h-full glass-panel overflow-hidden flex flex-col relative">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8 flex flex-col gap-6">
+                                <div className="space-y-2">
+                                    <h2 className="text-4xl font-light tracking-tight text-primary">
+                                        Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
+                                    </h2>
+                                    <p className="text-secondary text-lg">Upload, customize, and let AI handle the rest.</p>
+                                </div>
 
-                            <div className="space-y-6">
-                                <ImageUploader
-                                    onImageSelect={handleImageSelect}
-                                    isAnalyzing={isAnalyzing}
-                                    onEdit={() => setShowMediaEditor(true)}
-                                    selectedFile={image}
-                                />
+                                <div className="space-y-6">
+                                    <ImageUploader
+                                        onImageSelect={handleImageSelect}
+                                        isAnalyzing={isAnalyzing}
+                                        onEdit={() => setShowMediaEditor(true)}
+                                        selectedFile={image}
+                                    />
 
-                                <OptionsPanel
-                                    settings={settings}
-                                    onSettingsChange={setSettings}
-                                    showMoodError={showMoodError}
-                                />
+                                    <OptionsPanel
+                                        settings={settings}
+                                        onSettingsChange={setSettings}
+                                        showMoodError={showMoodError}
+                                    />
 
-                                {error && (
-                                    <div className="glass-panel p-4 border-red-500/30 bg-red-500/10 flex items-center gap-3 text-red-200 animate-slide-in">
-                                        <AlertCircle className="text-red-500 shrink-0" size={20} />
-                                        <p className="font-medium text-sm">{error}</p>
-                                    </div>
-                                )}
+                                    {error && (
+                                        <div className="glass-panel p-4 border-red-500/30 bg-red-500/10 flex items-center gap-3 text-red-200 animate-slide-in">
+                                            <AlertCircle className="text-red-500 shrink-0" size={20} />
+                                            <p className="font-medium text-sm">{error}</p>
+                                        </div>
+                                    )}
 
-                                <button
-                                    onClick={handleAnalyze}
-                                    disabled={!image || isAnalyzing}
-                                    className={`
+                                    <button
+                                        onClick={handleAnalyze}
+                                        disabled={!image || isAnalyzing}
+                                        className={`
                     w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300
                     ${!image || isAnalyzing
-                                            ? 'bg-white/5 text-slate-500 cursor-not-allowed'
-                                            : 'bg-white text-black hover:scale-[1.02] shadow-xl shadow-white/10'
-                                        }
+                                                ? 'bg-white/5 text-slate-500 cursor-not-allowed'
+                                                : 'bg-white text-black hover:scale-[1.02] shadow-xl shadow-white/10'
+                                            }
                   `}
-                                >
-                                    {isAnalyzing ? (
-                                        <>
-                                            <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
-                                            <span>Processing...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles size={20} />
-                                            <span>Generate Content</span>
-                                            <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">
-                                                -{image?.type?.startsWith('video/') ? '100' : '50'}
-                                            </span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                                    >
+                                        {isAnalyzing ? (
+                                            <>
+                                                <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                                                <span>Processing...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles size={20} />
+                                                <span>Generate Content</span>
+                                                <span className="text-xs bg-black/10 px-2 py-0.5 rounded-full font-medium">
+                                                    -{image?.type?.startsWith('video/') ? '100' : '50'}
+                                                </span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
 
-                            {/* Ad Banner */}
-                            <div className="mt-auto pt-6">
-                                <AdBanner slotId="1146521123" />
+                                {/* Ad Banner */}
+                                <div className="mt-auto pt-6">
+                                    <AdBanner slotId="1146521123" />
+                                </div>
                             </div>
                         </div>
 
