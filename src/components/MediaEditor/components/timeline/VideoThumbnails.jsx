@@ -7,9 +7,26 @@ const thumbnailCache = new Map();
 if (typeof window !== 'undefined') {
     window.__thumbnailCache = thumbnailCache;
 }
-// Limit concurrent thumbnail generation
+// Global Queue System
+const queue = [];
 let activeGenerations = 0;
-const MAX_CONCURRENT_GENERATIONS = 2;
+const MAX_CONCURRENT_GENERATIONS = 1; // Strict limit to 1 for HD stability
+
+const processQueue = async () => {
+    if (activeGenerations >= MAX_CONCURRENT_GENERATIONS || queue.length === 0) return;
+
+    activeGenerations++;
+    const task = queue.shift();
+
+    try {
+        await task.run();
+    } catch (e) {
+        console.warn("Thumbnail task failed:", e);
+    } finally {
+        activeGenerations--;
+        processQueue(); // Process next
+    }
+};
 
 export const VideoThumbnails = React.memo(({ source, duration, width, height, visibleWidth, startOffset = 0 }) => {
     const [thumbnails, setThumbnails] = useState([]);
@@ -20,28 +37,17 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
 
     // Config - Optimized values
     const thumbWidth = 60;
-    const maxThumbs = 8; // Limit max thumbnails per clip
+    const maxThumbs = 50; // Increased from 8 to cover longer clips
     const thumbCount = Math.min(Math.ceil(width / thumbWidth), maxThumbs);
 
-    // Intersection Observer for lazy loading
+    // Intersection Observer
     useEffect(() => {
         isMounted.current = true;
-
         const observer = new IntersectionObserver(
-            ([entry]) => {
-                setIsVisible(entry.isIntersecting);
-            },
-            {
-                root: null,
-                rootMargin: '200px', // Start loading 200px before visible
-                threshold: 0.01
-            }
+            ([entry]) => setIsVisible(entry.isIntersecting),
+            { root: null, rootMargin: '200px', threshold: 0.01 }
         );
-
-        if (containerRef.current) {
-            observer.observe(containerRef.current);
-        }
-
+        if (containerRef.current) observer.observe(containerRef.current);
         return () => {
             isMounted.current = false;
             observer.disconnect();
@@ -49,190 +55,121 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
     }, []);
 
     useEffect(() => {
-        let isActive = true;
+        if (!isVisible || !source || !duration || width <= 0) return;
 
-        // Only generate if visible, has source, and within constraints
-        if (!isVisible || !source || !duration || width <= 0) {
-            return;
-        }
-
-        // Check cache first
+        // Check cache
         const cacheKey = `${source}-${thumbCount}-${startOffset}`;
         if (thumbnailCache.has(cacheKey)) {
             setThumbnails(thumbnailCache.get(cacheKey));
             return;
         }
 
-        const generate = async () => {
-            // Wait if too many concurrent generations
-            while (activeGenerations >= MAX_CONCURRENT_GENERATIONS) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                if (!isActive) return;
-            }
+        // Define Task
+        const task = {
+            run: async () => {
+                if (!isMounted.current) return;
+                setIsGenerating(true);
+                setThumbnails([]);
 
-            activeGenerations++;
+                try {
+                    const video = document.createElement('video');
+                    video.src = source;
+                    if (!source.startsWith('blob:')) video.crossOrigin = 'anonymous';
+                    video.muted = true;
+                    video.preload = 'metadata';
 
-            if (!isActive) {
-                activeGenerations--;
-                return;
-            }
-
-            setIsGenerating(true);
-            setThumbnails([]);
-
-            try {
-                const video = document.createElement('video');
-                video.src = source;
-                // Only set crossOrigin for external URLs
-                if (!source.startsWith('blob:')) {
-                    video.crossOrigin = 'anonymous';
-                }
-                video.muted = true;
-                video.preload = 'metadata'; // Only load metadata, not entire video
-
-                // Wait for metadata with timeout
-                await Promise.race([
-                    new Promise((resolve, reject) => {
-                        video.onloadedmetadata = resolve;
-                        video.onerror = reject;
-                    }),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Timeout')), 5000)
-                    )
-                ]);
-
-                if (!isActive) {
-                    video.remove();
-                    activeGenerations--;
-                    return;
-                }
-
-                // HD Video Protection: Cap maximum dimensions
-                // Browser canvas size limits are typically 8192x8192 or 16384x16384
-                // But for thumbnails, we want small sizes anyway
-                const MAX_DIMENSION = 200; // Maximum width or height for safety
-
-                const canvas = document.createElement('canvas');
-                const videoAspect = video.videoWidth / video.videoHeight;
-
-                // Calculate safe thumbnail dimensions
-                let drawHeight = Math.min(height || 40, 30); // Max 30px height preference
-                let drawWidth = drawHeight * videoAspect;
-
-                // Additional safety: If video is extremely wide or aspect causes issues
-                if (drawWidth > MAX_DIMENSION) {
-                    drawWidth = MAX_DIMENSION;
-                    drawHeight = drawWidth / videoAspect;
-                }
-
-                if (drawHeight > MAX_DIMENSION) {
-                    drawHeight = MAX_DIMENSION;
-                    drawWidth = drawHeight * videoAspect;
-                }
-
-                // Ensure we have valid dimensions
-                if (!isFinite(drawWidth) || !isFinite(drawHeight) || drawWidth < 1 || drawHeight < 1) {
-                    console.warn('Invalid thumbnail dimensions calculated, using defaults');
-                    drawWidth = 40;
-                    drawHeight = 30;
-                }
-
-                canvas.width = Math.floor(drawWidth);
-                canvas.height = Math.floor(drawHeight);
-
-                const ctx = canvas.getContext('2d', {
-                    willReadFrequently: false,
-                    alpha: false
-                });
-
-                if (!ctx) {
-                    throw new Error('Failed to get canvas context');
-                }
-
-                const thumbs = [];
-                const timeStep = duration / thumbCount;
-
-                // Generate thumbnails using requestIdleCallback for non-blocking
-                for (let i = 0; i < thumbCount; i++) {
-                    if (!isActive) break;
-
-                    const time = Math.max(0, Math.min(startOffset + (i * timeStep), duration - 0.1));
-
-                    // Seek with timeout
-                    video.currentTime = time;
+                    // Load Metadata
                     await Promise.race([
-                        new Promise(resolve => {
-                            const onSeek = () => {
-                                video.removeEventListener('seeked', onSeek);
-                                resolve();
-                            };
-                            video.addEventListener('seeked', onSeek);
+                        new Promise((resolve, reject) => {
+                            video.onloadedmetadata = resolve;
+                            video.onerror = reject;
                         }),
-                        new Promise(resolve => setTimeout(resolve, 500))
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
                     ]);
 
-                    if (!isActive) break;
-
-                    // Draw with error handling
-                    try {
-                        // Clear canvas before drawing
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        // Lower quality JPEG for smaller file size
-                        thumbs.push(canvas.toDataURL('image/jpeg', 0.3));
-                    } catch (e) {
-                        console.warn("Canvas error, skipping thumbnail", e);
-                        // Use placeholder for failed thumbnails
-                        thumbs.push('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>');
+                    if (!isMounted.current) {
+                        video.remove();
+                        return;
                     }
 
-                    // Progressive update less frequently
-                    if (i % 3 === 0 && isActive) {
-                        setThumbnails([...thumbs]);
+                    // Calculate Dimensions (Max 160px width for HD optimization)
+                    const MAX_DIMENSION = 160;
+                    const videoAspect = video.videoWidth / video.videoHeight;
+                    let drawHeight = Math.min(height || 40, 30);
+                    let drawWidth = drawHeight * videoAspect;
+
+                    if (drawWidth > MAX_DIMENSION) {
+                        drawWidth = MAX_DIMENSION;
+                        drawHeight = drawWidth / videoAspect;
                     }
 
-                    // Yield to browser between frames
-                    await new Promise(resolve => {
-                        if (typeof requestIdleCallback !== 'undefined') {
-                            requestIdleCallback(resolve, { timeout: 100 });
-                        } else {
-                            setTimeout(resolve, 0);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.floor(drawWidth);
+                    canvas.height = Math.floor(drawHeight);
+                    const ctx = canvas.getContext('2d', { willReadFrequently: false, alpha: false });
+
+                    const thumbs = [];
+                    const timeStep = duration / thumbCount;
+
+                    for (let i = 0; i < thumbCount; i++) {
+                        if (!isMounted.current) break;
+
+                        const time = Math.max(0, Math.min(startOffset + (i * timeStep), duration - 0.1));
+                        video.currentTime = time;
+
+                        await Promise.race([
+                            new Promise(resolve => {
+                                const onSeek = () => {
+                                    // Wait for frame paint
+                                    requestAnimationFrame(() => {
+                                        setTimeout(resolve, 50);
+                                    });
+                                };
+                                video.addEventListener('seeked', onSeek, { once: true });
+                            }),
+                            new Promise(resolve => setTimeout(resolve, 2000)) // Increased timeout
+                        ]);
+
+                        if (!isMounted.current) break;
+
+                        try {
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            thumbs.push(canvas.toDataURL('image/jpeg', 0.3));
+                        } catch (e) {
+                            thumbs.push('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>');
                         }
-                    });
-                }
 
-                if (isActive && thumbs.length > 0) {
-                    setThumbnails(thumbs);
-                    // Cache the result
-                    thumbnailCache.set(cacheKey, thumbs);
-                    // Limit cache size
-                    if (thumbnailCache.size > 50) {
-                        const firstKey = thumbnailCache.keys().next().value;
-                        thumbnailCache.delete(firstKey);
+                        if (i % 2 === 0 && isMounted.current) {
+                            setThumbnails([...thumbs]);
+                        }
                     }
-                }
 
-                // Cleanup
-                video.removeAttribute('src');
-                video.load();
-                video.remove();
+                    if (isMounted.current && thumbs.length > 0) {
+                        setThumbnails(thumbs);
+                        thumbnailCache.set(cacheKey, thumbs);
+                        if (thumbnailCache.size > 50) thumbnailCache.delete(thumbnailCache.keys().next().value);
+                    }
 
-            } catch (e) {
-                console.warn("Thumbnail generation failed:", e);
-            } finally {
-                if (isActive) {
-                    setIsGenerating(false);
+                    video.removeAttribute('src');
+                    video.load();
+                    video.remove();
+
+                } catch (e) {
+                    console.warn("Thumbnail generation failed:", e);
+                } finally {
+                    if (isMounted.current) setIsGenerating(false);
                 }
-                activeGenerations--;
             }
         };
 
-        // Debounce generation slightly
-        const timeoutId = setTimeout(generate, 50);
+        // Enqueue
+        queue.push(task);
+        processQueue();
 
         return () => {
-            isActive = false;
-            clearTimeout(timeoutId);
+            // Remove from queue if unmounted (optional optimization)
+            const idx = queue.indexOf(task);
+            if (idx > -1) queue.splice(idx, 1);
         };
     }, [source, duration, thumbCount, startOffset, height, isVisible]);
 

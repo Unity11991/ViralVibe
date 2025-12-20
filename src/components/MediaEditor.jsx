@@ -6,9 +6,11 @@ import { usePlayback } from './MediaEditor/hooks/usePlayback';
 import { useTimeline } from './MediaEditor/hooks/useTimeline';
 import { useTimelineState } from './MediaEditor/hooks/useTimelineState';
 import { useOverlays } from './MediaEditor/hooks/useOverlays';
-import { useExport } from './MediaEditor/hooks/useExport';
+
 import { useVoiceRecorder } from './MediaEditor/hooks/useVoiceRecorder';
 import { useVideoRecorder } from './MediaEditor/hooks/useVideoRecorder';
+import { useExport } from './MediaEditor/hooks/useExport';
+import ExportModal from './MediaEditor/components/modals/ExportModal';
 
 
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
@@ -26,7 +28,7 @@ import { PropertiesPanel } from './MediaEditor/components/panels/PropertiesPanel
 import { TimelinePanel } from './MediaEditor/components/timeline/TimelinePanel';
 import { PreviewPlayer } from './MediaEditor/components/preview/PreviewPlayer';
 import { voiceEffects } from './MediaEditor/utils/VoiceEffects';
-import ExportModal from './MediaEditor/components/modals/ExportModal';
+
 import { AutoCompositePanel } from './MediaEditor/components/panels/AutoCompositePanel';
 import { CompositionLoadingModal } from './MediaEditor/components/modals/CompositionLoadingModal';
 import { ProjectCreationModal } from './MediaEditor/components/modals/ProjectCreationModal';
@@ -82,16 +84,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // Overlay hooks replaced by timeline state
     // const { ... } = useOverlays();
 
-    const {
-        isExporting,
-        exportProgress,
-        showExportModal,
-        exportSettings,
-        setShowExportModal,
-        setExportSettings,
-        handleExport,
-        cancelExport
-    } = useExport(mediaElementRef, mediaType);
+
 
     // Timeline State Hook
     const {
@@ -153,6 +146,18 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [thumbnailUrl, setThumbnailUrl] = useState(null);
     const [mediaLibrary, setMediaLibrary] = useState([]);
 
+    const fileInputRef = useRef(null);
+    const containerRef = useRef(null);
+    const overlayRef = useRef(null);
+    const imageElementsRef = useRef({}); // Cache for image clip elements
+    const audioElementsRef = useRef({}); // Cache for audio clip elements
+    const videoElementsRef = useRef({}); // Cache for secondary video clip elements
+
+    // Export State
+    const [showExportModal, setShowExportModal] = useState(false);
+
+
+
     // Calculate timeline duration dynamically
     const timelineDuration = React.useMemo(() => {
         if (!tracks || tracks.length === 0) return 10; // Default 10s
@@ -166,12 +171,39 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         return Math.max(maxDuration, 5); // Minimum 5s
     }, [tracks]);
 
-    const fileInputRef = useRef(null);
-    const containerRef = useRef(null);
-    const overlayRef = useRef(null);
-    const imageElementsRef = useRef({}); // Cache for image clip elements
-    const audioElementsRef = useRef({}); // Cache for audio clip elements
-    const videoElementsRef = useRef({}); // Cache for secondary video clip elements
+    // Prepare state for export
+    const exportTimelineState = {
+        tracks,
+        duration: timelineDuration,
+        canvasDimensions,
+        rotation,
+        zoom,
+        memeMode,
+        selectedClipId,
+        initialAdjustments,
+        effectIntensity,
+        activeEffectId,
+        activeFilterId
+    };
+
+    const exportMediaResources = {
+        mediaElement: mediaElementRef.current,
+        videoElements: videoElementsRef.current,
+        imageElements: imageElementsRef.current,
+        mediaUrl,
+        isVideo
+    };
+
+    const {
+        exportVideo,
+        cancelExport,
+        isExporting,
+        exportProgress,
+        exportStatus,
+        exportError
+    } = useExport(exportTimelineState, exportMediaResources, canvasRef);
+
+
 
 
     // Update trimRange when timeline duration changes
@@ -195,10 +227,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // We handle main media sync manually now to support multiple clips on the main track
     /*
     useEffect(() => {
-        if (mediaElementRef.current && isVideo && !isExporting) {
+        if (mediaElementRef.current && isVideo) {
             return registerMedia(mediaElementRef.current);
         }
-    }, [mediaElementRef, isVideo, registerMedia, isExporting]);
+    }, [mediaElementRef, isVideo, registerMedia]);
     */
 
     // Initialize Timeline when media loads
@@ -1410,9 +1442,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     // Apply audio muting based on user preference
                     muted: muteOriginalAudio,
                     audioDetached: muteOriginalAudio,
-                    // Keep filter and adjustments on clips for backward compatibility
-                    filter: clip.filter,
-                    adjustments: clip.adjustments,
+                    // Keep filter and adjustments on clips for backward compatibility?
+                    // NO: We are moving them to adjustment layers (Step 3), so we must CLEAR them here to avoid double application.
+                    filter: null,
+                    adjustments: {},
                     effects: clip.effects,
                     transition: plan.transitions?.find(t => t.fromClipIndex === index)
                 }))
@@ -1465,12 +1498,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 const adjustmentClips = clips.map(({ clip, index }) => ({
                     id: `adj - ${timestamp} -${trackIndex} -${index} `,
                     type: 'adjustment',
-                    name: `${filter} Grade`,
+                    name: `${filter === 'custom' ? 'Custom' : filter} Grade`,
                     startTime: clip.startTime,
                     duration: clip.duration,
                     startOffset: 0,
                     adjustments: clip.adjustments || {},
-                    filter: filter,
+                    filter: null, // Force no filter preset, only adjustments
                     rawAI_Grading: clip.videoAnalysis?.colorGrading || {}
                 }));
 
@@ -1485,7 +1518,37 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             setCompositionProgress(80);
             await new Promise(resolve => setTimeout(resolve, 200));
 
-            // Step 4: Finalize - Update Timeline
+            // Step 4: Pre-buffering / Prerendering
+            setCompositionStatus('Prerendering for smooth playback...');
+            const video = mediaElementRef.current;
+            if (video && plan.clips.length > 0) {
+                // Pause first
+                video.pause();
+
+                // Sample a few key points to force buffering
+                // We don't want to do every clip if there are too many, just enough to warm up cache
+                const clipsToBuffer = plan.clips.filter((_, i) => i % 2 === 0 || i === 0); // Every other clip
+
+                for (let i = 0; i < clipsToBuffer.length; i++) {
+                    const clip = clipsToBuffer[i];
+                    const seekTime = clip.sourceStartTime || 0; // Use source start time if available, else 0
+
+                    // Seek
+                    video.currentTime = seekTime;
+
+                    // Wait for buffer
+                    await new Promise(resolve => {
+                        const onSeeked = () => resolve();
+                        video.addEventListener('seeked', onSeeked, { once: true });
+                        setTimeout(resolve, 300); // Fast timeout, just need to trigger request
+                    });
+
+                    // Update progress slightly within this step
+                    setCompositionProgress(80 + Math.floor((i / clipsToBuffer.length) * 10));
+                }
+            }
+
+            // Step 5: Finalize - Update Timeline
             setCompositionStatus('Finalizing timeline...');
             setTracks([mainTrack, ...adjustmentTracks, audioTrackObj]);
             setSelectedClipId(null);
@@ -1933,39 +1996,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 }
             />
 
-            <ExportModal
-                show={showExportModal}
-                onClose={() => setShowExportModal(false)}
-                isExporting={isExporting}
-                progress={exportProgress}
-                onExport={(e) => {
-                    if (e && e.preventDefault) e.preventDefault();
-                    pause(); // Stop playback before exporting
-                    const globalState = {
-                        canvasDimensions,
-                        rotation,
-                        zoom,
-                        memeMode,
-                        selectedClipId,
-                        initialAdjustments,
-                        effectIntensity,
-                        activeEffectId,
-                        activeFilterId
-                    };
-                    const mediaResources = {
-                        mediaElement: mediaElementRef.current,
-                        videoElements: videoElementsRef.current,
-                        imageElements: imageElementsRef.current,
-                        audioElements: audioElementsRef.current,
-                        mediaUrl,
-                        isVideo
-                    };
-                    handleExport(canvasRef, renderStateRef.current, trimRange, tracks, mediaResources, globalState);
-                }}
-                settings={exportSettings}
-                onSettingsChange={setExportSettings}
-                onCancel={cancelExport}
-            />
+
             {/* Auto-Composite Panel Modal */}
             {showAutoComposite && (
                 <div
@@ -1993,6 +2024,16 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 status={compositionStatus}
                 currentStep={compositionSteps.current}
                 totalSteps={compositionSteps.total}
+            />
+
+            <ExportModal
+                isOpen={showExportModal}
+                onClose={() => !isExporting && setShowExportModal(false)}
+                onExport={exportVideo}
+                isExporting={isExporting}
+                progress={exportProgress}
+                status={exportStatus}
+                error={exportError}
             />
         </>
     );

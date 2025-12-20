@@ -42,8 +42,8 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
         // Adaptive max dimension based on source resolution
         let MAX_PREVIEW_DIMENSION;
         if (sourceMaxDim >= 3840) {
-            // 4K/8K video → aggressive downscale for performance
-            MAX_PREVIEW_DIMENSION = 960;
+            // 4K/8K video → aggressive downscale for performance (720p is standard for NLE preview)
+            MAX_PREVIEW_DIMENSION = 720;
         } else if (sourceMaxDim >= 1920) {
             // 1080p video → moderate downscale
             MAX_PREVIEW_DIMENSION = 720;
@@ -105,7 +105,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
 
         // Use optimized context settings
         const ctx = canvasRef.current.getContext('2d', {
-            willReadFrequently: true,
+            willReadFrequently: false, // FORCE GPU for playback
             alpha: false,
             desynchronized: true
         });
@@ -177,7 +177,8 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
 
             // Throttle rendering to target FPS
             if (elapsed >= frameInterval || !options.isPlaying) {
-                render(state, options);
+                // HD OPTIMIZATION: Pass isPreview flag to skip heavy effects during playback
+                render(state, { ...options, isPreview: options.isPlaying });
                 lastRenderTimeRef.current = timestamp;
             }
 

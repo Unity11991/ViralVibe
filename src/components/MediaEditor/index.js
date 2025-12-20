@@ -20,9 +20,8 @@ export { VideoTimeline } from './components/VideoTimeline';
 export { useMediaProcessor } from './hooks/useMediaProcessor';
 export { useCanvasRenderer } from './hooks/useCanvasRenderer';
 export { useOverlays } from './hooks/useOverlays';
-export { useExport } from './hooks/useExport';
+export { useOverlays } from './hooks/useOverlays';
 
 // Export utilities
 export * from './utils/canvasUtils';
 export * from './utils/filterUtils';
-export * from './utils/exportUtils';
