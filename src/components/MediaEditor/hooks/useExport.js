@@ -117,7 +117,8 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
             exportCanvas.height = height;
             const ctx = exportCanvas.getContext('2d', {
                 alpha: false,
-                willReadFrequently: false
+                willReadFrequently: false,
+                desynchronized: false // Explicitly disable to prevent flickering
             });
 
             // 5. Video Render Loop
@@ -136,22 +137,58 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
 
                 const seekPromises = [];
                 const seekVideo = async (videoEl, targetTime) => {
+                    // 1. Ensure video has enough data to start with
+                    if (videoEl.readyState < 2) {
+                        await new Promise(resolve => {
+                            const onCanPlay = () => {
+                                videoEl.removeEventListener('canplay', onCanPlay);
+                                resolve();
+                            };
+                            videoEl.addEventListener('canplay', onCanPlay, { once: true });
+                            // Fallback timeout
+                            setTimeout(resolve, 1000);
+                        });
+                    }
+
+                    // 2. Perform Seek
                     videoEl.currentTime = targetTime;
-                    if (Math.abs(videoEl.currentTime - targetTime) > 0.001) {
+
+                    // 3. Wait for seek to complete
+                    if (videoEl.seeking || Math.abs(videoEl.currentTime - targetTime) > 0.001) {
                         await new Promise(resolve => {
                             const onSeeked = () => {
                                 videoEl.removeEventListener('seeked', onSeeked);
                                 resolve();
                             };
                             videoEl.addEventListener('seeked', onSeeked, { once: true });
+                            // Fallback timeout
+                            setTimeout(resolve, 1000);
                         });
                     }
+
+                    // 4. Wait for frame data to be available (readyState >= 2)
+                    // Double check after seek
+                    if (videoEl.readyState < 2) {
+                        await new Promise(resolve => {
+                            const onCanPlay = () => {
+                                videoEl.removeEventListener('canplay', onCanPlay);
+                                resolve();
+                            };
+                            videoEl.addEventListener('canplay', onCanPlay, { once: true });
+                            setTimeout(resolve, 500);
+                        });
+                    }
+
+                    // 5. Request Video Frame Callback to ensure texture is updated
                     if (videoEl.requestVideoFrameCallback) {
                         await new Promise(resolve => {
                             videoEl.requestVideoFrameCallback(() => resolve());
+                            // Safety timeout in case rVFC doesn't fire (e.g. background tab throttling, though unlikely in export loop)
+                            setTimeout(resolve, 100);
                         });
                     } else {
-                        await new Promise(r => setTimeout(r, 20));
+                        // Fallback for browsers without rVFC
+                        await new Promise(r => setTimeout(r, 50));
                     }
                 };
 
