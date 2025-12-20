@@ -817,9 +817,9 @@ export const restoreImageAI = async (imageFile, hfToken) => {
         // Check file size (limit to 4MB for proxy/HF reliability)
         // If it's larger, we downscale it
         let base64DataUrl;
-        if (imageFile.size > 4 * 1024 * 1024) {
+        if (imageFile.size > 2 * 1024 * 1024) { // Reduced to 2MB for safety
             console.log("Image too large, downscaling...");
-            base64DataUrl = await downscaleImage(imageFile, 1200, 1200);
+            base64DataUrl = await downscaleImage(imageFile, 1000, 1000);
         } else {
             base64DataUrl = await fileToBase64(imageFile);
         }
@@ -832,11 +832,21 @@ export const restoreImageAI = async (imageFile, hfToken) => {
         });
 
         if (error) {
-            throw new Error(error.message || "Failed to restore image with AI.");
+            // Try to extract the error message from the response if possible
+            let msg = error.message;
+            if (error.context?.status === 500) {
+                // The error might be in the data if invoke didn't throw
+                msg = "AI Restoration failed. The model might be loading or the image is too complex. Please try again in a moment.";
+            }
+            throw new Error(msg);
         }
 
         if (data?.error) {
             throw new Error(data.error);
+        }
+
+        if (!data?.image) {
+            throw new Error("AI Service returned an empty response.");
         }
 
         return data.image;

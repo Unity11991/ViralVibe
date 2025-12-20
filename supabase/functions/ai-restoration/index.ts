@@ -13,7 +13,7 @@ serve(async (req) => {
     }
 
     try {
-        console.log("AI Restoration request received");
+        console.log("AI Restoration: Request received");
 
         const body = await req.json();
         const { hfToken, imageBase64 } = body;
@@ -21,18 +21,17 @@ serve(async (req) => {
         if (!hfToken) throw new Error("Missing Hugging Face Token");
         if (!imageBase64) throw new Error("Missing Image Data");
 
-        // Convert base64 to Uint8Array efficiently
+        // Convert base64 to Uint8Array
         const base64Data = imageBase64.split(',')[1] || imageBase64;
         const binaryData = base64.decode(base64Data);
 
-        console.log(`Processing image. Size: ${binaryData.length} bytes`);
+        console.log(`AI Restoration: Processing image (${binaryData.length} bytes)`);
 
-        // Set a timeout for the Hugging Face API call (50 seconds)
+        // Hugging Face API Call with 60s timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 50000);
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
         try {
-            console.log("Calling Hugging Face API (GFPGAN)...");
             const response = await fetch(
                 "https://api-inference.huggingface.co/models/tencentarc/GFPGAN",
                 {
@@ -47,25 +46,32 @@ serve(async (req) => {
             );
 
             clearTimeout(timeoutId);
-            console.log(`HF API response status: ${response.status}`);
+            console.log(`AI Restoration: HF API Status ${response.status}`);
 
             if (!response.ok) {
-                let errorMessage = `Hugging Face API returned ${response.status}`;
+                const errorText = await response.text();
+                console.error(`AI Restoration: HF API Error: ${errorText}`);
+
+                let errorMessage = `AI Service Error (${response.status})`;
                 try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorMessage;
-                    if (Array.isArray(errorMessage)) errorMessage = errorMessage.join(", ");
+                    const errorData = JSON.parse(errorText);
+                    if (errorData.error) {
+                        errorMessage = errorData.error;
+                        if (errorData.estimated_time) {
+                            errorMessage += `. Estimated wait: ${Math.round(errorData.estimated_time)}s. Please try again in a moment.`;
+                        }
+                    }
                 } catch (e) {
-                    // Fallback to status text
+                    // Not JSON
                 }
                 throw new Error(errorMessage);
             }
 
             const buffer = await response.arrayBuffer();
-            console.log(`Received response from HF. Size: ${buffer.byteLength} bytes`);
-
             const uint8Array = new Uint8Array(buffer);
             const base64Response = base64.encode(uint8Array);
+
+            console.log("AI Restoration: Success");
 
             return new Response(
                 JSON.stringify({ image: `data:image/png;base64,${base64Response}` }),
@@ -74,13 +80,13 @@ serve(async (req) => {
 
         } catch (err) {
             if (err.name === 'AbortError') {
-                throw new Error("Hugging Face API timed out. The model might be loading or the image is too large.");
+                throw new Error("The AI service is taking too long to respond. The model might be loading. Please try again in a minute.");
             }
             throw err;
         }
 
     } catch (error) {
-        console.error("AI Restoration Proxy Error:", error.message);
+        console.error("AI Restoration: Proxy Error:", error.message);
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
