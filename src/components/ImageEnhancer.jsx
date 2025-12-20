@@ -130,7 +130,7 @@ const ImageEnhancer = ({ onClose, settings: appSettings }) => {
         const hfToken = appSettings?.hfToken || '';
 
         if (!hfToken) {
-            setError("Hugging Face Token is required for AI Restoration. Please add it in Settings.");
+            setError("AI Restoration service is currently unavailable. Please try again later.");
             return;
         }
 
@@ -143,7 +143,7 @@ const ImageEnhancer = ({ onClose, settings: appSettings }) => {
             setShowComparison(true);
         } catch (err) {
             console.error(err);
-            setError(err.message || "AI Restoration failed. Please check your token.");
+            setError(err.message || "AI Restoration failed. Please try again later.");
         } finally {
             setIsAiProcessing(false);
         }

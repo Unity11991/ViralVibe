@@ -832,13 +832,8 @@ export const restoreImageAI = async (imageFile, hfToken) => {
         });
 
         if (error) {
-            // Try to extract the error message from the response if possible
-            let msg = error.message;
-            if (error.context?.status === 500) {
-                // The error might be in the data if invoke didn't throw
-                msg = "AI Restoration failed. The model might be loading or the image is too complex. Please try again in a moment.";
-            }
-            throw new Error(msg);
+            console.error("Supabase Invoke Error:", error);
+            throw new Error("AI Restoration failed. The service might be temporarily unavailable. Please try again in a moment.");
         }
 
         if (data?.error) {

@@ -13,12 +13,12 @@ serve(async (req) => {
     }
 
     try {
-        console.log("AI Restoration: Request received");
+        console.log("AI Restoration: Request received (Direct REST API)");
 
         const body = await req.json();
         const { hfToken, imageBase64 } = body;
 
-        if (!hfToken) throw new Error("Missing Hugging Face Token");
+        if (!hfToken) throw new Error("Missing Hugging Face Token. Please add it in Settings.");
         if (!imageBase64) throw new Error("Missing Image Data");
 
         // Convert base64 to Uint8Array
@@ -27,69 +27,55 @@ serve(async (req) => {
 
         console.log(`AI Restoration: Processing image (${binaryData.length} bytes)`);
 
-        // Hugging Face API Call with 60s timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        // Using the NEW Inference Providers via direct REST API
+        // Format: model_id:provider_id
+        const modelWithProvider = "fal/AuraSR-v2:fal-ai";
+        const url = `https://api-inference.huggingface.co/models/${modelWithProvider}`;
 
-        try {
-            const response = await fetch(
-                "https://api-inference.huggingface.co/models/tencentarc/GFPGAN",
-                {
-                    headers: {
-                        Authorization: `Bearer ${hfToken}`,
-                        "Content-Type": "application/octet-stream",
-                    },
-                    method: "POST",
-                    body: binaryData,
-                    signal: controller.signal
-                }
-            );
+        console.log(`AI Restoration: Calling ${url}...`);
 
-            clearTimeout(timeoutId);
-            console.log(`AI Restoration: HF API Status ${response.status}`);
+        const response = await fetch(url, {
+            headers: {
+                Authorization: `Bearer ${hfToken}`,
+                "Content-Type": "application/octet-stream",
+                "x-use-cache": "false",
+                "x-wait-for-model": "true"
+            },
+            method: "POST",
+            body: binaryData,
+        });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`AI Restoration: HF API Error: ${errorText}`);
+        console.log(`AI Restoration: Response status: ${response.status}`);
 
-                let errorMessage = `AI Service Error (${response.status})`;
-                try {
-                    const errorData = JSON.parse(errorText);
-                    if (errorData.error) {
-                        errorMessage = errorData.error;
-                        if (errorData.estimated_time) {
-                            errorMessage += `. Estimated wait: ${Math.round(errorData.estimated_time)}s. Please try again in a moment.`;
-                        }
-                    }
-                } catch (e) {
-                    // Not JSON
-                }
-                throw new Error(errorMessage);
-            }
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`AI Restoration: API Error: ${errorText}`);
 
-            const buffer = await response.arrayBuffer();
-            const uint8Array = new Uint8Array(buffer);
-            const base64Response = base64.encode(uint8Array);
+            let errorMessage = `AI Service Error (${response.status})`;
+            try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.error) errorMessage = errorData.error;
+            } catch (e) { }
 
-            console.log("AI Restoration: Success");
-
-            return new Response(
-                JSON.stringify({ image: `data:image/png;base64,${base64Response}` }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-
-        } catch (err) {
-            if (err.name === 'AbortError') {
-                throw new Error("The AI service is taking too long to respond. The model might be loading. Please try again in a minute.");
-            }
-            throw err;
+            throw new Error(errorMessage);
         }
+
+        const buffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(buffer);
+        const base64Response = base64.encode(uint8Array);
+
+        console.log("AI Restoration: Success");
+
+        return new Response(
+            JSON.stringify({ image: `data:image/png;base64,${base64Response}` }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
 
     } catch (error) {
         console.error("AI Restoration: Proxy Error:", error.message);
         return new Response(
             JSON.stringify({ error: error.message }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }
 })
