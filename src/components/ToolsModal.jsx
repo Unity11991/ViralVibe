@@ -41,6 +41,15 @@ const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
             color: 'text-green-400',
             bg: 'bg-green-500/10',
             border: 'border-green-500/20'
+        },
+        {
+            id: 'image-editor',
+            title: 'Image Editor',
+            description: 'Professional image editing with layers, filters, and more.',
+            icon: ImageIcon,
+            color: 'text-pink-400',
+            bg: 'bg-pink-500/10',
+            border: 'border-pink-500/20'
         }
     ];
 

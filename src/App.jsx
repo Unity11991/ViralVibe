@@ -27,6 +27,7 @@ import LimitReachedModal from './components/LimitReachedModal';
 
 import ToolsModal from './components/ToolsModal';
 import ImageEnhancer from './components/ImageEnhancer';
+import { ImageEditor } from './components/ImageEditor/ImageEditor';
 import AudioStudio from './components/AudioStudio/AudioStudio';
 import MainContent from './components/MainContent';
 import ReferralHandler from './components/ReferralHandler';
@@ -75,6 +76,7 @@ function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showToolsModal, setShowToolsModal] = useState(false);
   const [showImageEnhancer, setShowImageEnhancer] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
   const [showAudioStudio, setShowAudioStudio] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
@@ -90,6 +92,8 @@ function App() {
       setShowVibeBattle(true);
     } else if (toolId === 'image-enhancer') {
       setShowImageEnhancer(true);
+    } else if (toolId === 'image-editor') {
+      setShowImageEditor(true);
     } else if (toolId === 'audio-studio') {
       setShowAudioStudio(true);
     } else if (toolId === 'premium-hub') {
@@ -587,6 +591,12 @@ function App() {
         <ImageEnhancer
           onClose={() => setShowImageEnhancer(false)}
         />
+      )}
+
+      {showImageEditor && (
+        <div className="fixed inset-0 z-50 bg-[#0f0f0f] animate-fade-in">
+          <ImageEditor onClose={() => setShowImageEditor(false)} />
+        </div>
       )}
 
       {showAudioStudio && (
