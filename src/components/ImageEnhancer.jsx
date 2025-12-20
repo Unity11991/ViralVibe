@@ -1,14 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Sparkles, Download, Upload, ArrowLeftRight, Wand2, Sliders, ShieldCheck, Zap } from 'lucide-react';
 import { normalizeImage, medianFilter, unsharpMask, adjustColorBalance } from '../utils/imageProcessing';
+import { restoreImageAI } from '../utils/aiService';
 
-const ImageEnhancer = ({ onClose }) => {
+const ImageEnhancer = ({ onClose, settings: appSettings }) => {
     const [image, setImage] = useState(null);
     const [previewUrl, setPreviewUrl] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isAiProcessing, setIsAiProcessing] = useState(false);
     const [enhancedUrl, setEnhancedUrl] = useState(null);
     const [showComparison, setShowComparison] = useState(false);
     const [sliderPosition, setSliderPosition] = useState(50);
+    const [error, setError] = useState(null);
     const [settings, setSettings] = useState({
         brightness: 1.1,
         contrast: 1.1,
@@ -119,6 +122,31 @@ const ImageEnhancer = ({ onClose }) => {
         };
 
         img.src = previewUrl;
+    };
+
+    const applyAiEnhancement = async () => {
+        if (!image) return;
+
+        const hfToken = appSettings?.hfToken || '';
+
+        if (!hfToken) {
+            setError("Hugging Face Token is required for AI Restoration. Please add it in Settings.");
+            return;
+        }
+
+        setIsAiProcessing(true);
+        setError(null);
+
+        try {
+            const resultUrl = await restoreImageAI(image, hfToken);
+            setEnhancedUrl(resultUrl);
+            setShowComparison(true);
+        } catch (err) {
+            console.error(err);
+            setError(err.message || "AI Restoration failed. Please check your token.");
+        } finally {
+            setIsAiProcessing(false);
+        }
     };
 
     const handleDownload = () => {
@@ -336,10 +364,16 @@ const ImageEnhancer = ({ onClose }) => {
                                     </div>
                                 </div>
 
-                                <div className="pt-6 border-t border-white/5">
+                                <div className="pt-6 border-t border-white/5 space-y-4">
+                                    {error && (
+                                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 animate-shake">
+                                            <Zap size={14} />
+                                            {error}
+                                        </div>
+                                    )}
                                     <button
                                         onClick={applyEnhancement}
-                                        disabled={isProcessing}
+                                        disabled={isProcessing || isAiProcessing}
                                         className={`
                                             w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
                                             ${isProcessing
@@ -357,6 +391,30 @@ const ImageEnhancer = ({ onClose }) => {
                                             <>
                                                 <Wand2 size={20} />
                                                 Magic Enhance
+                                            </>
+                                        )}
+                                    </button>
+
+                                    <button
+                                        onClick={applyAiEnhancement}
+                                        disabled={isProcessing || isAiProcessing}
+                                        className={`
+                                            w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
+                                            ${isAiProcessing
+                                                ? 'bg-white/5 text-white/50 cursor-not-allowed'
+                                                : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02]'
+                                            }
+                                        `}
+                                    >
+                                        {isAiProcessing ? (
+                                            <>
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                AI Restoring...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles size={20} />
+                                                AI Restoration (Remini)
                                             </>
                                         )}
                                     </button>

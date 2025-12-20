@@ -744,3 +744,49 @@ export const generateAudioScript = async (topic, isPro) => {
         throw error;
     }
 };
+
+/**
+ * AI Image Restoration (Remini Style)
+ * Uses Hugging Face Inference API with GFPGAN model
+ * @param {File} imageFile - The image file to restore
+ * @param {string} hfToken - Hugging Face Access Token
+ * @returns {Promise<string>} Base64 data URL of the restored image
+ */
+export const restoreImageAI = async (imageFile, hfToken) => {
+    if (!hfToken) {
+        throw new Error("Hugging Face Token is required for AI Restoration. Please add it in Settings.");
+    }
+
+    try {
+        // Read file as ArrayBuffer
+        const arrayBuffer = await imageFile.arrayBuffer();
+
+        const response = await fetch(
+            "https://api-inference.huggingface.co/models/tencentarc/GFPGAN",
+            {
+                headers: {
+                    Authorization: `Bearer ${hfToken}`,
+                    "Content-Type": "application/octet-stream",
+                },
+                method: "POST",
+                body: arrayBuffer,
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to restore image with AI.");
+        }
+
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error("AI Restoration Error:", error);
+        throw error;
+    }
+};
