@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Sparkles, Download, Upload, ArrowLeftRight, Wand2, Sliders } from 'lucide-react';
+import { X, Sparkles, Download, Upload, ArrowLeftRight, Wand2, Sliders, ShieldCheck, Zap } from 'lucide-react';
+import { normalizeImage, medianFilter, unsharpMask, adjustColorBalance } from '../utils/imageProcessing';
 
 const ImageEnhancer = ({ onClose }) => {
     const [image, setImage] = useState(null);
@@ -12,7 +13,11 @@ const ImageEnhancer = ({ onClose }) => {
         brightness: 1.1,
         contrast: 1.1,
         saturation: 1.2,
-        sharpen: 1
+        sharpen: 0.5,
+        denoise: 1,
+        restore: true,
+        temp: 0,
+        tint: 0
     });
 
     const canvasRef = useRef(null);
@@ -52,11 +57,27 @@ const ImageEnhancer = ({ onClose }) => {
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
 
-            // Apply simple enhancement filters (simulating AI)
-            // 1. Contrast & Brightness
-            const contrast = settings.contrast; // 1.1
-            const brightness = settings.brightness; // 1.1
-            const saturation = settings.saturation; // 1.2
+            // --- NEW ENHANCEMENT PIPELINE ---
+
+            // 1. Restoration (Auto-levels)
+            if (settings.restore) {
+                normalizeImage(data);
+            }
+
+            // 2. Denoising (Median Filter)
+            if (settings.denoise > 0) {
+                medianFilter(data, canvas.width, canvas.height, settings.denoise);
+            }
+
+            // 3. Color Balance
+            if (settings.temp !== 0 || settings.tint !== 0) {
+                adjustColorBalance(data, settings.temp, settings.tint);
+            }
+
+            // 4. Basic Enhancements (Contrast, Brightness, Saturation)
+            const contrast = settings.contrast;
+            const brightness = settings.brightness;
+            const saturation = settings.saturation;
 
             for (let i = 0; i < data.length; i += 4) {
                 let r = data[i];
@@ -85,9 +106,12 @@ const ImageEnhancer = ({ onClose }) => {
                 data[i + 2] = Math.min(255, Math.max(0, b));
             }
 
-            ctx.putImageData(imageData, 0, 0);
+            // 5. Sharpening (Unsharp Mask)
+            if (settings.sharpen > 0) {
+                unsharpMask(data, canvas.width, canvas.height, settings.sharpen, 1);
+            }
 
-            // Simple Sharpening (Convolution) - Optional, keeping it simple for now
+            ctx.putImageData(imageData, 0, 0);
 
             setEnhancedUrl(canvas.toDataURL('image/png'));
             setIsProcessing(false);
@@ -224,6 +248,90 @@ const ImageEnhancer = ({ onClose }) => {
                                                 onChange={(e) => setSettings({ ...settings, saturation: parseFloat(e.target.value) })}
                                                 className="w-full accent-purple-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
                                             />
+                                        </div>
+
+                                        <div className="pt-4 border-t border-white/5 space-y-4">
+                                            <h3 className="text-white font-medium flex items-center gap-2">
+                                                <ShieldCheck size={16} className="text-green-400" />
+                                                Restoration
+                                            </h3>
+
+                                            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-white font-medium">Auto-Restore</span>
+                                                    <span className="text-xs text-white/40">Fix exposure & levels</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => setSettings({ ...settings, restore: !settings.restore })}
+                                                    className={`w-10 h-5 rounded-full transition-colors relative ${settings.restore ? 'bg-purple-500' : 'bg-white/10'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${settings.restore ? 'left-6' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between">
+                                                    <label className="text-xs text-white/50 uppercase tracking-wider font-bold">Sharpen</label>
+                                                    <span className="text-xs text-purple-400 font-bold">{settings.sharpen}</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="2"
+                                                    step="0.1"
+                                                    value={settings.sharpen}
+                                                    onChange={(e) => setSettings({ ...settings, sharpen: parseFloat(e.target.value) })}
+                                                    className="w-full accent-purple-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between">
+                                                    <label className="text-xs text-white/50 uppercase tracking-wider font-bold">Denoise</label>
+                                                    <span className="text-xs text-purple-400 font-bold">{settings.denoise}</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="2"
+                                                    step="1"
+                                                    value={settings.denoise}
+                                                    onChange={(e) => setSettings({ ...settings, denoise: parseInt(e.target.value) })}
+                                                    className="w-full accent-purple-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between">
+                                                    <label className="text-xs text-white/50 uppercase tracking-wider font-bold">Temperature</label>
+                                                    <span className="text-xs text-purple-400 font-bold">{settings.temp}</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="-50"
+                                                    max="50"
+                                                    step="1"
+                                                    value={settings.temp}
+                                                    onChange={(e) => setSettings({ ...settings, temp: parseInt(e.target.value) })}
+                                                    className="w-full accent-purple-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between">
+                                                    <label className="text-xs text-white/50 uppercase tracking-wider font-bold">Tint</label>
+                                                    <span className="text-xs text-purple-400 font-bold">{settings.tint}</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="-50"
+                                                    max="50"
+                                                    step="1"
+                                                    value={settings.tint}
+                                                    onChange={(e) => setSettings({ ...settings, tint: parseInt(e.target.value) })}
+                                                    className="w-full accent-purple-500 h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
