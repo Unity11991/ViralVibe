@@ -285,7 +285,7 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
             visibleLayers.push({
                 ...baseLayer,
                 type: 'adjustment',
-                adjustments: clip.adjustments || {}
+                adjustments: clip.adjustments || getInitialAdjustments()
             });
         } else if (track.type === 'video' || track.type === 'image') {
             // Resolve Media Element

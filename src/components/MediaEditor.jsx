@@ -211,6 +211,37 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setTrimRange(prev => ({ ...prev, end: timelineDuration }));
     }, [timelineDuration]);
 
+    // Render Loop Handler
+    const handleRender = useCallback((time) => {
+        const mediaResources = {
+            mediaElement: mediaElementRef.current,
+            videoElements: videoElementsRef.current,
+            imageElements: imageElementsRef.current,
+            mediaUrl,
+            isVideo
+        };
+
+        const globalState = {
+            canvasDimensions,
+            rotation: 0,
+            zoom: 1,
+            memeMode,
+            selectedClipId,
+            initialAdjustments: adjustments,
+            effectIntensity,
+            activeEffectId,
+            activeFilterId
+        };
+
+        const frameState = getFrameState(time, tracks, mediaResources, globalState);
+
+        // Pass isPlaying: true to optimize rendering (skip heavy effects if needed)
+        render(frameState, { isPlaying: true });
+    }, [
+        tracks, mediaUrl, isVideo, canvasDimensions, memeMode, selectedClipId,
+        adjustments, effectIntensity, activeEffectId, activeFilterId, render
+    ]);
+
     // Playback Hook
     const {
         isPlaying,
@@ -219,9 +250,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         pause,
         togglePlay,
         seek
-    } = usePlayback(timelineDuration, (time) => {
-        // Optional: Any per-tick logic that isn't rendering
-    });
+    } = usePlayback(timelineDuration, handleRender);
 
     // Register Main Media Element - DISABLED
     // We handle main media sync manually now to support multiple clips on the main track

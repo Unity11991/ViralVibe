@@ -42,7 +42,7 @@ export const PreviewPlayer = ({
                     onUpdateText={updateTextOverlay}
                     onDeleteOverlay={deleteOverlay}
                     onBackgroundClick={() => setActiveOverlayId(null)}
-                    filterString={buildFilterString(adjustments)}
+                    // filterString={buildFilterString(adjustments)} // REMOVED: Handled internally by canvas renderer
                     onCanvasPointerDown={onCanvasPointerDown}
                     onCanvasPointerMove={onCanvasPointerMove}
                     onCanvasPointerUp={onCanvasPointerUp}

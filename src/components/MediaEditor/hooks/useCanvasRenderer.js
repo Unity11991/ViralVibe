@@ -80,7 +80,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
         const ctx = canvasRef.current.getContext('2d', {
             willReadFrequently: false,  // Better GPU usage
             alpha: false,               // No transparency = faster
-            desynchronized: true        // Reduces latency
+            // desynchronized: true     // DISABLED: Causes flickering with adjustment layers
         });
 
         if (ctx) {
@@ -107,7 +107,7 @@ export const useCanvasRenderer = (mediaElementRef, mediaType) => {
         const ctx = canvasRef.current.getContext('2d', {
             willReadFrequently: false, // FORCE GPU for playback
             alpha: false,
-            desynchronized: true
+            // desynchronized: true // DISABLED: Causes flickering
         });
 
         // Media may be null for empty canvas - renderFrame handles this via visibleLayers
