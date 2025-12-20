@@ -605,6 +605,62 @@ async function fileToBase64(file) {
     });
 }
 
+/**
+ * Downscales an image if it exceeds a certain size
+ * @param {File|string} fileOrBase64 
+ * @param {number} maxWidth 
+ * @param {number} maxHeight 
+ * @returns {Promise<string>} Base64 data URL
+ */
+async function downscaleImage(fileOrBase64, maxWidth = 1500, maxHeight = 1500) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width <= maxWidth && height <= maxHeight) {
+                // No need to downscale
+                if (typeof fileOrBase64 === 'string') resolve(fileOrBase64);
+                else {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.readAsDataURL(fileOrBase64);
+                }
+                return;
+            }
+
+            if (width > height) {
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width *= maxHeight / height;
+                    height = maxHeight;
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85)); // Use JPEG for better compression
+        };
+        img.onerror = reject;
+
+        if (typeof fileOrBase64 === 'string') {
+            img.src = fileOrBase64;
+        } else {
+            const reader = new FileReader();
+            reader.onload = (e) => img.src = e.target.result;
+            reader.readAsDataURL(fileOrBase64);
+        }
+    });
+}
+
 export const generateTrendInsights = async (trends, apiKey) => {
     if (!apiKey) throw new Error("API Key is required");
 
@@ -758,33 +814,32 @@ export const restoreImageAI = async (imageFile, hfToken) => {
     }
 
     try {
-        // Read file as ArrayBuffer
-        const arrayBuffer = await imageFile.arrayBuffer();
-
-        const response = await fetch(
-            "https://api-inference.huggingface.co/models/tencentarc/GFPGAN",
-            {
-                headers: {
-                    Authorization: `Bearer ${hfToken}`,
-                    "Content-Type": "application/octet-stream",
-                },
-                method: "POST",
-                body: arrayBuffer,
-            }
-        );
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Failed to restore image with AI.");
+        // Check file size (limit to 4MB for proxy/HF reliability)
+        // If it's larger, we downscale it
+        let base64DataUrl;
+        if (imageFile.size > 4 * 1024 * 1024) {
+            console.log("Image too large, downscaling...");
+            base64DataUrl = await downscaleImage(imageFile, 1200, 1200);
+        } else {
+            base64DataUrl = await fileToBase64(imageFile);
         }
 
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
+        const { data, error } = await supabase.functions.invoke('ai-restoration', {
+            body: {
+                hfToken,
+                imageBase64: base64DataUrl
+            }
         });
+
+        if (error) {
+            throw new Error(error.message || "Failed to restore image with AI.");
+        }
+
+        if (data?.error) {
+            throw new Error(data.error);
+        }
+
+        return data.image;
     } catch (error) {
         console.error("AI Restoration Error:", error);
         throw error;
