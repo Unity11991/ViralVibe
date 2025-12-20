@@ -64,28 +64,6 @@ const OptionsPanel = ({ settings, onSettingsChange, showMoodError }) => {
                     </div>
                 )}
 
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-secondary uppercase tracking-wider">
-                            Hugging Face Token
-                        </label>
-                        <a
-                            href="https://huggingface.co/settings/tokens"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
-                        >
-                            Get Token
-                        </a>
-                    </div>
-                    <input
-                        type="password"
-                        value={settings.hfToken || ''}
-                        onChange={(e) => handleChange('hfToken', e.target.value)}
-                        placeholder="For AI Image Enhancement"
-                        className="w-full input-liquid px-4 py-3 placeholder-secondary focus:ring-1 focus:ring-indigo-500/50"
-                    />
-                </div>
 
                 {/* Model Selector */}
                 {!isEnvModel && (
