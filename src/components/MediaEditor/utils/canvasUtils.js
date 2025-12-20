@@ -838,7 +838,7 @@ const renderLayer = (ctx, layer, globalState) => {
 
         // 3. Apply Filter
         ctx.save();
-        ctx.filter = buildFilterString(adjustments);
+        ctx.filter = buildFilterString(adjustments || {});
 
         // 4. Draw Back
         // We draw the physical temp canvas into the logical space?

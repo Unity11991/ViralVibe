@@ -185,6 +185,7 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
 
                 const frameState = getFrameState(time, timelineState.tracks, mediaResources, {
                     ...timelineState,
+                    selectedClipId: null, // Force no selection during export
                     canvasDimensions: { width, height },
                     effectIntensity: timelineState.effectIntensity,
                     activeEffectId: timelineState.activeEffectId,

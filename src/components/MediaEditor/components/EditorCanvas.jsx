@@ -29,8 +29,9 @@ export const EditorCanvas = ({
                 className="max-w-full max-h-full shadow-2xl touch-none" // touch-none for better gesture handling
                 style={{
                     imageRendering: 'high-quality',
-                    filter: filterString,
-                    WebkitFilter: filterString // Safari support
+                    imageRendering: 'high-quality',
+                    // filter: filterString, // REMOVED: Caused double application/flickering
+                    // WebkitFilter: filterString // REMOVED
                 }}
                 onPointerDown={onCanvasPointerDown}
                 onPointerMove={onCanvasPointerMove}
