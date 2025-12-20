@@ -253,6 +253,16 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             tempCtx.save();
             tempCtx.translate(centerX, centerY);
             tempCtx.rotate((rotation * Math.PI) / 180);
+
+            // Check if video is ready before drawing
+            if (media.tagName === 'VIDEO' && media.readyState < 2) {
+                // Video not ready yet, skip drawing this frame
+                tempCtx.restore();
+                tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+                ctx.restore();
+                return; // Exit early
+            }
+
             tempCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
             tempCtx.restore();
 
@@ -284,7 +294,15 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
                 drawMask(ctx, mask, drawWidth, drawHeight, true);
             }
 
-            ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            // Check if video is ready before drawing
+            if (media.tagName === 'VIDEO' && media.readyState < 2) {
+                // Video not ready yet, draw placeholder
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            } else {
+                ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            }
+
             ctx.restore();
         }
     }
@@ -757,112 +775,84 @@ const renderLayer = (ctx, layer, globalState) => {
     // Assuming 'transform' contains the final draw properties (x, y, scale, rotation).
 
     // 3. Draw Content
-    if (transition) {
-        // Handle Transition Rendering (Complex)
-        // This logic is similar to the previous implementation but wrapped for layers
-        // We might need a temp canvas if the transition involves masking/compositing
+    // Transition rendering removed
+    // Standard Draw
+    if (type === 'video' || type === 'image') {
+        drawMediaToCanvas(ctx, media, adjustments, transform, canvasDimensions, memePadding, {
+            applyFiltersToContext: true,
+            clearCanvas: false,
+            mask: mask,
+            faceRetouch: faceRetouch
+        });
+    } else if (type === 'text') {
+        drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
+    } else if (type === 'sticker') {
+        drawStickerOverlay(ctx, layer, image, canvasDimensions.width, canvasDimensions.height);
+    }
+    // Duplicate else-if blocks removed
+
+    else if (type === 'adjustment') {
+        // Adjustment Layer Logic: Snapshot -> Filter -> Draw Back
         const { width, height } = canvasDimensions;
         const tempCanvas = getCachedCanvas(width, height);
         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+
+        // 1. Snapshot current canvas state
         tempCtx.clearRect(0, 0, width, height);
+        tempCtx.drawImage(ctx.canvas, 0, 0, width, height); // Copy logical or physical? 
+        // We need to copy physical canvas dimensions actually because ctx.canvas is the physical one.
+        // But getCachedCanvas takes logical if we use the helper? 
+        // Actually ctx.canvas has physical size. logic dims might be smaller/different scale.
+        // Let's use getCachedCanvas with physical dims if we want pixel perfect copy.
+        // Or keep it simple: drawImage(ctx.canvas) draws the full backing store.
 
-        // Draw base content to temp
-        if (type === 'video' || type === 'image') {
-            drawMediaToCanvas(tempCtx, media, adjustments, transform, canvasDimensions, memePadding, {
-                applyFiltersToContext: true,
-                clearCanvas: false,
-                mask: mask,
-                faceRetouch: faceRetouch
-            });
-        } else if (type === 'text') {
-            // Adapt text overlay to drawTextOverlay signature
-            drawTextOverlay(tempCtx, layer, width, height);
-        } else if (type === 'sticker') {
-            drawStickerOverlay(tempCtx, layer, image, width, height);
-        }
+        // The tempCanvas from getCachedCanvas might be dirty and have wrong size?
+        // Helper `getCachedCanvas(width, height)` sets size.
+        // If we used logical width, we downscale?
+        // Let's check getCachedCanvas impl. It sets width/height.
+        // We should match ctx.canvas.width/height (physical).
 
-        // Apply Transition FX & Mask
-        applyTransitionFX(tempCtx, transition, width, height, media);
-        applyTransitionMask(tempCtx, transition, width, height);
+        // Wait, `canvasDimensions` passed here are logical.
+        // We should access ctx.canvas.width directly for physical copy
 
-        // Draw Temp to Main
-        ctx.drawImage(tempCanvas, 0, 0);
-        releaseCanvas(tempCanvas);
+        const physWidth = ctx.canvas.width;
+        const physHeight = ctx.canvas.height;
 
-    } else {
-        // Standard Draw
-        if (type === 'video' || type === 'image') {
-            drawMediaToCanvas(ctx, media, adjustments, transform, canvasDimensions, memePadding, {
-                applyFiltersToContext: true,
-                clearCanvas: false,
-                mask: mask,
-                faceRetouch: faceRetouch
-            });
-        } else if (type === 'text') {
-            drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
-        } else if (type === 'sticker') {
-            drawStickerOverlay(ctx, layer, image, canvasDimensions.width, canvasDimensions.height);
-        } else if (type === 'adjustment') {
-            // Adjustment Layer Logic: Snapshot -> Filter -> Draw Back
-            const { width, height } = canvasDimensions;
-            const tempCanvas = getCachedCanvas(width, height);
-            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        // We need a temp canvas of PHYSICAL size
+        const tempCanvasPhys = getCachedCanvas(physWidth, physHeight);
+        const tempCtxPhys = tempCanvasPhys.getContext('2d', { willReadFrequently: true });
+        tempCtxPhys.clearRect(0, 0, physWidth, physHeight);
+        tempCtxPhys.drawImage(ctx.canvas, 0, 0);
 
-            // 1. Snapshot current canvas state
-            tempCtx.clearRect(0, 0, width, height);
-            tempCtx.drawImage(ctx.canvas, 0, 0, width, height); // Copy logical or physical? 
-            // We need to copy physical canvas dimensions actually because ctx.canvas is the physical one.
-            // But getCachedCanvas takes logical if we use the helper? 
-            // Actually ctx.canvas has physical size. logic dims might be smaller/different scale.
-            // Let's use getCachedCanvas with physical dims if we want pixel perfect copy.
-            // Or keep it simple: drawImage(ctx.canvas) draws the full backing store.
+        // 2. Clear Main Canvas (to be replaced)
+        ctx.clearRect(0, 0, width, height); // Clear rect uses logical coord space if transform is set?
+        // ctx is transformed? renderLayer starts with save/restore but transform happens later?
+        // Line 595: ctx.save();
+        // Line 597: transform... not applied to ctx yet, logic below does it for MEDIA.
+        // So ctx is Identity here (except for global scaling if any?)
+        // `useCanvasRenderer` sets scale: ctx.scale(finalWidth / width, finalHeight / height);
+        // So logical coords 0,0,width,height cover the whole physical canvas.
+        // So `ctx.clearRect(0, 0, canvasDimensions.width, canvasDimensions.height)` is correct.
 
-            // The tempCanvas from getCachedCanvas might be dirty and have wrong size?
-            // Helper `getCachedCanvas(width, height)` sets size.
-            // If we used logical width, we downscale?
-            // Let's check getCachedCanvas impl. It sets width/height.
-            // We should match ctx.canvas.width/height (physical).
+        ctx.clearRect(0, 0, canvasDimensions.width, canvasDimensions.height);
 
-            // Wait, `canvasDimensions` passed here are logical.
-            // We should access ctx.canvas.width directly for physical copy
+        // 3. Apply Filter
+        ctx.save();
+        ctx.filter = buildFilterString(adjustments);
 
-            const physWidth = ctx.canvas.width;
-            const physHeight = ctx.canvas.height;
+        // 4. Draw Back
+        // We draw the physical temp canvas into the logical space?
+        // transform is not applied to ctx, but ctx has global scale.
+        // default drawImage(image, 0, 0, logicalW, logicalH) to fit?
+        ctx.drawImage(tempCanvasPhys, 0, 0, canvasDimensions.width, canvasDimensions.height);
 
-            // We need a temp canvas of PHYSICAL size
-            const tempCanvasPhys = getCachedCanvas(physWidth, physHeight);
-            const tempCtxPhys = tempCanvasPhys.getContext('2d', { willReadFrequently: true });
-            tempCtxPhys.clearRect(0, 0, physWidth, physHeight);
-            tempCtxPhys.drawImage(ctx.canvas, 0, 0);
+        ctx.restore();
+        // Reset filter? restore handles it.
 
-            // 2. Clear Main Canvas (to be replaced)
-            ctx.clearRect(0, 0, width, height); // Clear rect uses logical coord space if transform is set?
-            // ctx is transformed? renderLayer starts with save/restore but transform happens later?
-            // Line 595: ctx.save();
-            // Line 597: transform... not applied to ctx yet, logic below does it for MEDIA.
-            // So ctx is Identity here (except for global scaling if any?)
-            // `useCanvasRenderer` sets scale: ctx.scale(finalWidth / width, finalHeight / height);
-            // So logical coords 0,0,width,height cover the whole physical canvas.
-            // So `ctx.clearRect(0, 0, canvasDimensions.width, canvasDimensions.height)` is correct.
-
-            ctx.clearRect(0, 0, canvasDimensions.width, canvasDimensions.height);
-
-            // 3. Apply Filter
-            ctx.save();
-            ctx.filter = buildFilterString(adjustments);
-
-            // 4. Draw Back
-            // We draw the physical temp canvas into the logical space?
-            // transform is not applied to ctx, but ctx has global scale.
-            // default drawImage(image, 0, 0, logicalW, logicalH) to fit?
-            ctx.drawImage(tempCanvasPhys, 0, 0, canvasDimensions.width, canvasDimensions.height);
-
-            ctx.restore();
-            // Reset filter? restore handles it.
-
-            releaseCanvas(tempCanvasPhys);
-        }
+        releaseCanvas(tempCanvasPhys);
     }
+    // Duplicate else-if blocks removed
+
 
     // 4. Apply Per-Layer Color Grade / Effects (if not handled inside drawMedia)
     // drawMediaToCanvas handles filters/adjustments for media.
@@ -899,7 +889,9 @@ const renderLayer = (ctx, layer, globalState) => {
     }
 
     ctx.restore();
+
 };
+
 
 /**
  * Render complete frame with all effects and overlays

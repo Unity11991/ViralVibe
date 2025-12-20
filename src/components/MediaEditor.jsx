@@ -618,7 +618,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     // usePlayback handles registered elements.
     // For dynamic elements (secondary tracks), we should register them or sync them in an effect.
 
-    // Pre-load video/image elements for all clips when tracks change
+    // Pre-load video/image elements for all clips (instant seeking)
     useEffect(() => {
         tracks.forEach(track => {
             if (track.type === 'video' || track.type === 'sticker') {
@@ -629,7 +629,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         video.src = clip.source;
                         video.muted = !!(clip.muted || clip.audioDetached);
                         video.crossOrigin = 'anonymous';
-                        video.preload = 'metadata';
+                        video.preload = 'auto';
                         videoElementsRef.current[clip.id] = video;
 
                         // Load video metadata
@@ -650,38 +650,33 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         });
     }, [tracks]);
 
-    // Separate Cleanup Effect to avoid running on every frame
-    useEffect(() => {
-        const currentClipIds = new Set();
-        tracks.forEach(t => t.clips.forEach(c => currentClipIds.add(c.id)));
 
-        // Cleanup Audio Ref
-        Object.keys(audioElementsRef.current).forEach(clipId => {
-            if (!currentClipIds.has(clipId)) {
+    // Separate Cleanup Effect to avoid running on every frame
+    // Cleanup Effect (Global Unmount)
+    useEffect(() => {
+        return () => {
+            // Cleanup Audio Ref
+            Object.keys(audioElementsRef.current).forEach(clipId => {
                 const audio = audioElementsRef.current[clipId];
                 if (!audio.paused) audio.pause();
                 audio.src = '';
                 delete audioElementsRef.current[clipId];
-            }
-        });
+            });
 
-        // Cleanup Video Ref
-        Object.keys(videoElementsRef.current).forEach(clipId => {
-            if (!currentClipIds.has(clipId)) {
+            // Cleanup Video Ref
+            Object.keys(videoElementsRef.current).forEach(clipId => {
                 const video = videoElementsRef.current[clipId];
                 if (!video.paused) video.pause();
                 video.src = '';
                 delete videoElementsRef.current[clipId];
-            }
-        });
+            });
 
-        // Cleanup Image Ref
-        Object.keys(imageElementsRef.current).forEach(clipId => {
-            if (!currentClipIds.has(clipId)) {
+            // Cleanup Image Ref
+            Object.keys(imageElementsRef.current).forEach(clipId => {
                 delete imageElementsRef.current[clipId];
-            }
-        });
-    }, [tracks]);
+            });
+        };
+    }, []);
 
     useEffect(() => {
         // Helper to apply audio properties
@@ -1228,7 +1223,20 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         togglePlay();
     };
 
+    // Loading state for seeking
+    const [isVideoLoading, setIsVideoLoading] = useState(false);
+    const wasPlayingBeforeSeek = useRef(false);
+
     const handleSeek = useCallback((time) => {
+        // Pause playback while seeking
+        if (isPlaying) {
+            wasPlayingBeforeSeek.current = true;
+            pause();
+        } else {
+            wasPlayingBeforeSeek.current = false;
+        }
+
+        setIsVideoLoading(true);
         seek(time);
 
         // Sync video element immediately for preview
@@ -1246,20 +1254,60 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         }
 
-        // Sync secondary videos
-        tracks.filter(t => t.type === 'video' && t.id !== 'track-main').forEach(track => {
+        // Sync secondary videos - CREATE elements if needed for immediate playback
+        tracks.forEach(track => {
+            if (track.type !== 'video' && track.type !== 'sticker') return;
+
             const activeClip = track.clips.find(c =>
                 time >= c.startTime && time < (c.startTime + c.duration)
             );
 
-            if (activeClip && videoElementsRef.current[activeClip.id]) {
-                const sourceTime = activeClip.startOffset + (time - activeClip.startTime);
+            if (activeClip && activeClip.type === 'video') {
+                // Create video element immediately if it doesn't exist
+                if (!videoElementsRef.current[activeClip.id]) {
+                    const video = document.createElement('video');
+                    video.src = activeClip.source;
+                    video.muted = !!(activeClip.muted || activeClip.audioDetached);
+                    video.crossOrigin = 'anonymous';
+                    video.preload = 'auto';
+                    videoElementsRef.current[activeClip.id] = video;
+                    video.load();
+                }
+
+                // Seek to the correct time
+                const video = videoElementsRef.current[activeClip.id];
+                const sourceTime = (activeClip.startOffset || 0) + (time - activeClip.startTime);
                 if (Number.isFinite(sourceTime)) {
-                    videoElementsRef.current[activeClip.id].currentTime = sourceTime;
+                    video.currentTime = sourceTime;
                 }
             }
         });
-    }, [seek, isVideo, tracks, mediaElementRef]);
+
+        // Wait for videos to be ready
+        setTimeout(() => {
+            setIsVideoLoading(false);
+            if (wasPlayingBeforeSeek.current) {
+                play();
+                wasPlayingBeforeSeek.current = false;
+            }
+        }, 100);
+
+        // Also preload images immediately for seek
+        tracks.forEach(track => {
+            if (track.type !== 'image') return;
+
+            const activeClip = track.clips.find(c =>
+                time >= c.startTime && time < (c.startTime + c.duration)
+            );
+
+            if (activeClip && !imageElementsRef.current[activeClip.id]) {
+                const img = new Image();
+                img.src = activeClip.source || activeClip.thumbnail;
+                img.crossOrigin = 'anonymous';
+                imageElementsRef.current[activeClip.id] = img;
+            }
+        });
+    }, [seek, isVideo, tracks, mediaElementRef, isPlaying, pause, play]);
 
     const handleAddAsset = (type, data) => {
         if (type === 'text') {

@@ -55,12 +55,9 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         if (!clip) return;
 
         // Common Layer Properties
-        // Note: zIndex logic might need adjustment if used for sorting elsewhere, 
-        // but renderFrame uses array order.
         const baseLayer = {
             id: clip.id,
             zIndex: index,
-            // We keep original index semblance or just rely on array order.
             opacity: clip.opacity !== undefined ? clip.opacity : 100,
             blendMode: clip.blendMode || 'normal',
             startTime: clip.startTime,
@@ -80,11 +77,101 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
         };
 
         // Base Transform (Active Values for this Frame)
-        // These override static clip properties
         const activeOpacity = getVal('opacity', baseLayer.opacity);
-
-        // Apply Opacity override
         baseLayer.opacity = activeOpacity;
+
+        // --- TRANSITION LOGIC ---
+        // Check if we are in a transition period at the start of this clip
+        let transitionOpacity = 1; // Multiplier for current clip
+        let outgoingLayer = null;
+
+        if (clip.transition && clip.transition.type !== 'none' && clip.transition.duration > 0) {
+            const transDuration = clip.transition.duration;
+            if (clipTime < transDuration) {
+                // We are in the transition overlap
+                const progress = clipTime / transDuration;
+
+                // 1. Handle Outgoing Clip (Previous Clip)
+                // Find the clip that ends exactly where this one starts
+                // We assume clips are contiguous for transitions to make sense
+                const prevClip = track.clips.find(c => Math.abs((c.startTime + c.duration) - clip.startTime) < 0.05);
+
+                if (prevClip) {
+                    // Calculate outgoing opacity based on transition type
+                    let outgoingOp = 1;
+                    if (clip.transition.type === 'cross-dissolve') {
+                        outgoingOp = 1; // Keep outgoing opaque, fade in incoming over it
+                        transitionOpacity = progress; // Fade in current
+                    }
+
+                    // Create layer for outgoing clip
+                    // For simplicity, we freeze the last frame of the outgoing clip
+                    // To do this, we treat it as a static image or paused video at its end time
+
+                    // Resolve Media for Prev Clip
+                    let prevMedia = null;
+                    if (track.type === 'video' || track.type === 'image') {
+                        if (prevClip.type === 'image') {
+                            prevMedia = imageElements && imageElements[prevClip.id];
+                            if (!prevMedia && prevClip.source) {
+                                const img = new Image();
+                                img.src = prevClip.source;
+                                prevMedia = img;
+                            }
+                        } else {
+                            prevMedia = videoElements && videoElements[prevClip.id];
+                            if (!prevMedia && prevClip.source) {
+                                const v = document.createElement('video');
+                                v.src = prevClip.source;
+                                v.crossOrigin = 'anonymous';
+                                prevMedia = v;
+                            }
+                        }
+                    }
+
+                    if (prevMedia) {
+                        // Apply outgoing opacity
+                        const prevBaseOpacity = prevClip.opacity !== undefined ? prevClip.opacity : 100;
+                        const finalPrevOpacity = prevBaseOpacity * outgoingOp;
+
+                        // We need to calculate transform for prev clip too (at its end state)
+                        // For now, assume static transform or last keyframe
+                        // Simplified: just use base transform
+                        const prevTransform = {
+                            x: prevClip.transform?.x || 0,
+                            y: prevClip.transform?.y || 0,
+                            scale: prevClip.transform?.scale || 100,
+                            rotation: prevClip.transform?.rotation || 0,
+                            opacity: finalPrevOpacity
+                        };
+
+                        outgoingLayer = {
+                            id: prevClip.id + '_outgoing',
+                            zIndex: index - 0.5, // Render below current
+                            type: prevClip.type || 'video',
+                            media: prevMedia,
+                            adjustments: prevClip.adjustments || getInitialAdjustments(),
+                            filter: prevClip.filter || 'normal',
+                            effect: prevClip.effect || null,
+                            transform: prevTransform,
+                            opacity: finalPrevOpacity,
+                            mask: prevClip.mask || null,
+                            // FORCE FREEZE: We don't pass currentTime, or we handle it in renderer
+                            // Actually renderLayer/drawMediaToCanvas just draws what's there.
+                            // For video, it draws current frame. We need to seek it?
+                            // Render loop syncs videos. If we are in 'clip', 'prevClip' is NOT active, so it's paused.
+                            // If it's paused at the end (because it finished playing), it shows the last frame.
+                            // This works naturally if the video element state is preserved.
+                        };
+                    }
+                }
+            }
+        }
+
+        // Apply Transition Opacity to Current Clip
+        baseLayer.opacity = baseLayer.opacity * transitionOpacity;
+        const finalCurrentOpacity = baseLayer.opacity;
+
 
         // --- UNIFIED ANIMATION LOGIC ---
         // Calculate animated transform properties
@@ -93,7 +180,7 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
             y: getVal('y', clip.transform?.y || (track.type === 'text' ? 50 : 0)),
             scale: getVal('scale', clip.transform?.scale || (track.type === 'text' ? clip.style?.fontSize || 48 : 100)),
             rotation: getVal('rotation', clip.transform?.rotation || 0),
-            opacity: baseLayer.opacity
+            opacity: finalCurrentOpacity
         };
 
         // Apply Preset Animation if active
@@ -101,16 +188,6 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
             const animDuration = clip.animation.duration || 1.0;
             const animType = clip.animation.type;
             let progress = 0;
-
-            // Determine progress based on animation type (In vs Out vs Combo)
-            // For simplicity, we use the 'type' field from ANIMATIONS array if available, 
-            // but here we just infer from ID string or assume 'in' if unknown.
-            // Actually, applyAnimation handles the math, we just need the 0-1 progress relative to duration.
-
-            // Logic:
-            // IN: 0 -> duration
-            // OUT: (clip.duration - duration) -> clip.duration
-            // COMBO: 0 -> duration (or loop?) -> Let's assume start of clip for now.
 
             const isOut = animType.toLowerCase().includes('out');
 
@@ -130,6 +207,11 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     animatedProps = applyAnimation(animatedProps, animType, progress);
                 }
             }
+        }
+
+        // Push Outgoing Layer First (if exists)
+        if (outgoingLayer) {
+            visibleLayers.push(outgoingLayer);
         }
 
         if (track.type === 'text') {
@@ -241,16 +323,6 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
             }
 
             if (media) {
-                // Calculate Transition
-                let transition = null;
-                if (clip.transition && clip.transition.type !== 'none') {
-                    const tDur = clip.transition.duration || 1.0;
-                    const tTime = currentTime - clip.startTime;
-                    if (tTime < tDur) {
-                        transition = { ...clip.transition, progress: tTime / tDur };
-                    }
-                }
-
                 visibleLayers.push({
                     ...baseLayer,
                     type: clip.type || 'video',
@@ -268,7 +340,6 @@ export const getFrameState = (currentTime, tracks, mediaResources, globalState) 
                     },
                     opacity: animatedProps.opacity,
                     mask: clip.mask || null,
-                    transition: transition,
                     faceRetouch: clip.faceRetouch || null
                 });
             }

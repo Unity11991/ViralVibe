@@ -35,30 +35,33 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
             const totalFrames = Math.ceil(duration * fps);
 
             // Determine Codec Level based on resolution and FPS
-            // Baseline Profile (4200)
             let codec = 'avc1.42001f'; // Default Level 3.1 (720p)
-
             if (width > 1920 || height > 1080 || fps > 60) {
                 codec = 'avc1.420033'; // Level 5.1 (4K or High FPS)
             } else if (width > 1280 || height > 720 || fps > 30) {
                 codec = 'avc1.42002a'; // Level 4.2 (1080p @ 60fps)
             }
 
-            // 1. Initialize Muxer
+            // 1. Initialize Muxer with Audio Support
             const muxer = new Mp4Muxer.Muxer({
                 target: new Mp4Muxer.ArrayBufferTarget(),
                 video: {
-                    codec: 'avc', // H.264
+                    codec: 'avc',
                     width,
                     height
                 },
-                fastStart: 'in-memory', // Optimize for web playback
+                audio: {
+                    codec: 'aac',
+                    numberOfChannels: 2,
+                    sampleRate: 48000
+                },
+                fastStart: 'in-memory',
                 firstTimestampBehavior: 'offset',
             });
 
             let encoderError = null;
 
-            // 2. Initialize VideoEncoder
+            // 2. Initialize Encoders
             const videoEncoder = new VideoEncoder({
                 output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
                 error: (e) => {
@@ -75,8 +78,40 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                 framerate: fps,
             });
 
-            // 3. Prepare Canvas for Rendering
-            // We use an offscreen canvas or the existing ref but resized for export
+            const audioEncoder = new AudioEncoder({
+                output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+                error: (e) => {
+                    console.error("AudioEncoder error:", e);
+                    encoderError = e;
+                }
+            });
+
+            audioEncoder.configure({
+                codec: 'mp4a.40.2', // AAC-LC
+                sampleRate: 48000,
+                numberOfChannels: 2,
+                bitrate: 128000
+            });
+
+            // 3. Setup Audio Rendering (Offline)
+            const audioBufferCache = new Map();
+            const getAudioBuffer = async (url) => {
+                if (audioBufferCache.has(url)) return audioBufferCache.get(url);
+                try {
+                    const response = await fetch(url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const tempCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+                    const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+                    await tempCtx.close();
+                    audioBufferCache.set(url, audioBuffer);
+                    return audioBuffer;
+                } catch (e) {
+                    console.error('Error decoding audio:', url, e);
+                    return null;
+                }
+            };
+
+            // 4. Prepare Canvas for Rendering
             const exportCanvas = document.createElement('canvas');
             exportCanvas.width = width;
             exportCanvas.height = height;
@@ -85,9 +120,8 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                 willReadFrequently: false
             });
 
-            // 4. Render Loop
-            setExportStatus('Rendering & Encoding...');
-
+            // 5. Video Render Loop
+            setExportStatus('Rendering video frames...');
             for (let i = 0; i < totalFrames; i++) {
                 if (abortControllerRef.current.signal.aborted) {
                     throw new Error('Export cancelled');
@@ -97,30 +131,12 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                     throw new Error(`Encoding failed: ${encoderError.message}`);
                 }
 
-                if (videoEncoder.state === 'closed') {
-                    throw new Error('VideoEncoder closed unexpectedly');
-                }
-
                 const time = i / fps;
+                setExportProgress(Math.round((i / totalFrames) * 80)); // 80% for video
 
-                // Update Progress
-                setExportProgress(Math.round((i / totalFrames) * 100));
-
-                // Get State for this Frame
-                // We need to ensure media elements are sought to the correct time
-                // This is the trickiest part: waiting for video elements to seek
-
-                // A. Seek all video elements
                 const seekPromises = [];
-                const activeVideos = [];
-
-                // Helper to seek a video element with precise frame synchronization
                 const seekVideo = async (videoEl, targetTime) => {
-                    // 1. Set time
                     videoEl.currentTime = targetTime;
-
-                    // 2. Wait for seeked event if needed (if not already close enough)
-                    // We use a very tight tolerance (0.001s = 1ms) because we want exact frames
                     if (Math.abs(videoEl.currentTime - targetTime) > 0.001) {
                         await new Promise(resolve => {
                             const onSeeked = () => {
@@ -130,96 +146,146 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                             videoEl.addEventListener('seeked', onSeeked, { once: true });
                         });
                     }
-
-                    // 3. Wait for frame to be painted (Critical for frame accuracy)
-                    // requestVideoFrameCallback ensures the new frame is actually ready for composition
                     if (videoEl.requestVideoFrameCallback) {
                         await new Promise(resolve => {
                             videoEl.requestVideoFrameCallback(() => resolve());
                         });
                     } else {
-                        // Fallback for browsers without rVFC
-                        // A small delay to allow paint
                         await new Promise(r => setTimeout(r, 20));
                     }
                 };
 
-                // Identify active videos for this frame from timelineState
-                // This logic mirrors renderLogic but we need to actually touch the DOM elements
                 timelineState.tracks.forEach(track => {
                     if (track.type === 'video') {
                         const clip = track.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
                         if (clip) {
                             const videoEl = mediaResources.videoElements[clip.id];
                             if (videoEl) {
-                                // Calculate source time
                                 const clipTime = time - clip.startTime;
-                                const sourceTime = (clip.offset || 0) + clipTime;
+                                const sourceTime = (clip.startOffset || 0) + clipTime;
                                 seekPromises.push(seekVideo(videoEl, sourceTime));
-                                activeVideos.push(videoEl);
                             }
                         }
                     }
                 });
 
-                // Also main media element if used
                 if (mediaResources.mediaElement) {
-                    // Check if main track is active
                     const mainTrack = timelineState.tracks.find(t => t.id === 'track-main');
                     const mainClip = mainTrack?.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
                     if (mainClip) {
                         const clipTime = time - mainClip.startTime;
-                        const sourceTime = (mainClip.offset || 0) + clipTime;
+                        const sourceTime = (mainClip.startOffset || 0) + clipTime;
                         seekPromises.push(seekVideo(mediaResources.mediaElement, sourceTime));
                     }
                 }
 
-                // Wait for all seeks to complete
                 if (seekPromises.length > 0) {
                     await Promise.all(seekPromises);
                 }
 
-                // B. Render Frame
                 const frameState = getFrameState(time, timelineState.tracks, mediaResources, {
                     ...timelineState,
-                    canvasDimensions: { width, height }, // Force export dimensions
-                    // Ensure we use high quality settings
+                    canvasDimensions: { width, height },
                     effectIntensity: timelineState.effectIntensity,
                     activeEffectId: timelineState.activeEffectId,
                     activeFilterId: timelineState.activeFilterId
                 });
 
-                // Render to our export canvas
                 renderFrame(ctx, mediaResources.mediaElement, frameState, {
                     forceHighQuality: true,
                     applyFiltersToContext: true
                 });
 
-                // C. Encode Frame
-                // Create VideoFrame from canvas
                 const frame = new VideoFrame(exportCanvas, {
-                    timestamp: i * (1000000 / fps), // microseconds
+                    timestamp: i * (1000000 / fps),
                     duration: 1000000 / fps
                 });
 
                 videoEncoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
                 frame.close();
 
-                // Yield to main thread occasionally to keep UI responsive
                 if (i % 5 === 0) {
                     await new Promise(r => setTimeout(r, 0));
                 }
             }
 
-            // 5. Finalize
-            setExportStatus('Finalizing...');
             await videoEncoder.flush();
+
+            // 6. Render and Encode Audio
+            setExportStatus('Rendering audio...');
+            const sampleRate = 48000;
+            const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
+
+            const audioLoadPromises = [];
+            timelineState.tracks.forEach(track => {
+                if (track.type === 'audio' || track.type === 'video') {
+                    track.clips.forEach(clip => {
+                        if (track.type === 'video' && (clip.muted || clip.audioDetached)) return;
+
+                        audioLoadPromises.push((async () => {
+                            const buffer = await getAudioBuffer(clip.source);
+                            if (!buffer) return;
+
+                            const source = offlineCtx.createBufferSource();
+                            source.buffer = buffer;
+
+                            const gainNode = offlineCtx.createGain();
+                            gainNode.gain.value = (clip.volume !== undefined ? clip.volume : 100) / 100;
+
+                            source.connect(gainNode);
+                            gainNode.connect(offlineCtx.destination);
+
+                            source.start(clip.startTime, clip.startOffset || 0, clip.duration);
+                        })());
+                    });
+                }
+            });
+
+            await Promise.all(audioLoadPromises);
+            const renderedBuffer = await offlineCtx.startRendering();
+
+            setExportStatus('Encoding audio...');
+            const channelData = [
+                renderedBuffer.getChannelData(0),
+                renderedBuffer.numberOfChannels > 1 ? renderedBuffer.getChannelData(1) : renderedBuffer.getChannelData(0)
+            ];
+
+            const audioFrameDuration = 1024;
+            const numAudioFrames = Math.ceil(renderedBuffer.length / audioFrameDuration);
+
+            for (let i = 0; i < numAudioFrames; i++) {
+                const start = i * audioFrameDuration;
+                const end = Math.min(start + audioFrameDuration, renderedBuffer.length);
+                const frameLength = end - start;
+
+                const frameData = new Float32Array(frameLength * 2);
+                for (let j = 0; j < frameLength; j++) {
+                    frameData[j * 2] = channelData[0][start + j];
+                    frameData[j * 2 + 1] = channelData[1][start + j];
+                }
+
+                const audioFrame = new AudioData({
+                    format: 'f32', // Interleaved
+                    sampleRate,
+                    numberOfFrames: frameLength,
+                    numberOfChannels: 2,
+                    timestamp: (start / sampleRate) * 1000000,
+                    data: frameData
+                });
+
+                audioEncoder.encode(audioFrame);
+                audioFrame.close();
+            }
+
+            await audioEncoder.flush();
+
+            // 7. Finalize
+            setExportStatus('Creating file...');
             muxer.finalize();
 
             const { buffer } = muxer.target;
             const blob = new Blob([buffer], { type: 'video/mp4' });
 
-            // Download
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -236,7 +302,7 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
             setExportError(err.message);
             setIsExporting(false);
         }
-    }, [timelineState, mediaResources]);
+    }, [timelineState, mediaResources, isExporting]);
 
     const cancelExport = useCallback(() => {
         if (abortControllerRef.current) {
