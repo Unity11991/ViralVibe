@@ -102,6 +102,7 @@ function App() {
   // Settings State
   const [settings, setSettings] = useState({
     apiKey: import.meta.env.VITE_GROQ_API_KEY || '',
+    hfToken: import.meta.env.VITE_HF_TOKEN || '',
     platform: 'instagram',
     mood: 'best',
     model: import.meta.env.VITE_AI_MODEL || 'meta-llama/llama-4-maverick-17b-128e-instruct',
@@ -586,6 +587,7 @@ function App() {
       {showImageEnhancer && (
         <ImageEnhancer
           onClose={() => setShowImageEnhancer(false)}
+          settings={settings}
         />
       )}
 
