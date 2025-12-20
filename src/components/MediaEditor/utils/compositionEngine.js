@@ -220,7 +220,8 @@ const arrangeClipsOnTimeline = (assignments, beats, totalDuration, stylePreset) 
         }
 
         // Random start offset in video
-        const maxOffset = Math.max(0, (video.duration || 5) - clipDuration);
+        const safeDuration = (video.duration && video.duration > 0) ? video.duration : 10;
+        const maxOffset = Math.max(0, safeDuration - clipDuration);
         const startOffset = Math.random() * maxOffset;
 
         placements.push({
@@ -253,7 +254,7 @@ const arrangeClipsOnTimeline = (assignments, beats, totalDuration, stylePreset) 
  */
 const calculateClipDuration = (currentTime, beats, stylePreset, videoDuration) => {
     let duration = stylePreset.minClipDuration;
-    const maxDur = Math.min(stylePreset.maxClipDuration, videoDuration || 10);
+    const maxDur = Math.min(stylePreset.maxClipDuration, (videoDuration && videoDuration > 0) ? videoDuration : 10);
 
     if (stylePreset.beatSync && beats && beats.length > 0) {
         // Find next valid beat

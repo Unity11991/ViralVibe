@@ -907,7 +907,7 @@ const renderLayer = (ctx, layer, globalState) => {
  * @param {HTMLImageElement|HTMLVideoElement} media - Media element
  * @param {Object} state - Editor state (filters, overlays, etc.)
  */
-export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true }) => {
+export const renderFrame = (ctx, media, state, options = { applyFiltersToContext: true, isPreview: false }) => {
     const {
         adjustments,
         transform,
@@ -974,7 +974,8 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
             canvasDimensions: dimensions,
             memePadding,
             activeOverlayId: state.activeOverlayId,
-            effectIntensity
+            effectIntensity,
+            isPreview: options.isPreview // Pass preview flag to layers
         });
     });
 
@@ -1696,7 +1697,7 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
  * Apply transition special effects (Glitch, Blur, Color, Light)
  * These are applied BEFORE the mask to the content itself.
  */
-export const applyTransitionFX = (ctx, transition, width, height, media) => {
+export const applyTransitionFX = (ctx, transition, width, height, media, isPreview = false) => {
     const { type, progress } = transition;
     const p = progress;
 
@@ -1744,17 +1745,23 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
             }
         } else if (type === 'glitch_noise') {
             // Static noise
-            const imageData = ctx.getImageData(0, 0, width, height);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                if (Math.random() < intensity / 100) {
-                    const noise = Math.random() * 255;
-                    data[i] = noise;
-                    data[i + 1] = noise;
-                    data[i + 2] = noise;
+            // HD OPTIMIZATION: Skip expensive pixel manipulation during preview
+            if (isPreview) {
+                // Fast approximation using simple grain overlay
+                drawGrain(ctx, intensity);
+            } else {
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    if (Math.random() < intensity / 100) {
+                        const noise = Math.random() * 255;
+                        data[i] = noise;
+                        data[i + 1] = noise;
+                        data[i + 2] = noise;
+                    }
                 }
+                ctx.putImageData(imageData, 0, 0);
             }
-            ctx.putImageData(imageData, 0, 0);
         } else if (type === 'glitch_displacement') {
             // Wave displacement
             const numSlices = 20;
@@ -1926,6 +1933,9 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
             ctx.drawImage(ctx.canvas, 0, 0);
         } else if (type === 'posterize') {
             // Posterization effect
+            // HD OPTIMIZATION: Skip expensive pixel manipulation during preview
+            if (isPreview) return;
+
             const levels = Math.max(2, Math.floor(8 * (1 - intensity)));
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
@@ -1937,6 +1947,13 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
             ctx.putImageData(imageData, 0, 0);
         } else if (type === 'threshold') {
             // Black and white threshold
+            // HD OPTIMIZATION: Fast approximation
+            if (isPreview) {
+                ctx.filter = `grayscale(100%) contrast(1000%)`;
+                ctx.drawImage(ctx.canvas, 0, 0);
+                return;
+            }
+
             const threshold = 128 + (intensity * 100);
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
@@ -1948,6 +1965,15 @@ export const applyTransitionFX = (ctx, transition, width, height, media) => {
             ctx.putImageData(imageData, 0, 0);
         } else if (type === 'solarize') {
             // Solarization effect
+            // HD OPTIMIZATION: Fast approximation using difference blending
+            if (isPreview) {
+                ctx.globalCompositeOperation = 'difference';
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, width, height);
+                ctx.globalCompositeOperation = 'source-over';
+                return;
+            }
+
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
             const threshold = 128;

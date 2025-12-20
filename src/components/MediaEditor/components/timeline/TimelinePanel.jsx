@@ -194,9 +194,9 @@ export const TimelinePanel = ({
             let newStartTime = (x / scale) - draggingClip.offsetTime;
             newStartTime = Math.max(0, newStartTime);
 
-            // Snapping
-            if (snapPoints && snapPoints.length > 0) {
-                const threshold = 10 / scale;
+            // Snapping (Disable if Shift key is held)
+            if (!e.shiftKey && snapPoints && snapPoints.length > 0) {
+                const threshold = 15 / scale; // Slightly increased threshold for better feel
                 let bestSnap = null;
                 let minDist = threshold;
 
