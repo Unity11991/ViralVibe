@@ -1,6 +1,7 @@
 import React from 'react';
 import { EditorCanvas } from '../EditorCanvas';
 import { CropOverlay } from '../CropOverlay';
+import { Loader2 } from 'lucide-react';
 
 export const PreviewPlayer = ({
     canvasRef,
@@ -21,7 +22,8 @@ export const PreviewPlayer = ({
     buildFilterString,
     onCanvasPointerDown,
     onCanvasPointerMove,
-    onCanvasPointerUp
+    onCanvasPointerUp,
+    isVideoLoading = false
 }) => {
     return (
         <div className="relative w-full h-full flex items-center justify-center bg-[#0f0f12] overflow-hidden p-4">
@@ -52,6 +54,13 @@ export const PreviewPlayer = ({
                     aspectRatio={cropPreset === 'free' ? null : cropPreset === '16:9' ? 16 / 9 : cropPreset === '9:16' ? 9 / 16 : cropPreset === '1:1' ? 1 : cropPreset === '4:5' ? 4 / 5 : null}
                     isActive={activeTab === 'crop'}
                 />
+
+                {/* Loading Indicator */}
+                {isVideoLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-50 pointer-events-none">
+                        <Loader2 className="w-12 h-12 text-white animate-spin" />
+                    </div>
+                )}
             </div>
         </div>
     );

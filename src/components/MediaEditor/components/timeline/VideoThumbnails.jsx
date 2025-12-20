@@ -1,32 +1,8 @@
+
+
 import React, { useEffect, useState, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-
-// Global thumbnail cache to prevent regenerating the same thumbnails
-const thumbnailCache = new Map();
-// Expose cache globally for management
-if (typeof window !== 'undefined') {
-    window.__thumbnailCache = thumbnailCache;
-}
-// Global Queue System
-const queue = [];
-let activeGenerations = 0;
-const MAX_CONCURRENT_GENERATIONS = 1; // Strict limit to 1 for HD stability
-
-const processQueue = async () => {
-    if (activeGenerations >= MAX_CONCURRENT_GENERATIONS || queue.length === 0) return;
-
-    activeGenerations++;
-    const task = queue.shift();
-
-    try {
-        await task.run();
-    } catch (e) {
-        console.warn("Thumbnail task failed:", e);
-    } finally {
-        activeGenerations--;
-        processQueue(); // Process next
-    }
-};
+import { thumbnailGenerator } from '../../utils/ThumbnailGenerator';
 
 export const VideoThumbnails = React.memo(({ source, duration, width, height, visibleWidth, startOffset = 0 }) => {
     const [thumbnails, setThumbnails] = useState([]);
@@ -35,10 +11,31 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
     const isMounted = useRef(true);
     const containerRef = useRef(null);
 
-    // Config - Optimized values
-    const thumbWidth = 60;
-    const maxThumbs = 50; // Increased from 8 to cover longer clips
-    const thumbCount = Math.min(Math.ceil(width / thumbWidth), maxThumbs);
+    // 1. Calculate Grid Parameters
+    // We want thumbnails to be roughly 60px wide
+    const targetThumbWidth = 60;
+    const scale = width / duration; // pixels per second
+
+    // Determine optimal time step (interval between thumbnails)
+    // We want timeStep * scale ≈ targetThumbWidth
+    // So timeStep ≈ targetThumbWidth / scale
+    let rawTimeStep = targetThumbWidth / scale;
+
+    // Snap to nice intervals: 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60
+    const intervals = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60];
+    const timeStep = intervals.reduce((prev, curr) =>
+        Math.abs(curr - rawTimeStep) < Math.abs(prev - rawTimeStep) ? curr : prev
+    );
+
+    // Calculate Grid Alignment
+    const gridStartTime = Math.floor(startOffset / timeStep) * timeStep;
+    const gridEndTime = startOffset + duration;
+
+    // Generate list of required timestamps
+    const requiredTimestamps = [];
+    for (let t = gridStartTime; t < gridEndTime; t += timeStep) {
+        requiredTimestamps.push(parseFloat(t.toFixed(2))); // Avoid float precision issues
+    }
 
     // Intersection Observer
     useEffect(() => {
@@ -57,139 +54,93 @@ export const VideoThumbnails = React.memo(({ source, duration, width, height, vi
     useEffect(() => {
         if (!isVisible || !source || !duration || width <= 0) return;
 
-        // Check cache
-        const cacheKey = `${source}-${thumbCount}-${startOffset}`;
-        if (thumbnailCache.has(cacheKey)) {
-            setThumbnails(thumbnailCache.get(cacheKey));
-            return;
-        }
+        const loadThumbnails = async () => {
+            setIsGenerating(true);
 
-        // Define Task
-        const task = {
-            run: async () => {
-                if (!isMounted.current) return;
-                setIsGenerating(true);
-                setThumbnails([]);
+            // Initial load from cache if available (optimistic update)
+            const initialThumbs = await Promise.all(requiredTimestamps.map(async (t) => {
+                // We can check cache synchronously if we exposed it, but requestThumbnail handles it
+                // For now, let's just fire requests.
+                // To avoid flickering, we can wait for all? Or stream them?
+                // Streaming is better for perceived performance.
+                return { time: t, src: null };
+            }));
+
+            if (isMounted.current) {
+                setThumbnails(initialThumbs);
+            }
+
+            // Fetch one by one
+            for (const time of requiredTimestamps) {
+                if (!isMounted.current) break;
 
                 try {
-                    const video = document.createElement('video');
-                    video.src = source;
-                    if (!source.startsWith('blob:')) video.crossOrigin = 'anonymous';
-                    video.muted = true;
-                    video.preload = 'metadata';
+                    const src = await thumbnailGenerator.requestThumbnail(source, time);
 
-                    // Load Metadata
-                    await Promise.race([
-                        new Promise((resolve, reject) => {
-                            video.onloadedmetadata = resolve;
-                            video.onerror = reject;
-                        }),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-                    ]);
-
-                    if (!isMounted.current) {
-                        video.remove();
-                        return;
+                    if (isMounted.current) {
+                        setThumbnails(prev => {
+                            const newThumbs = [...prev];
+                            const index = newThumbs.findIndex(item => item.time === time);
+                            if (index !== -1) {
+                                newThumbs[index] = { time, src };
+                            } else {
+                                newThumbs.push({ time, src });
+                            }
+                            return newThumbs;
+                        });
                     }
-
-                    // Calculate Dimensions (Max 160px width for HD optimization)
-                    const MAX_DIMENSION = 160;
-                    const videoAspect = video.videoWidth / video.videoHeight;
-                    let drawHeight = Math.min(height || 40, 30);
-                    let drawWidth = drawHeight * videoAspect;
-
-                    if (drawWidth > MAX_DIMENSION) {
-                        drawWidth = MAX_DIMENSION;
-                        drawHeight = drawWidth / videoAspect;
-                    }
-
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.floor(drawWidth);
-                    canvas.height = Math.floor(drawHeight);
-                    const ctx = canvas.getContext('2d', { willReadFrequently: false, alpha: false });
-
-                    const thumbs = [];
-                    const timeStep = duration / thumbCount;
-
-                    for (let i = 0; i < thumbCount; i++) {
-                        if (!isMounted.current) break;
-
-                        const time = Math.max(0, Math.min(startOffset + (i * timeStep), duration - 0.1));
-                        video.currentTime = time;
-
-                        await Promise.race([
-                            new Promise(resolve => {
-                                const onSeek = () => {
-                                    // Wait for frame paint
-                                    requestAnimationFrame(() => {
-                                        setTimeout(resolve, 50);
-                                    });
-                                };
-                                video.addEventListener('seeked', onSeek, { once: true });
-                            }),
-                            new Promise(resolve => setTimeout(resolve, 2000)) // Increased timeout
-                        ]);
-
-                        if (!isMounted.current) break;
-
-                        try {
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            thumbs.push(canvas.toDataURL('image/jpeg', 0.3));
-                        } catch (e) {
-                            thumbs.push('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>');
-                        }
-
-                        if (i % 2 === 0 && isMounted.current) {
-                            setThumbnails([...thumbs]);
-                        }
-                    }
-
-                    if (isMounted.current && thumbs.length > 0) {
-                        setThumbnails(thumbs);
-                        thumbnailCache.set(cacheKey, thumbs);
-                        if (thumbnailCache.size > 50) thumbnailCache.delete(thumbnailCache.keys().next().value);
-                    }
-
-                    video.removeAttribute('src');
-                    video.load();
-                    video.remove();
-
                 } catch (e) {
-                    console.warn("Thumbnail generation failed:", e);
-                } finally {
-                    if (isMounted.current) setIsGenerating(false);
+                    console.warn(`Failed to load thumbnail at ${time}`, e);
                 }
             }
+
+            if (isMounted.current) setIsGenerating(false);
         };
 
-        // Enqueue
-        queue.push(task);
-        processQueue();
+        loadThumbnails();
 
-        return () => {
-            // Remove from queue if unmounted (optional optimization)
-            const idx = queue.indexOf(task);
-            if (idx > -1) queue.splice(idx, 1);
-        };
-    }, [source, duration, thumbCount, startOffset, height, isVisible]);
+    }, [source, JSON.stringify(requiredTimestamps), isVisible]);
+
+    // Calculate render parameters
+    const firstThumbOffset = (gridStartTime - startOffset) * scale;
+    const thumbRealWidth = timeStep * scale;
 
     return (
         <div
             ref={containerRef}
-            className="absolute inset-0 flex overflow-hidden opacity-50 pointer-events-none bg-black/20"
+            className="absolute inset-0 overflow-hidden opacity-50 pointer-events-none bg-black/20"
         >
-            {thumbnails.map((src, i) => (
-                <img
-                    key={i}
-                    src={src}
-                    alt=""
-                    className="h-full object-cover shrink-0"
-                    style={{ width: `${thumbWidth}px` }}
-                    draggable={false}
-                    loading="lazy"
-                />
-            ))}
-            {isGenerating && (
+            <div
+                className="flex h-full"
+                style={{
+                    transform: `translateX(${firstThumbOffset}px)`,
+                    width: `${requiredTimestamps.length * thumbRealWidth}px` // Ensure container is wide enough
+                }}
+            >
+                {thumbnails.map((item) => (
+                    <div
+                        key={item.time}
+                        className="h-full shrink-0 border-r border-white/10 bg-black/40 relative"
+                        style={{ width: `${thumbRealWidth}px` }}
+                    >
+                        {item.src ? (
+                            <img
+                                src={item.src}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                draggable={false}
+                                loading="lazy"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                                {/* Placeholder */}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {isGenerating && thumbnails.filter(t => !t.src).length > 0 && (
                 <div className="absolute inset-0 flex items-center justify-center bg-transparent z-10">
                     <Loader2 className="animate-spin text-white/50" size={12} />
                 </div>
