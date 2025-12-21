@@ -160,68 +160,89 @@ export const TransitionsPanel = ({ activeClip, onUpdate }) => {
     const currentTransition = activeClip.transition || { type: 'none', duration: 1.0 };
 
     return (
-        <div className="flex flex-col h-full animate-slide-up">
-            {/* Categories */}
-            <div className="flex overflow-x-auto p-2 gap-2 border-b border-white/10 custom-scrollbar">
-                {categories.map(cat => (
-                    <button
-                        key={cat.id}
-                        onClick={() => setActiveCategory(cat.id)}
-                        className={`flex flex-col items-center gap-1 min-w-[60px] p-2 rounded-lg transition-all ${activeCategory === cat.id
-                            ? 'bg-blue-500 text-white'
-                            : 'text-white/40 hover:text-white hover:bg-white/5'
-                            }`}
-                    >
-                        <cat.icon size={18} />
-                        <span className="text-[10px] whitespace-nowrap">{cat.label}</span>
-                    </button>
-                ))}
+        <div className="flex flex-col h-full animate-slide-up relative overflow-hidden">
+            {/* NEW: Coming Soon Overlay */}
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-[1px] rounded-2xl">
+                    <div className="bg-slate-900 rounded-2xl px-6 py-4 flex flex-col items-center gap-3">
+                        <div className="p-3 bg-white/10 rounded-full">
+                            <Sparkles size={24} className="text-yellow-400 animate-pulse" />
+                        </div>
+                        <div className="text-center">
+                            <h3 className="text-white font-bold text-lg">Transitions</h3>
+                            <p className="text-white/60 text-xs mt-1">Coming Soon</p>
+                        </div>
+                        <div className="px-3 py-1 bg-white/10 rounded-full text-[10px] text-white/40">
+                            Under Development
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            {/* Transition Grid */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                <div className="grid grid-cols-3 gap-3">
-                    {transitions[activeCategory]?.map(trans => (
+            {/* Existing Content (Blurred & Disabled) */}
+            <div className="flex flex-col h-full opacity-30 pointer-events-none filter blur-[1px]">
+                {/* Categories */}
+                <div className="flex overflow-x-auto p-2 gap-2 border-b border-white/10 custom-scrollbar">
+                    {categories.map(cat => (
                         <button
-                            key={trans.id}
-                            onClick={() => onUpdate({ transition: { ...currentTransition, type: trans.id } })}
-                            className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${currentTransition.type === trans.id
-                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                : 'bg-white/5 border-white/5 text-white/60 hover:bg-white/10 hover:border-white/10 hover:text-white'
+                            key={cat.id}
+                            onClick={() => setActiveCategory(cat.id)}
+                            className={`flex flex-col items-center gap-1 min-w-[60px] p-2 rounded-lg transition-all ${activeCategory === cat.id
+                                ? 'bg-blue-500 text-white'
+                                : 'text-white/40 hover:text-white hover:bg-white/5'
                                 }`}
                         >
-                            {/* Preview Placeholder */}
-                            <div className="w-full aspect-video bg-black/40 rounded-lg overflow-hidden relative group">
-                                <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${currentTransition.type === trans.id ? 'opacity-100' : 'opacity-50 group-hover:opacity-100'}`}>
-                                    <Sparkles size={16} />
-                                </div>
-                            </div>
-                            <span className="text-[10px] font-medium text-center">{trans.label}</span>
+                            <cat.icon size={18} />
+                            <span className="text-[10px] whitespace-nowrap">{cat.label}</span>
                         </button>
                     ))}
                 </div>
-            </div>
 
-            {/* Duration Control */}
-            {currentTransition.type !== 'none' && (
-                <div className="p-4 border-t border-white/10 bg-black/20">
-                    <div className="space-y-2">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-white/70">Duration</span>
-                            <span className="text-white/40">{currentTransition.duration}s</span>
-                        </div>
-                        <input
-                            type="range"
-                            min="0.1"
-                            max="3.0"
-                            step="0.1"
-                            value={currentTransition.duration}
-                            onChange={(e) => onUpdate({ transition: { ...currentTransition, duration: parseFloat(e.target.value) } })}
-                            className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
-                        />
+                {/* Transition Grid */}
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    <div className="grid grid-cols-3 gap-3">
+                        {transitions[activeCategory]?.map(trans => (
+                            <button
+                                key={trans.id}
+                                onClick={() => onUpdate({ transition: { ...currentTransition, type: trans.id } })}
+                                className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${currentTransition.type === trans.id
+                                    ? 'bg-blue-500/20 border-blue-500 text-white'
+                                    : 'bg-white/5 border-white/5 text-white/60 hover:bg-white/10 hover:border-white/10 hover:text-white'
+                                    }`}
+                            >
+                                {/* Preview Placeholder */}
+                                <div className="w-full aspect-video bg-black/40 rounded-lg overflow-hidden relative group">
+                                    <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${currentTransition.type === trans.id ? 'opacity-100' : 'opacity-50 group-hover:opacity-100'}`}>
+                                        <Sparkles size={16} />
+                                    </div>
+                                </div>
+                                <span className="text-[10px] font-medium text-center">{trans.label}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
-            )}
+
+                {/* Duration Control */}
+                {currentTransition.type !== 'none' && (
+                    <div className="p-4 border-t border-white/10 bg-black/20">
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                                <span className="text-white/70">Duration</span>
+                                <span className="text-white/40">{currentTransition.duration}s</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0.1"
+                                max="3.0"
+                                step="0.1"
+                                value={currentTransition.duration}
+                                onChange={(e) => onUpdate({ transition: { ...currentTransition, duration: parseFloat(e.target.value) } })}
+                                className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

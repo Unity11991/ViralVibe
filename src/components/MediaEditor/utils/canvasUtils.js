@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Canvas Utilities for MediaEditor
  * Handles all canvas rendering operations
  * OPTIMIZED FOR HD VIDEO PERFORMANCE
@@ -787,9 +787,43 @@ const renderLayer = (ctx, layer, globalState) => {
     // Assuming 'transform' contains the final draw properties (x, y, scale, rotation).
 
     // 3. Draw Content
-    // Transition rendering removed
-    // Standard Draw
-    if (type === 'video' || type === 'image') {
+    if ((type === 'video' || type === 'image') && transition) {
+        // --- OFF-SCREEN TRANSITION RENDERING ---
+        // Render layer to temp canvas, apply transition mask, then draw to main
+        const { width, height } = canvasDimensions;
+
+        // 1. Get temp canvas (Physical size to match context)
+        // ensure we use the same dimensions as the context (which are physical)
+        // logic passed 'canvasDimensions' which might be logical. 
+        // drawMediaToCanvas handles scaling if needed.
+        // Let's rely on standard flow:
+
+        const tempCanvas = getCachedCanvas(width, height);
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        tempCtx.clearRect(0, 0, width, height);
+
+        // 2. Draw Media to Temp (Standard Draw)
+        drawMediaToCanvas(tempCtx, media, adjustments, transform, canvasDimensions, memePadding, {
+            applyFiltersToContext: true,
+            clearCanvas: false,
+            mask: mask,
+            faceRetouch: faceRetouch
+        });
+
+        // 3. Apply Transition Mask (Destination-In)
+        applyTransitionMask(tempCtx, transition, width, height);
+
+        // 4. Draw Templ to Main
+        ctx.save();
+        // The temp canvas matches the logical dimensions we are drawing into?
+        // drawMediaToCanvas renders to tempCtx filling it based on logic.
+        ctx.drawImage(tempCanvas, 0, 0, width, height);
+        ctx.restore();
+
+        releaseCanvas(tempCanvas);
+
+    } else if (type === 'video' || type === 'image') {
+        // Standard Draw (No Transition)
         drawMediaToCanvas(ctx, media, adjustments, transform, canvasDimensions, memePadding, {
             applyFiltersToContext: true,
             clearCanvas: false,
@@ -801,7 +835,6 @@ const renderLayer = (ctx, layer, globalState) => {
     } else if (type === 'sticker') {
         drawStickerOverlay(ctx, layer, image, canvasDimensions.width, canvasDimensions.height);
     }
-    // Duplicate else-if blocks removed
 
     else if (type === 'adjustment') {
         // Adjustment Layer Logic: Snapshot -> Filter -> Draw Back
