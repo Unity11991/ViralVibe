@@ -2,11 +2,12 @@ import { useState, useRef, useCallback } from 'react';
 import * as Mp4Muxer from 'mp4-muxer';
 import { renderFrame } from '../utils/canvasUtils';
 import { getFrameState } from '../utils/renderLogic';
+import mediaSourceManager from '../utils/MediaSourceManager';
 
 /**
  * Hook for High Quality Video Export using WebCodecs and mp4-muxer
  */
-export const useExport = (timelineState, mediaResources, canvasRef) => {
+export const useExport = (timelineState, canvasRef) => {
     const [isExporting, setIsExporting] = useState(false);
     const [exportProgress, setExportProgress] = useState(0);
     const [exportStatus, setExportStatus] = useState(''); // 'rendering', 'encoding', 'saving'
@@ -193,34 +194,22 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                 };
 
                 timelineState.tracks.forEach(track => {
-                    if (track.type === 'video') {
-                        const clip = track.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
-                        if (clip) {
-                            const videoEl = mediaResources.videoElements[clip.id];
-                            if (videoEl) {
-                                const clipTime = time - clip.startTime;
-                                const sourceTime = (clip.startOffset || 0) + clipTime;
-                                seekPromises.push(seekVideo(videoEl, sourceTime));
-                            }
+                    const clip = track.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
+                    if (clip && clip.source && (track.type === 'video' || track.type === 'image')) {
+                        const mediaEl = mediaSourceManager.getMedia(clip.source, track.type === 'image' ? 'image' : 'video');
+                        if (mediaEl && track.type === 'video') {
+                            const clipTime = time - clip.startTime;
+                            const sourceTime = (clip.startOffset || 0) + clipTime;
+                            seekPromises.push(seekVideo(mediaEl, sourceTime));
                         }
                     }
                 });
-
-                if (mediaResources.mediaElement) {
-                    const mainTrack = timelineState.tracks.find(t => t.id === 'track-main');
-                    const mainClip = mainTrack?.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
-                    if (mainClip) {
-                        const clipTime = time - mainClip.startTime;
-                        const sourceTime = (mainClip.startOffset || 0) + clipTime;
-                        seekPromises.push(seekVideo(mediaResources.mediaElement, sourceTime));
-                    }
-                }
 
                 if (seekPromises.length > 0) {
                     await Promise.all(seekPromises);
                 }
 
-                const frameState = getFrameState(time, timelineState.tracks, mediaResources, {
+                const frameState = getFrameState(time, timelineState.tracks, {
                     ...timelineState,
                     selectedClipId: null, // Force no selection during export
                     canvasDimensions: { width, height },
@@ -229,7 +218,7 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
                     activeFilterId: timelineState.activeFilterId
                 });
 
-                renderFrame(ctx, mediaResources.mediaElement, frameState, {
+                renderFrame(ctx, null, frameState, {
                     forceHighQuality: true,
                     applyFiltersToContext: true
                 });
@@ -334,13 +323,12 @@ export const useExport = (timelineState, mediaResources, canvasRef) => {
             setIsExporting(false);
             setExportProgress(100);
             setExportStatus('Completed');
-
         } catch (err) {
             console.error("Export failed:", err);
             setExportError(err.message);
             setIsExporting(false);
         }
-    }, [timelineState, mediaResources, isExporting]);
+    }, [timelineState, isExporting]);
 
     const cancelExport = useCallback(() => {
         if (abortControllerRef.current) {

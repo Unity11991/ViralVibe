@@ -254,16 +254,18 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             tempCtx.translate(centerX, centerY);
             tempCtx.rotate((rotation * Math.PI) / 180);
 
-            // Check if video is ready before drawing
-            if (media.tagName === 'VIDEO' && media.readyState < 2) {
-                // Video not ready yet, skip drawing this frame
-                tempCtx.restore();
-                tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
-                ctx.restore();
-                return; // Exit early
-            }
+            // Draw Media with readiness checks
+            const isReady = media instanceof HTMLVideoElement
+                ? media.readyState >= 1
+                : (media instanceof HTMLImageElement ? media.complete : true);
 
-            tempCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            if (isReady) {
+                try {
+                    tempCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                } catch (e) {
+                    // Fail silently or draw black if needed, but here we just restore
+                }
+            }
             tempCtx.restore();
 
             // Composite Mask
@@ -294,13 +296,23 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
                 drawMask(ctx, mask, drawWidth, drawHeight, true);
             }
 
-            // Check if video is ready before drawing
-            if (media.tagName === 'VIDEO' && media.readyState < 2) {
-                // Video not ready yet, draw placeholder
+            // Draw Media with readiness checks
+            const isReady = media instanceof HTMLVideoElement
+                ? media.readyState >= 1 // HAVE_METADATA is enough to draw (sometimes shows last frame)
+                : (media instanceof HTMLImageElement ? media.complete : true);
+
+            if (isReady) {
+                try {
+                    ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                } catch (e) {
+                    // Fallback to black if draw fails
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                }
+            } else {
+                // Not ready, draw black placeholder
                 ctx.fillStyle = '#000000';
                 ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-            } else {
-                ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
             }
 
             ctx.restore();
