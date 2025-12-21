@@ -838,39 +838,17 @@ const renderLayer = (ctx, layer, globalState) => {
 
     else if (type === 'adjustment') {
         // Adjustment Layer Logic: Snapshot -> Filter -> Draw Back
-        const { width, height } = canvasDimensions;
-        const tempCanvas = getCachedCanvas(width, height);
-        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-
-        // 1. Snapshot current canvas state
-        tempCtx.clearRect(0, 0, width, height);
-        tempCtx.drawImage(ctx.canvas, 0, 0, width, height); // Copy logical or physical? 
-        // We need to copy physical canvas dimensions actually because ctx.canvas is the physical one.
-        // But getCachedCanvas takes logical if we use the helper? 
-        // Actually ctx.canvas has physical size. logic dims might be smaller/different scale.
-        // Let's use getCachedCanvas with physical dims if we want pixel perfect copy.
-        // Or keep it simple: drawImage(ctx.canvas) draws the full backing store.
-
-        // The tempCanvas from getCachedCanvas might be dirty and have wrong size?
-        // Helper `getCachedCanvas(width, height)` sets size.
-        // If we used logical width, we downscale?
-        // Let's check getCachedCanvas impl. It sets width/height.
-        // We should match ctx.canvas.width/height (physical).
-
-        // Wait, `canvasDimensions` passed here are logical.
-        // We should access ctx.canvas.width directly for physical copy
-
+        // We need a temp canvas of PHYSICAL size to maintain quality
         const physWidth = ctx.canvas.width;
         const physHeight = ctx.canvas.height;
 
-        // We need a temp canvas of PHYSICAL size
         const tempCanvasPhys = getCachedCanvas(physWidth, physHeight);
         const tempCtxPhys = tempCanvasPhys.getContext('2d', { willReadFrequently: true });
         tempCtxPhys.clearRect(0, 0, physWidth, physHeight);
         tempCtxPhys.drawImage(ctx.canvas, 0, 0);
 
         // 2. Clear Main Canvas (to be replaced)
-        ctx.clearRect(0, 0, width, height); // Clear rect uses logical coord space if transform is set?
+
         // ctx is transformed? renderLayer starts with save/restore but transform happens later?
         // Line 595: ctx.save();
         // Line 597: transform... not applied to ctx yet, logic below does it for MEDIA.
