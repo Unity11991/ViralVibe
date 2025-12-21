@@ -221,33 +221,74 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const frameState = getFrameState(time, tracks, globalState);
 
         // 1. Sync all active layers' media elements
-        frameState.visibleLayers.forEach(layer => {
-            if (layer.media && (layer.type === 'video' || layer.type === 'audio')) {
-                mediaSourceManager.syncMedia(layer.source, layer.sourceTime, isPlaying);
+        // 1. Sync & Audio Logic (Deduplicated)
+        const sourceMap = new Map(); // source -> { time, volume, muted, speed, media }
 
-                // Audio specific props (volume, fades, speed)
-                // We reuse the existing applyAudioProps logic but it needs to be accessible
-                // For now, let's keep it simple or call it if available
-                if (layer.type === 'video' || layer.type === 'audio') {
-                    // Local copy of applyAudioProps logic or refactor it out
-                    const element = layer.media;
-                    const clip = tracks.flatMap(t => t.clips).find(c => c.id === layer.id);
-                    if (clip && element) {
-                        const speed = clip.speed || 1;
-                        if (Math.abs(element.playbackRate - speed) > 0.01) element.playbackRate = speed;
-                        let vol = (clip.volume !== undefined ? clip.volume : 100) / 100;
-                        if (clip.fadeIn > 0) {
-                            const relTime = time - clip.startTime;
-                            if (relTime < clip.fadeIn) vol *= (relTime / clip.fadeIn);
-                        }
-                        if (clip.fadeOut > 0) {
-                            const relTime = time - clip.startTime;
-                            const timeRem = clip.duration - relTime;
-                            if (timeRem < clip.fadeOut) vol *= (timeRem / clip.fadeOut);
-                        }
-                        element.volume = Math.max(0, Math.min(1, vol));
-                        element.muted = !!clip.muted;
+        frameState.visibleLayers.forEach(layer => {
+            if (layer.media && layer.source && (layer.type === 'video' || layer.type === 'audio')) {
+                // Determine clip properties
+                const clip = tracks.flatMap(t => t.clips).find(c => c.id === layer.id);
+                let vol = 0;
+                let muted = true;
+                let speed = 1;
+
+                if (clip) {
+                    speed = clip.speed || 1;
+                    vol = (clip.volume !== undefined ? clip.volume : 100) / 100;
+                    muted = !!clip.muted;
+
+                    // Apply fades
+                    if (clip.fadeIn > 0) {
+                        const relTime = time - clip.startTime;
+                        if (relTime < clip.fadeIn) vol *= (relTime / clip.fadeIn);
                     }
+                    if (clip.fadeOut > 0) {
+                        const relTime = time - clip.startTime;
+                        const timeRem = clip.duration - relTime;
+                        if (timeRem < clip.fadeOut) vol *= (timeRem / clip.fadeOut);
+                    }
+                }
+
+                if (!sourceMap.has(layer.source)) {
+                    sourceMap.set(layer.source, {
+                        time: layer.sourceTime,
+                        volume: 0,
+                        muted: true, // Default muted, any unmuted clip un-mutes it
+                        speed: speed,
+                        media: layer.media
+                    });
+                }
+
+                // Aggregate properties
+                const entry = sourceMap.get(layer.source);
+                // Be slightly conservative with speed, assume first clip's speed is dominant or they match
+                if (speed !== 1) entry.speed = speed;
+
+                // Volume mixing: Max volume wins (simplest for now)
+                // If any clip using this source is NOT muted, the source is NOT muted
+                if (!muted) {
+                    entry.muted = false;
+                    entry.volume = Math.max(entry.volume, vol);
+                }
+            }
+        });
+
+        // Apply synced state
+        sourceMap.forEach((entry, source) => {
+            mediaSourceManager.syncMedia(source, entry.time, isPlaying);
+
+            const element = entry.media;
+            if (element) {
+                if (Math.abs(element.playbackRate - entry.speed) > 0.01) {
+                    element.playbackRate = entry.speed;
+                }
+                const targetVol = Math.max(0, Math.min(1, entry.volume));
+                if (Math.abs(element.volume - targetVol) > 0.01) {
+                    element.volume = targetVol;
+                }
+                // Avoid property thrashing
+                if (element.muted !== entry.muted) {
+                    element.muted = entry.muted;
                 }
             }
         });
