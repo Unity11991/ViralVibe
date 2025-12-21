@@ -284,74 +284,9 @@ const calculateClipDuration = (currentTime, beats, stylePreset, videoDuration) =
  * Randomly selects transitions from available types with intelligent weighting
  */
 const selectTransitions = (clips, stylePreset, energyProfile, beats) => {
-    const transitions = [];
-
-    // Available transition types from transitionEngine
-    const allTransitions = ['cut', 'crossfade', 'zoom', 'slide', 'whipPan', 'glitch', 'fadeToBlack'];
-
-    for (let i = 0; i < clips.length - 1; i++) {
-        const clip = clips[i];
-        const transitionTime = clip.startTime + clip.duration;
-
-        let type = stylePreset.transitionType;
-        let duration = stylePreset.transitionDuration;
-
-        if (type === 'mixed') {
-            // Context-aware random selection with weighting
-            const energy = getEnergyAtTime(transitionTime, energyProfile);
-            const isOnBeat = isNearBeat(transitionTime, beats);
-
-            // Weight transitions based on energy level
-            type = selectWeightedTransition(energy, isOnBeat, stylePreset);
-
-            // Set duration based on selected type
-            if (type === 'cut') {
-                duration = 0;
-            } else if (['whipPan', 'glitch'].includes(type)) {
-                duration = 0.15 + Math.random() * 0.1; // 0.15-0.25s
-            } else if (['zoom', 'slide'].includes(type)) {
-                duration = 0.3 + Math.random() * 0.2; // 0.3-0.5s
-            } else if (type === 'fadeToBlack') {
-                duration = 0.6 + Math.random() * 0.3; // 0.6-0.9s
-            } else { // crossfade
-                duration = energy > 0.6 ? 0.3 : (0.5 + Math.random() * 0.5); // 0.3s fast or 0.5-1.0s slow
-            }
-        } else if (type === 'cut') {
-            // Even for 'cut' style, occasionally add variety
-            if (Math.random() > 0.8) {
-                const fastTransitions = ['whipPan', 'glitch'];
-                type = fastTransitions[Math.floor(Math.random() * fastTransitions.length)];
-                duration = 0.15;
-            }
-        } else if (type === 'crossfade') {
-            // Even for 'crossfade' style, add occasional variety
-            if (Math.random() > 0.7) {
-                const smoothTransitions = ['fadeToBlack', 'zoom'];
-                type = smoothTransitions[Math.floor(Math.random() * smoothTransitions.length)];
-                duration = type === 'fadeToBlack' ? 0.8 : 0.4;
-            }
-        }
-
-        // Add random direction for transitions that support it
-        const options = {};
-        if (type === 'slide') {
-            const directions = ['left', 'right', 'up', 'down'];
-            options.direction = directions[Math.floor(Math.random() * directions.length)];
-        } else if (type === 'zoom') {
-            options.direction = Math.random() > 0.5 ? 'in' : 'out';
-        }
-
-        transitions.push({
-            fromClipIndex: i,
-            toClipIndex: i + 1,
-            type,
-            duration,
-            timestamp: transitionTime,
-            options
-        });
-    }
-
-    return transitions;
+    // TRANSITIONS DISABLED globally as per requirement
+    // Returning empty array to prevent any transition setup
+    return [];
 };
 
 /**

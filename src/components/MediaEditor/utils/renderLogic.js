@@ -75,16 +75,61 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             return fallback;
         };
 
-        // --- TRANSITION LOGIC (Simplified for now) ---
+        // --- TRANSITION LOGIC ---
+        let transitionObj = null;
         let transitionOpacity = 1;
+
         if (clip.transition && clip.transition.type !== 'none' && clip.transition.duration > 0) {
             const transDuration = clip.transition.duration;
             if (clipTime < transDuration) {
-                const progress = clipTime / transDuration;
-                if (clip.transition.type === 'cross-dissolve') {
-                    transitionOpacity = progress;
+                transitionObj = {
+                    type: clip.transition.type,
+                    progress: clipTime / transDuration,
+                    duration: transDuration
+                };
+
+                // Find Previous Clip (Outgoing)
+                // We need to render the previous clip underneath this one
+                const prevClip = track.clips.find(c => Math.abs((c.startTime + c.duration) - clip.startTime) < EPSILON * 10);
+
+                if (prevClip) {
+                    // Resolve Previous Media
+                    let prevMedia = null;
+                    if (prevClip.source) {
+                        const trackType = track.type === 'audio' ? 'audio' : (track.type === 'image' ? 'image' : 'video');
+                        prevMedia = mediaSourceManager.getMedia(prevClip.source, prevClip.type || trackType);
+                    }
+
+                    const prevClipTime = currentTime - prevClip.startTime;
+                    // Clamp to duration for freeze frame at the cut point
+                    // Note: We freeze at duration. If moving backwards, we might want live media, but standard transition is B over A(end).
+                    const prevSourceTime = (prevClip.startOffset || 0) + Math.min(prevClipTime, prevClip.duration);
+
+                    visibleLayers.push({
+                        id: prevClip.id + '_outgoing',
+                        zIndex: index - 0.5, // Render below current
+                        opacity: prevClip.opacity !== undefined ? prevClip.opacity : 100,
+                        blendMode: prevClip.blendMode || 'normal',
+                        type: prevClip.type || baseLayer.type,
+                        media: prevMedia,
+                        source: prevClip.source,
+                        sourceTime: prevSourceTime,
+                        transform: {
+                            x: prevClip.transform?.x || 0,
+                            y: prevClip.transform?.y || 0,
+                            scale: prevClip.transform?.scale || 100,
+                            rotation: prevClip.transform?.rotation || 0,
+                            opacity: prevClip.opacity !== undefined ? prevClip.opacity : 100
+                        },
+                        adjustments: prevClip.adjustments || getInitialAdjustments(),
+                        filter: prevClip.filter || 'normal',
+                        effect: prevClip.effect || null,
+                        mask: prevClip.mask || null,
+                        text: prevClip.text,
+                        style: prevClip.style,
+                        faceRetouch: prevClip.faceRetouch
+                    });
                 }
-                // Handle outgoing clip if needed (can be a separate layer)
             }
         }
 
@@ -132,7 +177,8 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             mask: clip.mask || null,
             text: clip.text,
             style: clip.style,
-            faceRetouch: clip.faceRetouch
+            faceRetouch: clip.faceRetouch,
+            transition: transitionObj // Attach fully resolved transition object
         };
 
         if (layer.type === 'text' && clip.animation?.type === 'typewriter') {
