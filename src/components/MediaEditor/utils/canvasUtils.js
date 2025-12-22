@@ -198,125 +198,114 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     ctx.globalAlpha = opacity / 100;
     ctx.globalCompositeOperation = blendMode;
 
-    // Handle crop and transform
+    // 1. Calculate Source Rectangle (Crop)
+    const mediaWidth = media.videoWidth || media.width;
+    const mediaHeight = media.videoHeight || media.height;
+
+    let sourceX = 0, sourceY = 0, sourceW = mediaWidth, sourceH = mediaHeight;
+
     if (crop) {
         const { x: cropX, y: cropY, width: cropW, height: cropH } = crop;
-        const mediaWidth = media.videoWidth || media.width;
-        const mediaHeight = media.videoHeight || media.height;
+        sourceX = (cropX / 100) * mediaWidth;
+        sourceY = (cropY / 100) * mediaHeight;
+        sourceW = (cropW / 100) * mediaWidth;
+        sourceH = (cropH / 100) * mediaHeight;
+    }
 
-        const sourceX = (cropX / 100) * mediaWidth;
-        const sourceY = (cropY / 100) * mediaHeight;
-        const sourceW = (cropW / 100) * mediaWidth;
-        const sourceH = (cropH / 100) * mediaHeight;
+    // 2. Calculate Destination Rectangle (Transform)
+    const mediaAspect = sourceW / sourceH;
+    const canvasAspect = logicalWidth / logicalHeight;
 
-        ctx.drawImage(
-            media,
-            sourceX, sourceY, sourceW, sourceH,
-            0, 0, canvas.width, canvas.height
-        );
+    let baseWidth, baseHeight;
+
+    // "Contain" logic (Fit within canvas)
+    if (mediaAspect > canvasAspect) {
+        baseWidth = logicalWidth;
+        baseHeight = logicalWidth / mediaAspect;
     } else {
-        // Center and fit media
-        const mediaAspect = media.videoWidth ? media.videoWidth / media.videoHeight : media.width / media.height;
-        const canvasAspect = logicalWidth / logicalHeight;
+        baseHeight = logicalHeight;
+        baseWidth = logicalHeight * mediaAspect;
+    }
 
-        let baseWidth, baseHeight;
+    // Apply User Transform
+    const scaleFactor = scale / 100;
+    const drawWidth = baseWidth * scaleFactor;
+    const drawHeight = baseHeight * scaleFactor;
 
-        // Calculate base dimensions to cover or fit (Cover is standard for editors usually, but let's stick to fit-contain logic unless specified)
-        // Actually, for a "transform" capable editor, we usually start with "contain" or "cover".
-        // Let's stick to the previous logic which seemed to be "contain" (fit within).
+    // Center position + Offset
+    const centerX = logicalWidth / 2 + x;
+    const centerY = logicalHeight / 2 + y;
 
-        if (mediaAspect > canvasAspect) {
-            baseWidth = logicalWidth;
-            baseHeight = logicalWidth / mediaAspect;
+    // 3. Draw with Filters, Transforms, and Masks
+
+    // Check Readiness
+    const isReady = media instanceof HTMLVideoElement
+        ? media.readyState >= 1
+        : (media instanceof HTMLImageElement ? media.complete : true);
+
+    const drawIt = (context) => {
+        if (isReady) {
+            try {
+                context.drawImage(
+                    media,
+                    sourceX, sourceY, sourceW, sourceH,
+                    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
+                );
+            } catch (e) {
+                // Fallback
+                context.fillStyle = '#000000';
+                context.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            }
         } else {
-            baseHeight = logicalHeight;
-            baseWidth = logicalHeight * mediaAspect;
+            context.fillStyle = '#000000';
+            context.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+        }
+    };
+
+    // Soft Masking (Composite)
+    if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text')) {
+        const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+        // Draw Media to Temp
+        tempCtx.save();
+        tempCtx.translate(centerX, centerY);
+        tempCtx.rotate((rotation * Math.PI) / 180);
+        drawIt(tempCtx);
+        tempCtx.restore();
+
+        // Composite Mask
+        tempCtx.globalCompositeOperation = 'destination-in';
+        tempCtx.filter = `blur(${mask.blur}px)`;
+
+        tempCtx.save();
+        tempCtx.translate(centerX, centerY);
+        tempCtx.rotate((rotation * Math.PI) / 180);
+        drawMask(tempCtx, mask, drawWidth, drawHeight, false);
+        tempCtx.restore();
+
+        // Reset
+        tempCtx.globalCompositeOperation = 'source-over';
+        tempCtx.filter = 'none';
+
+        ctx.drawImage(tempCanvas, 0, 0);
+
+        // Release temp canvas
+        releaseCanvas(tempCanvas);
+    } else {
+        // Hard Masking or No Mask
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate((rotation * Math.PI) / 180);
+
+        if (mask && mask.type !== 'none') {
+            drawMask(ctx, mask, drawWidth, drawHeight, true);
         }
 
-        // Apply Transform (Scale & Translate)
-        const scaleFactor = scale / 100;
-        const drawWidth = baseWidth * scaleFactor;
-        const drawHeight = baseHeight * scaleFactor;
+        drawIt(ctx);
 
-        // Center position + Offset
-        const centerX = logicalWidth / 2 + x;
-        const centerY = logicalHeight / 2 + y;
-
-        // Soft Masking Logic
-        // Text mask always uses soft masking (composite) because clip() doesn't work with fillText
-        if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text')) {
-            const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
-            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-            tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
-
-            // Draw Media to Temp
-            tempCtx.save();
-            tempCtx.translate(centerX, centerY);
-            tempCtx.rotate((rotation * Math.PI) / 180);
-
-            // Draw Media with readiness checks
-            const isReady = media instanceof HTMLVideoElement
-                ? media.readyState >= 1
-                : (media instanceof HTMLImageElement ? media.complete : true);
-
-            if (isReady) {
-                try {
-                    tempCtx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                } catch (e) {
-                    // Fail silently or draw black if needed, but here we just restore
-                }
-            }
-            tempCtx.restore();
-
-            // Composite Mask
-            tempCtx.globalCompositeOperation = 'destination-in';
-            tempCtx.filter = `blur(${mask.blur}px)`;
-
-            tempCtx.save();
-            tempCtx.translate(centerX, centerY);
-            tempCtx.rotate((rotation * Math.PI) / 180);
-            drawMask(tempCtx, mask, drawWidth, drawHeight, false);
-            tempCtx.restore();
-
-            // Reset
-            tempCtx.globalCompositeOperation = 'source-over';
-            tempCtx.filter = 'none';
-
-            ctx.drawImage(tempCanvas, 0, 0);
-
-            // Release temp canvas
-            releaseCanvas(tempCanvas);
-        } else {
-            // Hard Masking
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            ctx.rotate((rotation * Math.PI) / 180);
-
-            if (mask && mask.type !== 'none') {
-                drawMask(ctx, mask, drawWidth, drawHeight, true);
-            }
-
-            // Draw Media with readiness checks
-            const isReady = media instanceof HTMLVideoElement
-                ? media.readyState >= 1 // HAVE_METADATA is enough to draw (sometimes shows last frame)
-                : (media instanceof HTMLImageElement ? media.complete : true);
-
-            if (isReady) {
-                try {
-                    ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                } catch (e) {
-                    // Fallback to black if draw fails
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-                }
-            } else {
-                // Not ready, draw black placeholder
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-            }
-
-            ctx.restore();
-        }
+        ctx.restore();
     }
 
     ctx.restore();

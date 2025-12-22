@@ -20,7 +20,9 @@ export const CropPanel = ({
     onCropPresetChange,
     onRotationChange,
     onZoomChange,
-    onReset
+    onReset,
+    onApply,
+    onCancel
 }) => {
     return (
         <div className="space-y-6 animate-slide-up">
@@ -90,6 +92,23 @@ export const CropPanel = ({
                         className="flex-1"
                     >
                         Reset
+                    </Button>
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t border-white/5">
+                    <Button
+                        onClick={onCancel}
+                        variant="ghost"
+                        className="flex-1"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={onApply}
+                        variant="primary"
+                        className="flex-1"
+                    >
+                        Apply
                     </Button>
                 </div>
             </div>

@@ -8,6 +8,7 @@ export const CropOverlay = ({
     canvasRef,
     cropData,
     onCropChange,
+    onCropEnd,
     aspectRatio = null,
     isActive = false
 }) => {
@@ -40,6 +41,9 @@ export const CropOverlay = ({
         };
 
         const handlePointerUp = () => {
+            if (isDragging || isResizing) {
+                if (onCropEnd) onCropEnd();
+            }
             setIsDragging(false);
             setIsResizing(null);
         };
@@ -125,24 +129,11 @@ export const CropOverlay = ({
     if (!isActive || !canvasRef.current) return null;
 
     const { x, y, width, height } = cropData;
-    const canvas = canvasRef.current;
-    const canvasRect = canvas.getBoundingClientRect();
-    const parentRect = canvas.parentElement.getBoundingClientRect();
-
-    // Calculate offset to position overlay exactly on the canvas
-    const offsetLeft = canvasRect.left - parentRect.left;
-    const offsetTop = canvasRect.top - parentRect.top;
 
     return (
         <div
             ref={overlayRef}
-            className="absolute pointer-events-none"
-            style={{
-                left: `${offsetLeft}px`,
-                top: `${offsetTop}px`,
-                width: `${canvasRect.width}px`,
-                height: `${canvasRect.height}px`
-            }}
+            className="absolute inset-0 pointer-events-none"
         >
             {/* Darkened areas outside crop */}
             <div className="absolute inset-0">
