@@ -627,12 +627,22 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
         resizeObserver.observe(containerRef.current);
 
+        // Force resize update on fullscreen change (safeguard)
+        const handleFullscreenChange = () => {
+            // Small timeout to allow layout to settle
+            setTimeout(() => {
+                updateCanvasSize();
+            }, 100);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+
         if (isVideo) {
             setTrimRange({ start: 0, end: videoDuration });
         }
 
         return () => {
             resizeObserver.disconnect();
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
         };
     }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration, memeMode]);
 
@@ -1559,6 +1569,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 e.preventDefault();
                 if (canRedo) redo();
             }
+
+            // Play/Pause (Spacebar)
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent scrolling
+                togglePlay();
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -1630,6 +1646,22 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setShowProjectCreation(false);
     }, [containerRef, canvasRef, loadMedia, initializeTimeline, initializeCanvas]);
 
+    const handleToggleFullscreen = useCallback(() => {
+        if (!containerRef.current) return;
+
+        if (!document.fullscreenElement) {
+            // Enter Fullscreen
+            if (containerRef.current.requestFullscreen) {
+                containerRef.current.requestFullscreen();
+            }
+        } else {
+            // Exit Fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    }, []);
+
     // Show project creation screen if no media and not skipped
     if (showProjectCreation) {
         return (
@@ -1664,6 +1696,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setSelectedClipId(clipId);
         setActiveTab('transitions');
     };
+
+
 
     return (
         <>
@@ -1793,6 +1827,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onToggleRecording={handleVoiceoverToggle}
                         isRecordingVideo={isRecordingVideo}
                         onToggleVideoRecording={handleVideoOverToggle}
+                        onToggleFullscreen={handleToggleFullscreen}
                     />
                 }
             />

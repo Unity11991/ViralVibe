@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink, Mic, Camera } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Scissors, Trash2, ZoomIn, ZoomOut, Undo, Redo, Layers, Music, FileAudio, Unlink, Mic, Camera, Maximize } from 'lucide-react';
 import { Track } from './Track';
 
 export const TimelinePanel = ({
@@ -40,7 +40,8 @@ export const TimelinePanel = ({
     isRecording,
     onToggleRecording,
     isRecordingVideo,
-    onToggleVideoRecording
+    onToggleVideoRecording,
+    onToggleFullscreen
 }) => {
     const timelineRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -460,6 +461,10 @@ export const TimelinePanel = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button onClick={() => onToggleFullscreen?.()} className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white" title="Full Screen">
+                        <Maximize size={16} />
+                    </button>
+                    <div className="w-px h-4 bg-white/10 mx-2" />
                     <button onClick={() => onZoomChange(Math.max(0.1, zoom - 0.1))} className="p-1.5 hover:bg-white/10 rounded text-white/70">
                         <ZoomOut size={16} />
                     </button>
