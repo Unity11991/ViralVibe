@@ -28,6 +28,9 @@ import LimitReachedModal from './components/LimitReachedModal';
 import ToolsModal from './components/ToolsModal';
 import ImageEnhancer from './components/ImageEnhancer';
 import AudioStudio from './components/AudioStudio/AudioStudio';
+import DomainScout from './components/DomainScout';
+import ViralPulse from './components/ViralPulse';
+import TrendingAudio from './components/TrendingAudio';
 import MainContent from './components/MainContent';
 import ReferralHandler from './components/ReferralHandler';
 
@@ -76,6 +79,9 @@ function App() {
   const [showToolsModal, setShowToolsModal] = useState(false);
   const [showImageEnhancer, setShowImageEnhancer] = useState(false);
   const [showAudioStudio, setShowAudioStudio] = useState(false);
+  const [showDomainScout, setShowDomainScout] = useState(false);
+  const [showViralPulse, setShowViralPulse] = useState(false);
+  const [showTrendingAudio, setShowTrendingAudio] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
@@ -92,6 +98,12 @@ function App() {
       setShowImageEnhancer(true);
     } else if (toolId === 'audio-studio') {
       setShowAudioStudio(true);
+    } else if (toolId === 'domain-scout') {
+      setShowDomainScout(true);
+    } else if (toolId === 'viral-pulse') {
+      setShowViralPulse(true);
+    } else if (toolId === 'trending-audio') {
+      setShowTrendingAudio(true);
     } else if (toolId === 'premium-hub') {
       setPremiumTab(tabId);
       setShowPremiumHub(true);
@@ -595,6 +607,27 @@ function App() {
         <AudioStudio
           onClose={() => setShowAudioStudio(false)}
           isPro={isPro}
+        />
+      )}
+
+      {showDomainScout && (
+        <DomainScout
+          onClose={() => setShowDomainScout(false)}
+          user={user}
+        />
+      )}
+
+      {showViralPulse && (
+        <ViralPulse
+          onClose={() => setShowViralPulse(false)}
+          settings={settings}
+        />
+      )}
+
+      {showTrendingAudio && (
+        <TrendingAudio
+          onClose={() => setShowTrendingAudio(false)}
+          settings={settings}
         />
       )}
 
