@@ -13,11 +13,19 @@ class MediaSourceManager {
     /**
      * Get or create a media element for a source
      */
-    getMedia(url, type) {
+    /**
+     * Get or create a media element for a source
+     * @param {string} url - Source URL
+     * @param {string} type - 'video', 'image', 'audio'
+     * @param {string} variant - Optional variant key (e.g. 'main', 'transition') to allow multiple instances
+     */
+    getMedia(url, type, variant = 'main') {
         if (!url) return null;
 
-        if (this.sources.has(url)) {
-            const entry = this.sources.get(url);
+        const key = `${url}::${variant}`;
+
+        if (this.sources.has(key)) {
+            const entry = this.sources.get(key);
             entry.lastActiveTime = Date.now();
             return entry.element;
         }
@@ -45,7 +53,7 @@ class MediaSourceManager {
             return null;
         }
 
-        this.sources.set(url, {
+        this.sources.set(key, {
             element,
             type,
             lastActiveTime: Date.now()
@@ -57,8 +65,9 @@ class MediaSourceManager {
     /**
      * Synchronize a specific media element to the global clock
      */
-    syncMedia(url, clipTime, isPlaying, playbackRate = 1) {
-        const entry = this.sources.get(url);
+    syncMedia(url, clipTime, isPlaying, playbackRate = 1, variant = 'main') {
+        const key = `${url}::${variant}`;
+        const entry = this.sources.get(key);
         if (!entry || (entry.type !== 'video' && entry.type !== 'audio')) return;
 
         const media = entry.element;
@@ -101,8 +110,9 @@ class MediaSourceManager {
     /**
      * Pre-seek a video that will be used soon
      */
-    prepare(url, clipTime) {
-        const entry = this.sources.get(url);
+    prepare(url, clipTime, variant = 'main') {
+        const key = `${url}::${variant}`;
+        const entry = this.sources.get(key);
         if (!entry || (entry.type !== 'video' && entry.type !== 'audio')) return;
 
         const media = entry.element;

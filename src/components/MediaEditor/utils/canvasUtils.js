@@ -1369,15 +1369,43 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
     } else if (type === 'dissolve') {
-        // Dissolve with noise
-        const imageData = ctx.createImageData(width, height);
+        // OPTIMIZED DISSOLVE: Use low-res noise and scale up
+        // Full resolution putImageData is too slow for HD video (CPU bottleneck)
+        const scale = 0.1; // 1/10th resolution
+        const w = Math.ceil(width * scale);
+        const h = Math.ceil(height * scale);
+
+        // Create offscreen canvas if needed (or just use a small one here)
+        // Since we can't easily cache a canvas across module calls without state, we'll create a small one.
+        // 192x108 is very fast to process.
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = w;
+        offCanvas.height = h;
+        const offCtx = offCanvas.getContext('2d');
+
+        const imageData = offCtx.createImageData(w, h);
         const data = imageData.data;
+
+        // Reduce randomness frequency to avoid flickering too much or use a seed if possible
+        // For simple dissolve, random per frame is fine but can look like 'noise' rather than 'dissolve'.
+        // To make it look like 'dissolve', we usually want static noise + threshold.
+        // But for performance, simple random noise matches the previous implementation.
+
         for (let i = 0; i < data.length; i += 4) {
             const alpha = Math.random() < p ? 255 : 0;
-            data[i] = data[i + 1] = data[i + 2] = 255;
+            data[i] = 255;
+            data[i + 1] = 255;
+            data[i + 2] = 255;
             data[i + 3] = alpha;
         }
-        ctx.putImageData(imageData, 0, 0);
+
+        offCtx.putImageData(imageData, 0, 0);
+
+        // Draw scaled up
+        ctx.save();
+        ctx.imageSmoothingEnabled = false; // Nearest neighbor for pixelated dissolve look
+        ctx.drawImage(offCanvas, 0, 0, width, height);
+        ctx.restore();
     } else if (type === 'luma_fade') {
         // Luminance-based fade (bright areas fade first)
         ctx.globalAlpha = p;
@@ -1597,31 +1625,40 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
             ctx.moveTo(0, -s * 0.3);
             ctx.bezierCurveTo(s * 0.5, -s, s, -s * 0.5, 0, s);
             ctx.bezierCurveTo(-s, -s * 0.5, -s * 0.5, -s, 0, -s * 0.3);
-            ctx.translate(-width / 2, -height / 2);
         }
+        ctx.translate(-width / 2, -height / 2);
         ctx.fill();
     } else if (type.startsWith('shape_')) {
-        // Simple shape patterns
+        // Shapes Transitions
+        ctx.beginPath();
         if (type === 'shape_checker') {
-            const size = 50;
-            const cols = Math.ceil(width / size);
-            const rows = Math.ceil(height / size);
+            const cols = 8;
+            const rows = 6;
+            const cellW = width / cols;
+            const cellH = height / rows;
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    if ((i + j) % 2 === 0) {
-                        const s = size * p;
-                        ctx.fillRect(i * size + (size - s) / 2, j * size + (size - s) / 2, s, s);
-                    } else {
-                        const s = size * p;
-                        ctx.fillRect(i * size + (size - s) / 2, j * size + (size - s) / 2, s, s);
+                    const delay = (i + j) / (cols + rows);
+                    const start = delay * 0.5;
+                    const duration = 0.5;
+                    let localP = (p - start) / duration;
+                    localP = Math.max(0, Math.min(1, localP));
+
+                    if (localP > 0) {
+                        const w = cellW * localP;
+                        const h = cellH * localP;
+                        ctx.rect(i * cellW + (cellW - w) / 2, j * cellH + (cellH - h) / 2, w, h);
                     }
                 }
             }
         } else if (type === 'shape_blinds') {
             const count = 10;
-            const h = height / count;
+            const slatH = height / count;
             for (let i = 0; i < count; i++) {
-                ctx.fillRect(0, i * h, width, h * p);
+                // Open blinds from center of slat? Or top?
+                // Let's do from center of slat for "Venetian blinds" feel
+                const h = slatH * p;
+                ctx.rect(0, i * slatH + (slatH - h) / 2, width, h);
             }
         } else if (type === 'shape_stripes_h') {
             const count = 10;
@@ -1638,26 +1675,57 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
                 ctx.fillRect((i + 1) * w, height * (1 - p * 2), w, height);
             }
         } else if (type === 'shape_dots') {
-            const size = 50;
-            const cols = Math.ceil(width / size);
-            const rows = Math.ceil(height / size);
+            const cols = 12;
+            const rows = 9;
+            const maxR = (Math.min(width / cols, height / rows)) / 2 * 1.5;
+            const cx = cols / 2;
+            const cy = rows / 2;
+            const maxDist = Math.sqrt(cx * cx + cy * cy);
+
             for (let i = 0; i < cols; i++) {
                 for (let j = 0; j < rows; j++) {
-                    const cx = i * size + size / 2;
-                    const cy = j * size + size / 2;
-                    const r = (size / 2) * p;
-                    ctx.moveTo(cx, cy);
-                    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                    const dist = Math.sqrt(Math.pow(i - cx, 2) + Math.pow(j - cy, 2));
+                    const normalizedDist = dist / maxDist;
+                    const start = normalizedDist * 0.5;
+                    let localP = (p - start) / 0.5;
+                    localP = Math.max(0, Math.min(1, localP));
+
+                    if (localP > 0) {
+                        const x = (i + 0.5) * (width / cols);
+                        const y = (j + 0.5) * (height / rows);
+                        ctx.moveTo(x, y);
+                        ctx.arc(x, y, maxR * localP, 0, Math.PI * 2);
+                    }
                 }
             }
         } else if (type === 'shape_spiral') {
-            // Simplified spiral (concentric circles)
-            const maxR = Math.sqrt(width * width + height * height) / 2;
-            const rings = 10;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const maxRadius = Math.sqrt(width * width + height * height) / 2;
+            const rings = 5;
             for (let i = 0; i < rings; i++) {
-                ctx.arc(width / 2, height / 2, maxR * (i / rings) * p, 0, Math.PI * 2);
-                ctx.lineTo(width / 2, height / 2); // Close to center to fill ring? No.
-                // Just fill circles
+                const innerR = (maxRadius / rings) * i;
+                const outerR = (maxRadius / rings) * (i + 1);
+                const start = (i / rings) * 0.5;
+                let localP = (p - start) / 0.5;
+                localP = Math.max(0, Math.min(1, localP));
+                if (localP > 0) {
+                    ctx.moveTo(centerX + outerR + 2, centerY); // prevent auto-close lines
+                    // Sub-path? No, we are in a big path.
+                    // Ctx.arc adds to current subpath.
+                    // Check arc connection lines.
+                    // Better to separate subpaths or just use closePath per ring if needed, but we want one fill.
+                    // The issue with single path fill for annuli is winding rule.
+                    // Use non-zero rule (default).
+                    // Draw outer CCW, inner CW?
+                    // Let's use individual fills if safer, but structural expectation is one big path + last fill.
+                    // Actually, I can call ctx.fill() inside loop if I want, but the structure prefers one fill at end.
+                    // Let's just manage path correctly.
+
+                    ctx.moveTo(centerX + (outerR + 2) * Math.cos(-Math.PI / 2), centerY + (outerR + 2) * Math.sin(-Math.PI / 2));
+                    ctx.arc(centerX, centerY, outerR + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * localP);
+                    ctx.arc(centerX, centerY, innerR - 1, -Math.PI / 2 + Math.PI * 2 * localP, -Math.PI / 2, true);
+                }
             }
         } else if (type === 'shape_zigzag') {
             const zigHeight = 40;
@@ -1687,17 +1755,21 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
             for (let i = 0; i < panels; i++) {
                 const x = i * panelW;
                 const panelP = Math.max(0, Math.min(1, (p - (i / panels) * 0.3) * 1.5));
-                ctx.fillRect(x, height * (1 - panelP), panelW, height * panelP);
+                ctx.rect(x, height * (1 - panelP), panelW, height * panelP);
             }
         } else if (type === 'shape_shutter') {
-            const shutters = 6;
-            const shutterH = height / shutters;
-            for (let i = 0; i < shutters; i++) {
-                const y = i * shutterH;
-                const shutterP = Math.max(0, Math.min(1, (p - (i / shutters) * 0.2) * 1.3));
-                ctx.fillRect(0, y, width * shutterP, shutterH);
+            const blades = 6;
+            const maxR = Math.sqrt(width * width + height * height);
+            const centerR = maxR * p;
+            const angleOffset = p * Math.PI / 2;
+
+            ctx.moveTo(width / 2 + centerR * Math.cos(angleOffset), height / 2 + centerR * Math.sin(angleOffset));
+            for (let i = 1; i <= blades; i++) {
+                const angle = angleOffset + (i * 2 * Math.PI / blades);
+                ctx.lineTo(width / 2 + centerR * Math.cos(angle), height / 2 + centerR * Math.sin(angle));
             }
         }
+        ctx.fill();
     } else {
         // Default fallback
         ctx.globalAlpha = p;
