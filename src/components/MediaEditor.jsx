@@ -249,8 +249,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     }
                 }
 
-                if (!sourceMap.has(layer.source)) {
-                    sourceMap.set(layer.source, {
+                // Key by source AND variant to support multiple instances of same media
+                const sourceKey = `${layer.source}::${layer.variant || 'main'}`;
+
+                if (!sourceMap.has(sourceKey)) {
+                    sourceMap.set(sourceKey, {
+                        source: layer.source, // Keep raw source for prepare/sync
+                        variant: layer.variant || 'main',
                         time: layer.sourceTime,
                         volume: 0,
                         muted: true, // Default muted, any unmuted clip un-mutes it
@@ -260,7 +265,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 }
 
                 // Aggregate properties
-                const entry = sourceMap.get(layer.source);
+                const entry = sourceMap.get(sourceKey);
                 // Be slightly conservative with speed, assume first clip's speed is dominant or they match
                 if (speed !== 1) entry.speed = speed;
 
@@ -274,8 +279,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         });
 
         // Apply synced state
-        sourceMap.forEach((entry, source) => {
-            mediaSourceManager.syncMedia(source, entry.time, isPlaying);
+        sourceMap.forEach((entry) => {
+            mediaSourceManager.syncMedia(entry.source, entry.time, isPlaying, 1, entry.variant);
 
             const element = entry.media;
             if (element) {

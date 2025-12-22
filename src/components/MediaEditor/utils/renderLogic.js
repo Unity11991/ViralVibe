@@ -97,7 +97,9 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
                     let prevMedia = null;
                     if (prevClip.source) {
                         const trackType = track.type === 'audio' ? 'audio' : (track.type === 'image' ? 'image' : 'video');
-                        prevMedia = mediaSourceManager.getMedia(prevClip.source, prevClip.type || trackType);
+                        // Use 'transition' variant to avoid conflict with main clip if same source
+                        // This fixes the lag/glitching caused by thrashing the same video element
+                        prevMedia = mediaSourceManager.getMedia(prevClip.source, prevClip.type || trackType, 'transition');
                     }
 
                     const prevClipTime = currentTime - prevClip.startTime;
@@ -127,7 +129,8 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
                         mask: prevClip.mask || null,
                         text: prevClip.text,
                         style: prevClip.style,
-                        faceRetouch: prevClip.faceRetouch
+                        faceRetouch: prevClip.faceRetouch,
+                        variant: 'transition' // Tag layer so renderer knows which media variant to sync
                     });
                 }
             }

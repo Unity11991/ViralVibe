@@ -89,7 +89,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
         <div className="flex flex-col h-full">
             {/* Top Tabs */}
             <div className="flex border-b border-white/10">
-                {['video', 'audio', 'speed', 'animation', 'transition'].map(tab => (
+                {['video', 'audio', 'speed', 'animation'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -423,60 +423,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                     </div>
                 )}
 
-                {activeTab === 'transition' && (
-                    <div className="p-4 space-y-6">
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-white/50 uppercase tracking-wider flex items-center gap-2">
-                                <Activity size={12} /> Transitions
-                            </h4>
 
-                            {/* Transition Duration Slider */}
-                            {activeItem.transition?.type && activeItem.transition?.type !== 'none' && (
-                                <div className="bg-white/5 p-3 rounded-lg space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-xs font-medium text-white/60">Duration</label>
-                                        <span className="text-xs text-white/40">{activeItem.transition.duration || 1.0}s</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="0.1"
-                                        max="2.0"
-                                        step="0.1"
-                                        value={activeItem.transition.duration || 1.0}
-                                        onChange={(e) => handleUpdate({
-                                            transition: { ...activeItem.transition, duration: parseFloat(e.target.value) }
-                                        })}
-                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full"
-                                    />
-                                </div>
-                            )}
-
-                            {/* Transition Grid */}
-                            <div className="grid grid-cols-3 gap-2">
-                                {[
-                                    { id: 'none', label: 'None' },
-                                    { id: 'cross-dissolve', label: 'Cross Dissolve' }
-                                ].map(trans => {
-                                    const isActive = activeItem.transition?.type === trans.id || (!activeItem.transition?.type && trans.id === 'none');
-                                    return (
-                                        <button
-                                            key={trans.id}
-                                            onClick={() => handleUpdate({
-                                                transition: { type: trans.id, duration: activeItem.transition?.duration || 1.0 }
-                                            })}
-                                            className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all h-20 ${isActive
-                                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
-                                                }`}
-                                        >
-                                            <span className="text-[10px] font-medium text-center leading-tight">{trans.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div >
     );
