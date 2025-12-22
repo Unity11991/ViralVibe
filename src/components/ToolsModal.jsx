@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Video, Sparkles, Image as ImageIcon, Music, Swords } from 'lucide-react';
+import { X, Video, Sparkles, Image as ImageIcon, Music, Swords, Globe, Zap } from 'lucide-react';
 
 const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
     if (!isOpen) return null;
@@ -41,6 +41,33 @@ const ToolsModal = ({ isOpen, onClose, onSelectTool }) => {
             color: 'text-green-400',
             bg: 'bg-green-500/10',
             border: 'border-green-500/20'
+        },
+        {
+            id: 'domain-scout',
+            title: 'Domain Scout',
+            description: 'Find unregistered premium domains for free.',
+            icon: Globe,
+            color: 'text-emerald-400',
+            bg: 'bg-emerald-500/10',
+            border: 'border-emerald-500/20'
+        },
+        {
+            id: 'viral-pulse',
+            title: 'Viral Pulse (Visuals)',
+            description: 'Real-time trending topics from Reddit.',
+            icon: Zap,
+            color: 'text-yellow-400',
+            bg: 'bg-yellow-500/10',
+            border: 'border-yellow-500/20'
+        },
+        {
+            id: 'trending-audio',
+            title: 'Trending Audio',
+            description: 'Top viral songs from Apple Music Charts.',
+            icon: Music,
+            color: 'text-pink-400',
+            bg: 'bg-pink-500/10',
+            border: 'border-pink-500/20'
         }
     ];
 
