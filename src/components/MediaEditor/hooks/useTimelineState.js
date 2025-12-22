@@ -113,7 +113,21 @@ export const useTimelineState = () => {
     const initializeTimeline = useCallback((mediaFile, mediaType, duration) => {
         // If no media file, initialize with empty timeline
         if (!mediaFile) {
-            const newTracks = [];
+            // Initialize with default empty tracks (1 Video, 1 Audio)
+            const newTracks = [
+                {
+                    id: 'track-video-main',
+                    type: 'video',
+                    height: 80,
+                    clips: []
+                },
+                {
+                    id: 'track-audio-main',
+                    type: 'audio',
+                    height: 48,
+                    clips: []
+                }
+            ];
             setTracks(newTracks);
             setHistory([newTracks]);
             setHistoryIndex(0);

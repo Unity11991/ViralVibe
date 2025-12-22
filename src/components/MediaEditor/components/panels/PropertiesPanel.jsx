@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
+import { CropPanel } from '../CropPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
 import { ANIMATIONS } from '../../utils/animationPresets';
 import { analyzeFrame, generateGrading } from '../../utils/aiColorService';
@@ -44,9 +45,52 @@ const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyfra
     );
 };
 
-const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe, getVideoElement, onAddAdjustmentLayer }) => {
+const VideoPropertiesPanel = ({
+    activeItem,
+    onUpdate,
+    currentTime,
+    onAddKeyframe,
+    onRemoveKeyframe,
+    getVideoElement,
+    onAddAdjustmentLayer,
+    isCropMode,
+    onToggleCropMode,
+    cropPreset,
+    onCropPresetChange
+}) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
+    const initialCropRef = React.useRef(null);
+
+    // Capture initial state when entering crop mode
+    React.useEffect(() => {
+        if (videoSubTab === 'crop' && activeItem) {
+            initialCropRef.current = {
+                crop: activeItem.crop,
+                cropPreset: activeItem.cropPreset,
+                transform: { ...activeItem.transform }
+            };
+        }
+    }, [videoSubTab]);
+
+    const handleApply = () => {
+        setVideoSubTab('basic');
+        // Changes are already applied live, so just exit.
+    };
+
+    const handleCancel = () => {
+        if (initialCropRef.current && onUpdate) {
+            // Revert changes
+            onUpdate({
+                crop: initialCropRef.current.crop,
+                cropPreset: initialCropRef.current.cropPreset,
+                transform: initialCropRef.current.transform
+            });
+            // Also need to revert local preset state if passed from parent...
+            // But passed props (cropPreset) should update from parent onUpdate.
+        }
+        setVideoSubTab('basic');
+    };
 
     // Processing state
     const [isProcessing, setIsProcessing] = useState(false);
@@ -85,6 +129,13 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
         />
     );
 
+    // Sync Crop Mode
+    React.useEffect(() => {
+        if (onToggleCropMode) {
+            onToggleCropMode(videoSubTab === 'crop');
+        }
+    }, [videoSubTab, onToggleCropMode]);
+
     return (
         <div className="flex flex-col h-full">
             {/* Top Tabs */}
@@ -108,7 +159,7 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                     <div className="p-4 space-y-6">
                         {/* Sub Tabs */}
                         <div className="flex bg-black/20 p-1 rounded-lg mb-4">
-                            {['basic', 'remove-bg', 'mask', 'retouch'].map(tab => (
+                            {['basic', 'crop', 'remove-bg', 'mask', 'retouch'].map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setVideoSubTab(tab)}
@@ -330,7 +381,23 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
                             </div>
                         )}
 
-                        {videoSubTab !== 'basic' && videoSubTab !== 'retouch' && (
+                        {videoSubTab === 'crop' && (
+                            <CropPanel
+                                cropPreset={cropPreset}
+                                rotation={activeItem.transform?.rotation || 0}
+                                zoom={activeItem.transform?.scale ? activeItem.transform.scale / 100 : 1}
+                                onCropPresetChange={onCropPresetChange}
+                                onRotationChange={(val) => handleTransformUpdate('rotation', val)}
+                                onZoomChange={(val) => handleTransformUpdate('scale', Math.round(val * 100))}
+                                onReset={() => {
+                                    onCropPresetChange('free');
+                                }}
+                                onApply={handleApply}
+                                onCancel={handleCancel}
+                            />
+                        )}
+
+                        {videoSubTab !== 'basic' && videoSubTab !== 'retouch' && videoSubTab !== 'crop' && (
                             <div className="flex flex-col items-center justify-center py-12 text-white/30 space-y-2">
                                 <Wand2 size={24} />
                                 <span className="text-xs">Coming Soon</span>
@@ -429,7 +496,19 @@ const VideoPropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe
     );
 };
 
-export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyframe, onRemoveKeyframe, getVideoElement, onAddAdjustmentLayer }) => {
+export const PropertiesPanel = ({
+    activeItem,
+    onUpdate,
+    currentTime,
+    onAddKeyframe,
+    onRemoveKeyframe,
+    getVideoElement,
+    onAddAdjustmentLayer,
+    isCropMode,
+    onToggleCropMode,
+    cropPreset,
+    onCropPresetChange
+}) => {
     const [activeTab, setActiveTab] = useState('style'); // style, animation
 
     // Reset tab when item changes
@@ -459,6 +538,10 @@ export const PropertiesPanel = ({ activeItem, onUpdate, currentTime, onAddKeyfra
                 onRemoveKeyframe={onRemoveKeyframe}
                 getVideoElement={getVideoElement}
                 onAddAdjustmentLayer={onAddAdjustmentLayer}
+                isCropMode={isCropMode}
+                onToggleCropMode={onToggleCropMode}
+                cropPreset={cropPreset}
+                onCropPresetChange={onCropPresetChange}
             />
         );
     }

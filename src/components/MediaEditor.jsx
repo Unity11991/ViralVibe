@@ -128,7 +128,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     } = useTimelineState() || {};
 
     // Editor State
-    const [activeTab, setActiveTab] = useState('adjust');
+    const [activeTab, setActiveTab] = useState('media');
     const [adjustments, setAdjustments] = useState(getInitialAdjustments());
     const [activeFilterId, setActiveFilterId] = useState('normal');
     const [activeEffectId, setActiveEffectId] = useState(null);
@@ -140,6 +140,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [timelineZoom, setTimelineZoom] = useState(1);
     const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
     const [memeMode, setMemeMode] = useState(!!initialText);
+    const [isCropMode, setIsCropMode] = useState(false); // Crop Mode State
 
     // Canvas Interaction State
     const [isDragging, setIsDragging] = useState(false);
@@ -417,6 +418,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 setAdjustments(clip.adjustments || getInitialAdjustments());
                 setActiveFilterId(clip.filter || 'normal');
                 setActiveEffectId(clip.effect || null);
+
+                // Sync Crop State
+                setCropData(clip.crop || { x: 0, y: 0, width: 100, height: 100 });
+                setCropPreset(clip.cropPreset || 'free');
                 // Note: effectIntensity might need to be stored on clip too if we want per-clip intensity
             }
 
@@ -627,22 +632,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
         resizeObserver.observe(containerRef.current);
 
-        // Force resize update on fullscreen change (safeguard)
-        const handleFullscreenChange = () => {
-            // Small timeout to allow layout to settle
-            setTimeout(() => {
-                updateCanvasSize();
-            }, 100);
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-
         if (isVideo) {
             setTrimRange({ start: 0, end: videoDuration });
         }
 
         return () => {
             resizeObserver.disconnect();
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
         };
     }, [mediaUrl, mediaElementRef, initializeCanvas, isVideo, videoDuration, memeMode]);
 
@@ -713,7 +708,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             initialAdjustments,
             effectIntensity,
             activeEffectId,
-            activeFilterId
+            activeFilterId,
+            clipOverrides: selectedClipId ? { [selectedClipId]: { crop: cropData } } : null
         };
 
         const newState = getFrameState(currentTime, tracks, globalState);
@@ -723,7 +719,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         // Render immediately
         render(newState, { applyFiltersToContext: true });
 
-    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo, render, mediaUrl]);
+    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo, render, mediaUrl, cropData]);
 
     // Playback controls are now handled by usePlayback
     // We just need to sync secondary videos and audio manually in the render/tick loop if usePlayback doesn't handle them all.
@@ -1060,7 +1056,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             initialAdjustments: adjustments,
             effectIntensity,
             activeEffectId,
-            activeFilterId
+            activeEffectId,
+            activeFilterId,
+            clipOverrides: selectedClipId ? { [selectedClipId]: { crop: cropData } } : null
         };
 
         const frameState = getFrameState(time, tracks, globalState);
@@ -1485,6 +1483,42 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         updateClip(selectedClipId, finalUpdates);
     };
 
+    /**
+     * Handle Crop Data Changes
+     */
+    const handleCropChange = useCallback((newCropData) => {
+        setCropData(newCropData);
+        // Only update local state for performance. 
+        // Real-time canvas updates should use clipOverrides in render loop.
+    }, []);
+
+    const handleCropEnd = useCallback(() => {
+        if (selectedClipId && cropData) {
+            updateClip(selectedClipId, { crop: cropData });
+        }
+    }, [selectedClipId, cropData, updateClip]);
+
+    const handleCropPresetChange = useCallback((preset) => {
+        setCropPreset(preset);
+        if (selectedClipId) {
+            updateClip(selectedClipId, { cropPreset: preset });
+        }
+    }, [selectedClipId, updateClip]);
+
+    // Handle Rotation/Zoom from Crop Panel (updates transform)
+    const handleCropTransformChange = useCallback((key, value) => {
+        const current = getActiveItem();
+        if (!current) return;
+
+        const newTransform = {
+            ...(current.transform || {}),
+            [key]: value
+        };
+        handleUpdateActiveItem({ transform: newTransform });
+    }, [selectedClipId, tracks]);
+
+
+
     const handleDelete = useCallback(() => {
         if (selectedClipId) {
             deleteClip(selectedClipId);
@@ -1756,17 +1790,19 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             overlayRef={overlayRef}
                             textOverlays={renderStateRef.current.textOverlays || []}
                             stickers={renderStateRef.current.stickers || []}
-                            stickerImages={[]} // Handled internally now
+                            stickerImages={[]}
                             activeOverlayId={selectedClipId}
-                            startDragging={() => { }} // Disabled for now
+                            startDragging={() => { }}
                             updateTextOverlay={() => { }}
                             deleteOverlay={handleDelete}
                             setActiveOverlayId={setSelectedClipId}
                             adjustments={adjustments}
                             cropData={cropData}
-                            setCropData={setCropData}
+                            setCropData={handleCropChange}
+                            onCropEnd={handleCropEnd}
                             cropPreset={cropPreset}
                             activeTab={activeTab}
+                            isCropMode={isCropMode}
                             buildFilterString={buildFilterString}
                             onCanvasPointerDown={handleCanvasPointerDown}
                             onCanvasPointerMove={handleCanvasPointerMove}
@@ -1783,6 +1819,10 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onRemoveKeyframe={removeKeyframe}
                         getVideoElement={getVideoElement}
                         onAddAdjustmentLayer={handleAddAdjustmentLayer}
+                        isCropMode={isCropMode}
+                        onToggleCropMode={setIsCropMode}
+                        cropPreset={cropPreset}
+                        onCropPresetChange={handleCropPresetChange}
                     />
                 }
                 bottomPanel={
