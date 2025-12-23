@@ -31,40 +31,98 @@ export const processVideoBackgroundRemoval = async (videoUrl, onProgress) => {
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
             });
 
+            // 4. Configure MediaPipe
             selfieSegmentation.setOptions({
-                modelSelection: 1, // 1 = Landscape (better quality), 0 = General
+                modelSelection: 0, // 0 = General (Better for full body/distance), 1 = Landscape
                 selfieMode: false,
             });
 
+            // Temporal Smoothing Buffer
+            let previousAlphaData = null;
+            const SMOOTHING_FACTOR = 0.7;
+
             selfieSegmentation.onResults((results) => {
-                // 1. Draw raw mask to a temp canvas to process it
-                // We can process pixels directly on the main canvas if we draw mask first
-
-                // Draw Mask (Grayscale)
+                // 1. Draw raw mask to a temp canvas
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.drawImage(results.segmentationMask, 0, 0, width, height);
 
-                // Process Mask Pixels (Thresholding for Sharp Edges)
+                // Blur to reduce jitter
+                ctx.filter = 'blur(2px)';
+                ctx.drawImage(results.segmentationMask, 0, 0, width, height);
+                ctx.filter = 'none';
+
+                // Process Mask Pixels
                 const imageData = ctx.getImageData(0, 0, width, height);
                 const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    const alpha = data[i]; // Red channel is usually the mask value
-                    // Threshold: If > 100, make it 255 (Opaque), else 0 (Transparent)
-                    // Or use a smoothstep for slightly softer but sharp edges
-                    // CapCut style: Hard cut
-                    const threshold = 128;
-                    const val = alpha > threshold ? 255 : 0;
 
-                    data[i] = 0; // R
-                    data[i + 1] = 0; // G
-                    data[i + 2] = 0; // B
-                    data[i + 3] = val; // Alpha
+                // Initialize previous buffer
+                if (!previousAlphaData) {
+                    previousAlphaData = new Uint8Array(data.length / 4);
                 }
+
+                // Temporary buffer for Erode operation
+                const erodedAlpha = new Uint8Array(data.length / 4);
+
+                // Pass 1: Temporal Smoothing
+                for (let i = 0; i < data.length; i += 4) {
+                    const pixelIndex = i / 4;
+                    let alpha = data[i];
+
+                    // Temporal Smoothing
+                    if (previousAlphaData) {
+                        alpha = (alpha * (1 - SMOOTHING_FACTOR)) + (previousAlphaData[pixelIndex] * SMOOTHING_FACTOR);
+                        previousAlphaData[pixelIndex] = alpha;
+                    }
+
+                    erodedAlpha[pixelIndex] = alpha;
+                }
+
+                // Pass 2: Erode (Shrink Mask) - Removes Halo
+                // Increased strength to cut into the subject slightly and remove background edges
+                const erodeAmount = 2; // Stronger halo removal
+
+                for (let y = erodeAmount; y < height - erodeAmount; y++) {
+                    for (let x = erodeAmount; x < width - erodeAmount; x++) {
+                        const idx = (y * width + x);
+
+                        // Find minimum alpha in neighborhood
+                        let minAlpha = 255;
+
+                        // Extended neighborhood for erodeAmount = 2
+                        const neighbors = [
+                            idx,                // Center
+                            idx - 1, idx + 1,   // Horizontal 1px
+                            idx - 2, idx + 2,   // Horizontal 2px
+                            idx - width, idx + width, // Vertical 1px
+                            idx - (width * 2), idx + (width * 2) // Vertical 2px
+                        ];
+
+                        for (const nIdx of neighbors) {
+                            if (erodedAlpha[nIdx] < minAlpha) minAlpha = erodedAlpha[nIdx];
+                        }
+
+                        // Apply Tighter Soft Threshold to the ERODED value
+                        const lower = 130; // Aggressive cut
+                        const upper = 180;
+                        let val = 0;
+
+                        if (minAlpha < lower) val = 0;
+                        else if (minAlpha > upper) val = 255;
+                        else {
+                            val = ((minAlpha - lower) / (upper - lower)) * 255;
+                        }
+
+                        const dataIdx = idx * 4;
+                        data[dataIdx] = 0;
+                        data[dataIdx + 1] = 0;
+                        data[dataIdx + 2] = 0;
+                        data[dataIdx + 3] = val; // Alpha
+                    }
+                }
+
                 ctx.putImageData(imageData, 0, 0);
 
-                // Now we have a sharp Alpha Mask on the canvas.
+                // Now we have a smooth Alpha Mask on the canvas.
                 // We want to draw the video frame INSIDE this mask.
-                // Use source-in: Retains content where mask is opaque.
 
                 ctx.globalCompositeOperation = 'source-in';
                 ctx.drawImage(results.image, 0, 0, width, height);
@@ -75,7 +133,7 @@ export const processVideoBackgroundRemoval = async (videoUrl, onProgress) => {
 
             await selfieSegmentation.initialize();
 
-            // 4. Setup MediaRecorder
+            // 5. Setup MediaRecorder
             const stream = canvas.captureStream(30); // Capture at 30fps (or match video fps if possible)
 
             // Check supported mime types
