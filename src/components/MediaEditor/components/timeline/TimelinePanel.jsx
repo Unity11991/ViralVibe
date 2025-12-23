@@ -316,12 +316,62 @@ export const TimelinePanel = ({
         setActiveTool(current => current === tool ? 'select' : tool);
     };
 
-    // Handle Razor Click (Split at point)
-    const handleRazorClick = (clipId, time) => {
-        if (activeTool === 'razor' && onSplit) {
-            onSplit(clipId, time);
+    // --- Stable Handler Pattern (Fix for Stale Closures in Memoized Clips) ---
+    const handlersRef = useRef({
+        onSplit,
+        onTrim,
+        onTrimEnd,
+        onMove,
+        onClipSelect,
+        onAddTransition,
+        onTransitionSelect,
+        onDrop,
+        onRazorClick: null // Placeholder
+    });
+
+    // Update refs on every render
+    useEffect(() => {
+        handlersRef.current = {
+            onSplit,
+            onTrim,
+            onTrimEnd,
+            onMove,
+            onClipSelect,
+            onAddTransition,
+            onTransitionSelect,
+            onDrop
+        };
+    });
+
+    // Stable Callback Wrappers
+    const handleSplitStable = React.useCallback((...args) => handlersRef.current.onSplit?.(...args), []);
+    const handleTrimStable = React.useCallback((...args) => handlersRef.current.onTrim?.(...args), []);
+    const handleTrimEndStable = React.useCallback((...args) => handlersRef.current.onTrimEnd?.(...args), []);
+    const handleMoveStable = React.useCallback((...args) => handlersRef.current.onMove?.(...args), []);
+    const handleClipSelectStable = React.useCallback((...args) => handlersRef.current.onClipSelect?.(...args), []);
+    const handleAddTransitionStable = React.useCallback((...args) => handlersRef.current.onAddTransition?.(...args), []);
+    const handleTransitionSelectStable = React.useCallback((...args) => handlersRef.current.onTransitionSelect?.(...args), []);
+    const handleDropStable = React.useCallback((...args) => handlersRef.current.onDrop?.(...args), []);
+
+    // Handle Razor Click (Split at point) - Stable
+    const handleRazorClick = React.useCallback((clipId, time) => {
+        // We use activeTool from closure (it's state), but we need to ensure this function
+        // is stable if we want to solve the Track->Clip update issue.
+        // BUT activeTool changes.
+        // If activeTool changes, handleRazorClick changes. Track updates.
+        // Clip ignores it.
+        // So we need handleRazorClick to be STABLE regardless of activeTool?
+        // No, we can check activeTool inside the ref? Or use a separate ref for tool.
+
+        // Actually best approach: Pass 'activeTool' to Clip (it is passed). 
+        // Clip checks activeTool in comparator. So Clip updates when tool changes.
+        // So handleRazorClick identity change due to activeTool is FINE.
+        // The problem is handleRazorClick identity change due to `onSplit` change (which happens on every edit).
+
+        if (activeTool === 'razor' && handlersRef.current.onSplit) {
+            handlersRef.current.onSplit(clipId, time);
         }
-    };
+    }, [activeTool]); // Only recreate when tool changes (rare), not when tracks change (frequent)
 
     return (
         <div className={`flex flex-col h-full ${activeTool === 'razor' ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]' : ''}`}>
@@ -589,15 +639,15 @@ export const TimelinePanel = ({
                                 <Track
                                     track={track}
                                     scale={scale}
-                                    onClipSelect={onClipSelect}
+                                    onClipSelect={handleClipSelectStable}
                                     selectedClipId={selectedClipId}
                                     selectedClipIds={selectedClipIds}
-                                    onTrim={onTrim}
-                                    onTrimEnd={onTrimEnd}
-                                    onMove={onMove}
-                                    onAddTransition={onAddTransition}
-                                    onTransitionSelect={onTransitionSelect}
-                                    onDrop={onDrop}
+                                    onTrim={handleTrimStable}
+                                    onTrimEnd={handleTrimEndStable}
+                                    onMove={handleMoveStable}
+                                    onAddTransition={handleAddTransitionStable}
+                                    onTransitionSelect={handleTransitionSelectStable}
+                                    onDrop={handleDropStable}
                                     onResize={(height) => onResizeTrack(track.id, height)}
                                     snapPoints={snapPoints}
                                     onClipDragStart={handleClipDragStart}
