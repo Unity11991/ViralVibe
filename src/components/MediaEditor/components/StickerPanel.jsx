@@ -155,7 +155,8 @@ export const StickerPanel = ({
                                     url: item.url,
                                     type: 'sticker',
                                     isAnimated: true,
-                                    thumbnail: item.thumbnail
+                                    thumbnail: item.thumbnail,
+                                    duration: item.duration
                                 })}
                                 draggable="true"
                                 onDragStart={(e) => {
@@ -163,7 +164,8 @@ export const StickerPanel = ({
                                         type: 'sticker',
                                         url: item.url,
                                         isAnimated: true, // Marker for render logic
-                                        thumbnail: item.thumbnail
+                                        thumbnail: item.thumbnail,
+                                        duration: item.duration
                                     }));
                                 }}
                             >

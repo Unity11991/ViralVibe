@@ -229,7 +229,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const sourceMap = new Map(); // source -> { time, volume, muted, speed, media }
 
         frameState.visibleLayers.forEach(layer => {
-            if (layer.media && layer.source && (layer.type === 'video' || layer.type === 'audio')) {
+            if (layer.media && layer.source && (layer.type === 'video' || layer.type === 'audio' || layer.type === 'sticker')) {
                 // Determine clip properties
                 const clip = tracks.flatMap(t => t.clips).find(c => c.id === layer.id);
                 let vol = 0;
@@ -835,16 +835,17 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     text: selectedItem.text,
                     rotation: selectedItem.style?.rotation || 0
                 } : {
-                    type: 'media',
+                    type: selectedItem.type || (selectedItem.source ? 'video' : 'media'),
                     transform: selectedItem.transform || {}
                 };
 
                 // Get real media dimensions for accurate handle positioning
                 let mediaDims = { width: 100, height: 100 };
                 if (!isText) {
+                    const typeToFetch = selectedItem.type === 'sticker' ? 'sticker' : (selectedItem.type === 'image' ? 'image' : 'video');
                     const el = mediaSourceManager.getMedia(
                         selectedItem.source,
-                        selectedItem.type === 'image' ? 'image' : 'video'
+                        typeToFetch
                     );
                     if (el) {
                         mediaDims = {
@@ -925,9 +926,19 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 let mediaDims = { width: 100, height: 100 };
 
                 if (item.trackType === 'sticker') {
-                    // Estimate or use default for stickers if image not available
-                    // TODO: Get actual sticker dims
-                    mediaDims = { width: 100, height: 100 };
+                    // Get actual sticker dimensions if available
+                    const el = mediaSourceManager.getMedia(
+                        item.source,
+                        'sticker'
+                    );
+                    if (el) {
+                        mediaDims = {
+                            width: el.videoWidth || el.width || 100,
+                            height: el.videoHeight || el.height || 100
+                        };
+                    } else {
+                        mediaDims = { width: 100, height: 100 };
+                    }
                 } else {
                     // Video/Image
                     const type = item.trackType === 'image' ? 'image' : 'video';
@@ -1213,13 +1224,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 type: 'sticker',
                 name: 'Sticker',
                 startTime: currentTime,
-                duration: 5, // Default duration
+                duration: data.duration || 5,
                 startOffset: 0,
                 source: data.url,
                 isAnimated: isAnimated,
                 thumbnail: data.thumbnail,
                 transform: {
-                    x: 50, y: 50, scale: 100, rotation: 0
+                    x: 0, y: 0, scale: 100, rotation: 0
                 }
             };
 
@@ -1453,7 +1464,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         if (!track) return null;
         const clip = track.clips.find(c => c.id === selectedClipId);
         // Prioritize clip type if available (e.g. image on video track), fallback to track type
-        return { type: track.type, ...clip };
+        return { ...clip, type: clip.type || track.type };
     };
 
     const handleUpdateActiveItem = (updates) => {

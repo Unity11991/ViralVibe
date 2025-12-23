@@ -66,7 +66,7 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             blendMode: clip.blendMode || 'normal',
             startTime: clip.startTime,
             duration: clip.duration,
-            type: clip.type || (track.type === 'text' ? 'text' : (track.type === 'adjustment' ? 'adjustment' : 'video')),
+            type: clip.type || (track.type === 'text' ? 'text' : (track.type === 'adjustment' ? 'adjustment' : (track.type === 'sticker' ? 'sticker' : 'video'))),
             media: media,
             source: clip.source,
             sourceTime: sourceTime // Store actual time on source for sync
@@ -101,8 +101,8 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
         const activeOpacity = getVal('opacity', baseLayer.opacity) * transitionOpacity;
 
         const animatedProps = {
-            x: getVal('x', clip.transform?.x || (['text', 'sticker', 'image'].includes(track.type) ? 50 : 0)),
-            y: getVal('y', clip.transform?.y || (['text', 'sticker', 'image'].includes(track.type) ? 50 : 0)),
+            x: getVal('x', clip.transform?.x || (['text', 'image'].includes(track.type) ? 50 : 0)),
+            y: getVal('y', clip.transform?.y || (['text', 'image'].includes(track.type) ? 50 : 0)),
             scale: getVal('scale', clip.transform?.scale || (track.type === 'text' ? clip.style?.fontSize || 48 : 100)),
             rotation: getVal('rotation', clip.transform?.rotation || 0),
             opacity: activeOpacity,

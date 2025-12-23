@@ -713,16 +713,20 @@ export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canv
     if (!stickerImage || !mediaW || !mediaH) return;
 
     const {
-        x, y,
+        transform = {}
+    } = sticker;
+
+    const {
+        x = 0, y = 0,
         scale = 100,
         rotation = 0
-    } = sticker;
+    } = transform;
 
     // Normalizing scale (from percentage to factor)
     const normScale = scale / 100;
 
-    const posX = (x / 100) * canvasWidth;
-    const posY = (y / 100) * canvasHeight;
+    const posX = canvasWidth / 2 + x;
+    const posY = canvasHeight / 2 + y;
     const scaleFactor = canvasHeight / 600;
 
     // Base size 150px at 600p height
@@ -1023,7 +1027,7 @@ const renderLayer = (ctx, layer, globalState) => {
 
             // Re-calculate draw transform for selection box if needed
             // But drawSelectionBox expects the transform object.
-            drawSelectionBox(ctx, transform, canvasDimensions, dims);
+            drawSelectionBox(ctx, transform, canvasDimensions, dims, type);
         }
     }
 
@@ -2315,7 +2319,7 @@ export const applyTransitionFX = (ctx, transition, width, height, media, isPrevi
 /**
  * Draw selection box with handles
  */
-export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensions) => {
+export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensions, type = 'video') => {
     const { width, height } = canvasDimensions;
     const { x = 0, y = 0, scale = 100, rotation = 0 } = transform;
 
@@ -2324,22 +2328,31 @@ export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensio
     // We assume "contain" logic or explicit transform
     // For now, let's replicate the basic transform logic
 
-    // Base dimensions (assuming contain logic from drawMediaToCanvas)
-    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
-    const canvasAspect = width / height;
+    let drawWidth, drawHeight;
 
-    let baseWidth, baseHeight;
-    if (mediaAspect > canvasAspect) {
-        baseWidth = width;
-        baseHeight = width / mediaAspect;
+    if (type === 'sticker') {
+        const scaleFactor = height / 600;
+        const normScale = scale / 100;
+        drawWidth = 150 * normScale * scaleFactor;
+        drawHeight = (150 * (mediaDimensions.height / mediaDimensions.width)) * normScale * scaleFactor;
     } else {
-        baseHeight = height;
-        baseWidth = height * mediaAspect;
-    }
+        // Base dimensions (assuming contain logic from drawMediaToCanvas)
+        const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+        const canvasAspect = width / height;
 
-    const scaleFactor = scale / 100;
-    const drawWidth = baseWidth * scaleFactor;
-    const drawHeight = baseHeight * scaleFactor;
+        let baseWidth, baseHeight;
+        if (mediaAspect > canvasAspect) {
+            baseWidth = width;
+            baseHeight = width / mediaAspect;
+        } else {
+            baseHeight = height;
+            baseWidth = height * mediaAspect;
+        }
+
+        const scaleFactor = scale / 100;
+        drawWidth = baseWidth * scaleFactor;
+        drawHeight = baseHeight * scaleFactor;
+    }
 
     const centerX = width / 2 + x;
     const centerY = height / 2 + y;
@@ -2460,24 +2473,33 @@ export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => 
     const transform = clip.transform || {};
     const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0 } = transform;
 
-    // Calculate clip dimensions (similar to drawSelectionBox)
-    const mediaAspect = mediaDimensions.width / mediaDimensions.height;
-    const canvasAspect = width / height;
-
-    let baseWidth, baseHeight;
-    if (mediaAspect > canvasAspect) {
-        baseWidth = width;
-        baseHeight = width / mediaAspect;
-    } else {
-        baseHeight = height;
-        baseWidth = height * mediaAspect;
-    }
-
-    const scaleFactor = scale / 100;
-    const drawWidth = baseWidth * scaleFactor;
-    const drawHeight = baseHeight * scaleFactor;
     const centerX = width / 2 + cx;
     const centerY = height / 2 + cy;
+
+    let drawWidth, drawHeight;
+
+    if (clip.type === 'sticker') {
+        const scaleFactor = height / 600;
+        const normScale = scale / 100;
+        drawWidth = 150 * normScale * scaleFactor;
+        drawHeight = (150 * (mediaDimensions.height / mediaDimensions.width)) * normScale * scaleFactor;
+    } else {
+        const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+        const canvasAspect = width / height;
+
+        let baseWidth, baseHeight;
+        if (mediaAspect > canvasAspect) {
+            baseWidth = width;
+            baseHeight = width / mediaAspect;
+        } else {
+            baseHeight = height;
+            baseWidth = height * mediaAspect;
+        }
+
+        const scaleFactor = scale / 100;
+        drawWidth = baseWidth * scaleFactor;
+        drawHeight = baseHeight * scaleFactor;
+    }
 
     // Rotate point around center to align with unrotated box
     const rad = -rotation * Math.PI / 180; // Negative for reverse rotation
@@ -2571,19 +2593,26 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
         rotation = r;
 
         // Calculate media dimensions
-        const mediaAspect = mediaDimensions.width / mediaDimensions.height;
-        const canvasAspect = width / height;
-        let baseWidth, baseHeight;
-        if (mediaAspect > canvasAspect) {
-            baseWidth = width;
-            baseHeight = width / mediaAspect;
+        if (clip.type === 'sticker') {
+            const scaleFactor = height / 600;
+            const normScale = scale / 100;
+            drawWidth = 150 * normScale * scaleFactor;
+            drawHeight = (150 * (mediaDimensions.height / mediaDimensions.width)) * normScale * scaleFactor;
         } else {
-            baseHeight = height;
-            baseWidth = height * mediaAspect;
+            const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+            const canvasAspect = width / height;
+            let baseWidth, baseHeight;
+            if (mediaAspect > canvasAspect) {
+                baseWidth = width;
+                baseHeight = width / mediaAspect;
+            } else {
+                baseHeight = height;
+                baseWidth = height * mediaAspect;
+            }
+            const scaleFactor = scale / 100;
+            drawWidth = baseWidth * scaleFactor;
+            drawHeight = baseHeight * scaleFactor;
         }
-        const scaleFactor = scale / 100;
-        drawWidth = baseWidth * scaleFactor;
-        drawHeight = baseHeight * scaleFactor;
     }
 
     // Rotate point around center to align with unrotated box
