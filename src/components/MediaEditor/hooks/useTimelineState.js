@@ -21,11 +21,21 @@ export const useTimelineState = () => {
         if (isUndoing.current) return;
 
         setHistory(prev => {
-            const newHistory = prev.slice(0, historyIndex + 1);
-            return [...newHistory, newTracks];
+            const currentHistory = prev.slice(0, historyIndex + 1);
+
+            // Self-healing: If history is empty (e.g. skipped init), seed it with current state
+            if (currentHistory.length === 0) {
+                // We need to set index to 1 (0: old, 1: new)
+                // Since we can't update state index inside here easily without side effects,
+                // we'll handle this case carefully.
+                setHistoryIndex(1);
+                return [tracks, newTracks];
+            }
+
+            setHistoryIndex(prevIndex => prevIndex + 1);
+            return [...currentHistory, newTracks];
         });
-        setHistoryIndex(prev => prev + 1);
-    }, [historyIndex]);
+    }, [historyIndex, tracks]);
 
     // Selection Logic
     const selectClip = useCallback((clipId, isMulti = false) => {
@@ -214,7 +224,7 @@ export const useTimelineState = () => {
 
     // Add a clip to a track
     const addClip = useCallback((trackId, clipData) => {
-        const newTracks = tracks.map(track => {
+        const newTracks = (tracks || []).map(track => {
             if (track.id === trackId) {
                 return {
                     ...track,
@@ -232,7 +242,8 @@ export const useTimelineState = () => {
 
     // Add a clip to a new track
     const addClipToNewTrack = useCallback((type, clipData) => {
-        const count = tracks.filter(t => t.type === type).length;
+        const currentTracks = tracks || [];
+        const count = currentTracks.filter(t => t.type === type).length;
         const newTrackId = `track-${type}-${count + 1}-${Date.now()}`;
         const newTrack = {
             id: newTrackId,

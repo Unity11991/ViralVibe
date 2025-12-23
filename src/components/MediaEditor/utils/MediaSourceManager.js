@@ -31,7 +31,16 @@ class MediaSourceManager {
         }
 
         let element;
-        if (type === 'video') {
+
+        // Handle 'sticker' type by detecting extension
+        let resolvedType = type;
+        if (type === 'sticker') {
+            const urlPath = url.split('?')[0];
+            const isVideo = urlPath.match(/\.(mp4|webm|mov|gifv)$/i);
+            resolvedType = isVideo ? 'video' : 'image';
+        }
+
+        if (resolvedType === 'video') {
             element = document.createElement('video');
             element.crossOrigin = 'anonymous';
             element.preload = 'auto';
@@ -39,11 +48,11 @@ class MediaSourceManager {
             element.dataset.source = url;
             element.src = url;
             element.load();
-        } else if (type === 'image') {
+        } else if (resolvedType === 'image') {
             element = new Image();
             element.crossOrigin = 'anonymous';
             element.src = url;
-        } else if (type === 'audio') {
+        } else if (resolvedType === 'audio') {
             element = new Audio();
             element.crossOrigin = 'anonymous';
             element.preload = 'auto';
@@ -55,7 +64,7 @@ class MediaSourceManager {
 
         this.sources.set(key, {
             element,
-            type,
+            type: resolvedType,
             lastActiveTime: Date.now()
         });
 
