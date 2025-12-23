@@ -1,17 +1,18 @@
-import React from 'react';
-import { StickerPanel } from '../StickerPanel'; // Check import path quality
-import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles, ArrowRightLeft, Smile, ScanFace } from 'lucide-react';
+import { EnhancePanel } from './EnhancePanel';
+import { LayoutGrid, Type, Music, Image as ImageIcon, Sliders, Wand2, Sparkles, ArrowRightLeft, Smile, ScanFace, Zap } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { FilterPanel } from '../FilterPanel';
 import { EffectsPanel } from '../EffectsPanel';
 import { MaskPanel } from '../MaskPanel';
 import { TransitionsPanel } from './TransitionsPanel';
+import { StickerPanel } from '../StickerPanel';
 
 const TABS = [
     { id: 'media', icon: ImageIcon, label: 'Media' },
     { id: 'audio', icon: Music, label: 'Audio' },
     { id: 'text', icon: Type, label: 'Text' },
     { id: 'stickers', icon: Smile, label: 'Stickers' },
+    { id: 'enhance', icon: Zap, label: 'Enhance' },
     { id: 'adjust', icon: Sliders, label: 'Adjust' },
     { id: 'filters', icon: Wand2, label: 'Filters' },
     { id: 'effects', icon: Sparkles, label: 'Effects' },
@@ -255,6 +256,13 @@ export const AssetsPanel = ({
                             onUpdateSticker={onUpdateSticker}
                             onDeleteSticker={onDeleteSticker}
                             onUploadSticker={(file) => onAddToLibrary(file)}
+                        />
+                    )}
+
+                    {activeTab === 'enhance' && (
+                        <EnhancePanel
+                            adjustments={adjustments}
+                            onUpdate={setAdjustments}
                         />
                     )}
 

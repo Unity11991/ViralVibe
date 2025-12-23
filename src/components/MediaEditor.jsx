@@ -34,6 +34,7 @@ import { AutoCompositePanel } from './MediaEditor/components/panels/AutoComposit
 import { CompositionLoadingModal } from './MediaEditor/components/modals/CompositionLoadingModal';
 import { ProjectCreationModal } from './MediaEditor/components/modals/ProjectCreationModal';
 import { getDefaultAspectRatio } from './MediaEditor/utils/aspectRatios';
+import { PixelFilters } from './MediaEditor/components/PixelFilters'; // Import PixelFilters
 
 const EPSILON = 0.01;
 
@@ -1200,7 +1201,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 isAnimated: isAnimated,
                 thumbnail: data.thumbnail,
                 transform: {
-                    x: 0, y: 0, scale: 100, rotation: 0
+                    x: 50, y: 50, scale: 100, rotation: 0
                 }
             };
 
@@ -1733,8 +1734,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
 
 
+
+
     return (
         <>
+            <PixelFilters />
             <EditorLayout
                 header={
                     <div className="flex items-center justify-between px-4 h-full">

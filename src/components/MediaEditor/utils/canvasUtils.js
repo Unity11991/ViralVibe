@@ -177,7 +177,14 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     // HD VIDEO OPTIMIZATION: Skip heavy filters during playback for performance
     // Only apply full filters when paused or during export
     if (options.applyFiltersToContext !== false && !isPlaying) {
-        ctx.filter = buildFilterString(filters);
+        let filterString = buildFilterString(filters);
+
+        // DEEP PIXEL ENGINE: Append SVG Filter reference
+        if (filters.pixelMode && filters.pixelMode !== 'none') {
+            filterString = `${filterString} url(#${filters.pixelMode})`.trim();
+        }
+
+        ctx.filter = filterString;
     } else if (isPlaying) {
         // Apply only basic adjustments during playback (faster)
         const brightness = filters.brightness || 0;
@@ -188,6 +195,9 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         if (brightness !== 0) quickFilters.push(`brightness(${100 + brightness}%)`);
         if (contrast !== 0) quickFilters.push(`contrast(${100 + contrast}%)`);
         if (saturation !== 0) quickFilters.push(`saturate(${100 + saturation}%)`);
+
+        // Enable lighter SVG filters during playback if needed, or skip for performance
+        // For now, let's skip deep pixel filters during playback to ensure 60fps
 
         ctx.filter = quickFilters.length > 0 ? quickFilters.join(' ') : 'none';
     } else {
@@ -303,7 +313,73 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             drawMask(ctx, mask, drawWidth, drawHeight, true);
         }
 
-        drawIt(ctx);
+        // NEURAL ENHANCE ALGORITHM: Multi-pass compositing
+        // Check if we need advanced processing
+        const hasEnhance = filters.sharpen > 0 || filters.clarity > 0 || filters.superRes || (faceRetouch && faceRetouch.smoothSkin > 0);
+
+        if (hasEnhance && !isPlaying) { // Only run full algorithm when paused/exporting for performance
+            // 1. Draw Base Layer
+            drawIt(ctx);
+
+            // SUPER RESOLUTION (AI Upscaling Simulation)
+            if (filters.superRes) {
+                // Creates a "fake" high-res look by aggressively enhancing micro-contrast
+                // This simulates the "hallucinated" details of GAN upscalers
+                ctx.save();
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.globalAlpha = 0.6; // Strong effect
+
+                // Frequency Separation Trick:
+                // High contrast + Grayscale + Slight Blur = Extracts structural edges
+                ctx.filter = `contrast(200%) grayscale(100%) brightness(120%) drop-shadow(0 0 1px rgba(255,255,255,0.5))`;
+                drawIt(ctx);
+
+                // Second pass to fill in the "texture"
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.globalAlpha = 0.4;
+                ctx.filter = `contrast(150%) sepia(10%)`; // Slight warmth adds "richness"
+                drawIt(ctx);
+
+                ctx.restore();
+            }
+
+            // 2. "Clarity/Structure" Pass (Overlay High-Pass Sim)
+            if (filters.clarity > 0 || filters.sharpen > 0) {
+                // ... (Existing logic) ...
+                ctx.save();
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.globalAlpha = (filters.clarity / 200) + (filters.sharpen / 400);
+                ctx.filter = `contrast(150%) grayscale(100%)`;
+                drawIt(ctx);
+                ctx.restore();
+            }
+
+            // 3. "Edge Sharpen" Pass 
+            if (filters.sharpen > 50) {
+                // ... (Existing logic) ...
+                ctx.save();
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.globalAlpha = (filters.sharpen - 50) / 200;
+                ctx.filter = `contrast(200%) brightness(110%) grayscale(100%)`;
+                drawIt(ctx);
+                ctx.restore();
+            }
+
+            // 4. "Soft Skin / Beauty" Pass 
+            if (faceRetouch && faceRetouch.smoothSkin > 0) {
+                // ... (Existing logic) ...
+                ctx.save();
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.globalAlpha = faceRetouch.smoothSkin / 200;
+                ctx.filter = `blur(${Math.max(2, faceRetouch.smoothSkin / 10)}px) brightness(110%)`;
+                drawIt(ctx);
+                ctx.restore();
+            }
+
+        } else {
+            // Standard Render (Fast)
+            drawIt(ctx);
+        }
 
         ctx.restore();
     }
@@ -590,17 +666,27 @@ export const drawTextOverlay = (ctx, textOverlay, canvasWidth, canvasHeight) => 
  * @param {number} canvasHeight - Canvas height for scaling
  */
 export const drawStickerOverlay = (ctx, sticker, stickerImage, canvasWidth, canvasHeight) => {
+    const mediaW = stickerImage instanceof HTMLVideoElement ? stickerImage.videoWidth : stickerImage.width;
+    const mediaH = stickerImage instanceof HTMLVideoElement ? stickerImage.videoHeight : stickerImage.height;
+
+    if (!stickerImage || !mediaW || !mediaH) return;
+
     const {
         x, y,
-        scale = 1,
+        scale = 100,
         rotation = 0
     } = sticker;
+
+    // Normalizing scale (from percentage to factor)
+    const normScale = scale / 100;
 
     const posX = (x / 100) * canvasWidth;
     const posY = (y / 100) * canvasHeight;
     const scaleFactor = canvasHeight / 600;
-    const stickerWidth = 150 * scale * scaleFactor;
-    const stickerHeight = (150 * (stickerImage.height / stickerImage.width)) * scale * scaleFactor;
+
+    // Base size 150px at 600p height
+    const stickerWidth = 150 * normScale * scaleFactor;
+    const stickerHeight = (150 * (mediaH / mediaW)) * normScale * scaleFactor;
 
     ctx.save();
     ctx.translate(posX, posY);
@@ -822,7 +908,7 @@ const renderLayer = (ctx, layer, globalState) => {
     } else if (type === 'text') {
         drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
     } else if (type === 'sticker') {
-        drawStickerOverlay(ctx, layer, image, canvasDimensions.width, canvasDimensions.height);
+        drawStickerOverlay(ctx, layer, layer.media, canvasDimensions.width, canvasDimensions.height);
     }
 
     else if (type === 'adjustment') {
