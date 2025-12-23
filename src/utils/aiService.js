@@ -850,3 +850,37 @@ export const restoreImageAI = async (imageFile, hfToken) => {
         throw error;
     }
 };
+
+import { removeBackground } from "@imgly/background-removal";
+
+/**
+ * AI Background Removal
+ * Uses @imgly/background-removal (WASM) running locally in the browser.
+ * @param {File|string} imageFileOrBase64 - The image file or base64 data to remove background from
+ * @returns {Promise<string>} Base64 data URL of the image with background removed
+ */
+export const removeBackgroundAI = async (imageFileOrBase64) => {
+    try {
+        let imageSource;
+
+        // Convert Base64 to Blob if needed, as imgly prefers Blob/File/URL
+        if (typeof imageFileOrBase64 === 'string' && imageFileOrBase64.startsWith('data:')) {
+            const res = await fetch(imageFileOrBase64);
+            imageSource = await res.blob();
+        } else {
+            imageSource = imageFileOrBase64;
+        }
+
+        // Run background removal
+        // Note: The first run might take a moment to download the WASM models (~40MB)
+        const blob = await removeBackground(imageSource);
+
+        // Convert result Blob back to Base64 for the editor
+        const base64DataUrl = await fileToBase64(blob);
+        return base64DataUrl;
+
+    } catch (error) {
+        console.error("Background Removal Error:", error);
+        throw new Error("Failed to remove background. Please try again.");
+    }
+};

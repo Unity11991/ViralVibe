@@ -51,6 +51,13 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             media = mediaSourceManager.getMedia(clip.source, clip.type || trackType);
         }
 
+        // Resolve Mask Source (for Video Background Removal)
+        let maskMedia = null;
+        if (clip.maskSource) {
+            // Mask is always treated as video/image
+            maskMedia = mediaSourceManager.getMedia(clip.maskSource, 'video');
+        }
+
         // Common Layer Properties
         const baseLayer = {
             id: clip.id,
@@ -132,7 +139,7 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             adjustments: clip.adjustments || getInitialAdjustments(),
             filter: clip.filter || 'normal',
             effect: clip.effect || null,
-            mask: clip.mask || null,
+            mask: clip.mask ? { ...clip.mask, media: maskMedia, source: clip.maskSource } : null,
             text: clip.text,
             style: clip.style,
             faceRetouch: clip.faceRetouch,

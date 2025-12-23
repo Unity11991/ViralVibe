@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download, RotateCcw, Video, Upload, Wand2 } from 'lucide-react';
 import { useMediaProcessor } from './MediaEditor/hooks/useMediaProcessor';
 import { useCanvasRenderer } from './MediaEditor/hooks/useCanvasRenderer';
@@ -19,6 +19,8 @@ import { detectBeats } from './MediaEditor/utils/waveformUtils';
 import { Button } from './MediaEditor/components/UI';
 import { getFrameState } from './MediaEditor/utils/renderLogic';
 import mediaSourceManager from './MediaEditor/utils/MediaSourceManager';
+import { removeBackgroundAI } from '../utils/aiService';
+import { processVideoBackgroundRemoval } from '../utils/videoProcessor';
 
 // New Layout Components
 import { EditorLayout } from './MediaEditor/components/layout/EditorLayout';
@@ -276,6 +278,22 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 if (!muted) {
                     entry.muted = false;
                     entry.volume = Math.max(entry.volume, vol);
+                }
+            }
+
+            // Sync Mask Video if present
+            if (layer.mask && layer.mask.source && layer.mask.media && layer.mask.media instanceof HTMLVideoElement) {
+                const maskKey = `${layer.mask.source}::main`;
+                if (!sourceMap.has(maskKey)) {
+                    sourceMap.set(maskKey, {
+                        source: layer.mask.source,
+                        variant: 'main',
+                        time: layer.sourceTime, // Sync to same time as layer
+                        volume: 0,
+                        muted: true,
+                        speed: layer.speed || 1,
+                        media: layer.mask.media
+                    });
                 }
             }
         });
@@ -737,7 +755,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             currentTime >= c.startTime - EPSILON &&
             currentTime < c.startTime + c.duration - EPSILON
         );
-
+    
         if (clip && mediaElementRef.current) {
             const expectedTime = clip.startOffset + (currentTime - clip.startTime);
             const drift = Math.abs(mediaElementRef.current.currentTime - expectedTime);
@@ -1434,7 +1452,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const track = tracks.find(t => t.clips.some(c => c.id === selectedClipId));
         if (!track) return null;
         const clip = track.clips.find(c => c.id === selectedClipId);
-        return { ...clip, type: track.type };
+        // Prioritize clip type if available (e.g. image on video track), fallback to track type
+        return { type: track.type, ...clip };
     };
 
     const handleUpdateActiveItem = (updates) => {
@@ -1484,6 +1503,17 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         updateClip(selectedClipId, finalUpdates);
     };
 
+    const getVideoElement = useCallback((clipId) => {
+        const track = tracks.find(t => t.clips.some(c => c.id === clipId));
+        if (track) {
+            const clip = track.clips.find(c => c.id === clipId);
+            if (clip && clip.source) {
+                return mediaSourceManager.getMedia(clip.source, track.type === 'image' ? 'image' : 'video');
+            }
+        }
+        return null;
+    }, [tracks]);
+
     /**
      * Handle Crop Data Changes
      */
@@ -1498,6 +1528,68 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             updateClip(selectedClipId, { crop: cropData });
         }
     }, [selectedClipId, cropData, updateClip]);
+
+    const handleRemoveBackground = useCallback(async (clipId) => {
+        const item = getActiveItem();
+
+        if (!item || item.id !== clipId) {
+            console.error("Invalid item for background removal");
+            return;
+        }
+
+        // Check if item is image or video
+        const isVideo = item.type === 'video';
+
+        try {
+            // Get the actual media element
+            const mediaElement = getVideoElement(clipId);
+            if (!mediaElement) throw new Error("Media element not found");
+
+            if (isVideo) {
+                // Video Background Removal Logic
+                console.log("Starting Video Background Removal (Baked Alpha)...");
+
+                // Process Video
+                const processedVideoUrl = await processVideoBackgroundRemoval(item.source, (progress) => {
+                    console.log(`Processing: ${progress}%`);
+                });
+
+                // Update Clip with new transparent video
+                updateClip(clipId, {
+                    source: processedVideoUrl,
+                    maskSource: null,
+                    mask: null // Clear any existing mask
+                });
+
+                // Register new source
+                mediaSourceManager.getMedia(processedVideoUrl, 'video');
+
+                console.log("Video Background Removal Complete!");
+
+
+            } else {
+                // Image Background Removal (Existing Logic)
+                const canvas = document.createElement('canvas');
+                canvas.width = mediaElement.naturalWidth || mediaElement.width;
+                canvas.height = mediaElement.naturalHeight || mediaElement.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(mediaElement, 0, 0);
+                const base64 = canvas.toDataURL('image/png');
+
+                // No token needed for client-side removal
+                const resultBase64 = await removeBackgroundAI(base64);
+
+                if (resultBase64) {
+                    updateClip(clipId, { source: resultBase64 });
+                    // Also update the media source manager so it doesn't use the old cached version
+                    mediaSourceManager.getMedia(resultBase64, 'image');
+                }
+            }
+        } catch (error) {
+            console.error("Failed to remove background:", error);
+            alert("Failed to remove background: " + error.message);
+        }
+    }, [selectedClipId, tracks, updateClip, getVideoElement]);
 
     const handleCropPresetChange = useCallback((preset) => {
         setCropPreset(preset);
@@ -1616,16 +1708,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedClipId, handleDelete, undo, redo, canUndo, canRedo]);
 
-    const getVideoElement = useCallback((clipId) => {
-        const track = tracks.find(t => t.clips.some(c => c.id === clipId));
-        if (track) {
-            const clip = track.clips.find(c => c.id === clipId);
-            if (clip && clip.source) {
-                return mediaSourceManager.getMedia(clip.source, track.type === 'image' ? 'image' : 'video');
-            }
-        }
-        return null;
-    }, [tracks]);
 
     const handleAddAdjustmentLayer = useCallback((targetClipId, adjustments) => {
         // Find target clip to get timing
@@ -1718,7 +1800,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">Media Editor</h2>
                     <p className="text-white/50 mb-4">Canvas: {projectAspectRatio.name} ({projectAspectRatio.ratio})</p>
-                    <p className="text-white/30 mb-8">{projectAspectRatio.dimensions.width}×{projectAspectRatio.dimensions.height}</p>
+                    <p className="text-white/30 mb-8">{projectAspectRatio.dimensions.width}Ã—{projectAspectRatio.dimensions.height}</p>
                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,video/*" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="primary" className="w-full" icon={Upload}>Import Media</Button>
                     <Button onClick={onClose} variant="ghost" className="w-full mt-4" icon={X}>Close</Button>
@@ -1827,6 +1909,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onToggleCropMode={setIsCropMode}
                         cropPreset={cropPreset}
                         onCropPresetChange={handleCropPresetChange}
+                        onRemoveBackground={handleRemoveBackground}
                     />
                 }
                 bottomPanel={
@@ -1878,24 +1961,26 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
 
 
             {/* Auto-Composite Panel Modal */}
-            {showAutoComposite && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-                    onClick={() => setShowAutoComposite(false)}
-                >
+            {
+                showAutoComposite && (
                     <div
-                        className="w-[800px] h-[700px] bg-[#1a1a1a] rounded-xl overflow-hidden shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                        onClick={() => setShowAutoComposite(false)}
                     >
-                        <AutoCompositePanel
-                            onApplyComposition={handleApplyComposition}
-                            mediaLibrary={mediaLibrary}
-                            apiKey={apiKey}
-                            onClose={() => setShowAutoComposite(false)}
-                        />
+                        <div
+                            className="w-[800px] h-[700px] bg-[#1a1a1a] rounded-xl overflow-hidden shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <AutoCompositePanel
+                                onApplyComposition={handleApplyComposition}
+                                mediaLibrary={mediaLibrary}
+                                apiKey={apiKey}
+                                onClose={() => setShowAutoComposite(false)}
+                            />
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Composition Loading Modal */}
             <CompositionLoadingModal
