@@ -5,6 +5,7 @@ import { FilterPanel } from '../FilterPanel';
 import { EffectsPanel } from '../EffectsPanel';
 import { MaskPanel } from '../MaskPanel';
 import { TransitionsPanel } from './TransitionsPanel';
+import { TemplatesPanel } from './TemplatesPanel';
 import { StickerPanel } from '../StickerPanel';
 
 const TABS = [
@@ -47,7 +48,8 @@ export const AssetsPanel = ({
     stickers = [],
     onUpdateSticker,
     onDeleteSticker,
-    activeOverlayId
+    activeOverlayId,
+    onApplyTemplate
 }) => {
     return (
         <div className="flex h-full">
@@ -327,9 +329,7 @@ export const AssetsPanel = ({
                     )}
 
                     {activeTab === 'templates' && (
-                        <div className="flex items-center justify-center h-40 text-white/30">
-                            Coming Soon
-                        </div>
+                        <TemplatesPanel onApplyTemplate={onApplyTemplate} />
                     )}
                 </div>
             </div>

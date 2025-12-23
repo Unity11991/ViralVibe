@@ -1344,7 +1344,7 @@ export const applyEffectToCanvas = (ctx, effectId, intensityValue, width, height
  * @param {boolean} clip - If true, applies clip(). If false, fills the shape.
  */
 export const drawMask = (ctx, mask, width, height, clip = true) => {
-    const { type, x = 0, y = 0, scale = 100, rotation = 0 } = mask;
+    const { type, x = 0, y = 0, scale = 100, scaleX, scaleY, rotation = 0 } = mask;
 
     // Mask is relative to the media size (width/height)
     const maskX = (x / 100) * width;
@@ -1364,7 +1364,15 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
     if (type === 'circle') {
         ctx.arc(0, 0, maskSize / 2, 0, Math.PI * 2);
     } else if (type === 'rectangle') {
-        ctx.rect(-maskSize / 2, -maskSize / 2, maskSize, maskSize);
+        // Support non-uniform scaling if provided
+        // Default to square based on min dimension if only scale is provided
+        let rectW = maskSize;
+        let rectH = maskSize;
+
+        if (scaleX !== undefined) rectW = width * (scaleX / 100);
+        if (scaleY !== undefined) rectH = height * (scaleY / 100);
+
+        ctx.rect(-rectW / 2, -rectH / 2, rectW, rectH);
     } else if (type === 'filmstrip') {
         // Filmstrip: Wide rectangle with aspect ratio ~2.35:1
         const stripWidth = width; // Full width
