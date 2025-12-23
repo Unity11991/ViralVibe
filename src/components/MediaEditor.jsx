@@ -1878,6 +1878,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onUpdateMask={handleSetMask}
                         activeClip={getActiveItem()}
                         onUpdateClip={handleUpdateActiveItem}
+                        onApplyTemplate={(newTracks) => {
+                            setTracks(newTracks);
+                            // Also update adjustments/filters if needed, or reset them
+                            setAdjustments(getInitialAdjustments());
+                            setActiveFilterId('normal');
+                            setSelectedClipId(null);
+                        }}
                     />
                 }
                 centerPanel={

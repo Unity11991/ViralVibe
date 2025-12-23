@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/selfie_segmentation": "^0.1.1675465747",
     "@supabase/supabase-js": "^2.86.0",
     "cropperjs": "^1.6.2",
