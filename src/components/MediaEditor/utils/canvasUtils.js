@@ -273,7 +273,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     };
 
     // Soft Masking (Composite)
-    if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text')) {
+    if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text' || mask.type === 'image')) {
         const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
@@ -287,13 +287,54 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
 
         // Composite Mask
         tempCtx.globalCompositeOperation = 'destination-in';
-        tempCtx.filter = `blur(${mask.blur}px)`;
+        const blurAmount = mask.blur || 0;
+        tempCtx.filter = `blur(${blurAmount}px)`;
 
-        tempCtx.save();
-        tempCtx.translate(centerX, centerY);
-        tempCtx.rotate((rotation * Math.PI) / 180);
-        drawMask(tempCtx, mask, drawWidth, drawHeight, false);
-        tempCtx.restore();
+        if (mask.type === 'image' && mask.media) {
+            const maskCanvas = getCachedCanvas(logicalWidth, logicalHeight);
+            const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+            maskCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+            // Check readiness
+            const isReady = mask.media instanceof HTMLVideoElement
+                ? mask.media.readyState >= 1
+                : (mask.media instanceof HTMLImageElement ? mask.media.complete : true);
+
+            if (isReady) {
+                maskCtx.save();
+                maskCtx.translate(centerX, centerY);
+                maskCtx.rotate((rotation * Math.PI) / 180);
+                drawMask(maskCtx, mask, drawWidth, drawHeight, false);
+                maskCtx.restore();
+
+                // Convert Luma to Alpha
+                const imgData = maskCtx.getImageData(0, 0, logicalWidth, logicalHeight);
+                const data = imgData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i + 3] = data[i]; // Red -> Alpha
+                }
+                maskCtx.putImageData(imgData, 0, 0);
+            } else {
+                // Not ready: Draw White (Keep everything)
+                maskCtx.fillStyle = '#FFFFFF';
+                maskCtx.fillRect(0, 0, logicalWidth, logicalHeight);
+            }
+
+            // Apply Alpha Mask
+            tempCtx.save();
+            tempCtx.setTransform(1, 0, 0, 1, 0, 0);
+            tempCtx.drawImage(maskCanvas, 0, 0);
+            tempCtx.restore();
+
+            releaseCanvas(maskCanvas);
+        } else {
+            // Standard Shape/Text Mask
+            tempCtx.save();
+            tempCtx.translate(centerX, centerY);
+            tempCtx.rotate((rotation * Math.PI) / 180);
+            drawMask(tempCtx, mask, drawWidth, drawHeight, false);
+            tempCtx.restore();
+        }
 
         // Reset
         tempCtx.globalCompositeOperation = 'source-over';
@@ -1388,6 +1429,50 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
                 -Math.sin((54 + i * 72) * Math.PI / 180) * inner);
         }
         ctx.closePath();
+    } else if (type === 'image' && mask.media) {
+        // Image/Video Mask
+        // Draw the mask media to fill the mask area
+        // We assume the mask media is black/white or alpha
+        // If it's a video mask, it should be playing in sync (handled by renderLogic passing the right element)
+
+        // Ensure media is ready
+        const isReady = mask.media instanceof HTMLVideoElement
+            ? mask.media.readyState >= 1
+            : (mask.media instanceof HTMLImageElement ? mask.media.complete : true);
+
+        // console.log('Drawing Mask:', { isReady, media: mask.media, width, height });
+
+        if (isReady) {
+            // Draw mask media covering the area
+            // We use the same dimensions as the main media (width/height)
+            // But we are translated to maskX, maskY (relative to center?)
+            // Wait, drawMask logic:
+            // ctx.translate(maskX, maskY); where maskX/Y are offsets from 0,0 (top-left of media?)
+            // drawMediaToCanvas translates to center of canvas, then rotates.
+            // Then it calls drawMask.
+            // If mask.x/y are 0 (default), we are at the center of the media.
+            // We want to draw the mask matching the media exactly.
+
+            // If mask is generated from the video, it should match 1:1.
+            // So we draw it centered at 0,0 with width/height.
+
+            // However, drawMask context is already translated/rotated to match the media.
+            // So drawing at -width/2, -height/2 should align it perfectly.
+
+            // Note: maskX/Y allow offsetting the mask.
+            // If mask is "attached" to video, x/y should be 0.
+
+            // Also, we need to handle aspect ratio if mask differs?
+            // For generated masks, they match source.
+
+            ctx.drawImage(mask.media, -width / 2, -height / 2, width, height);
+
+            // If this is a hard clip (clip=true), we need a path.
+            // Image cannot be a path.
+            // So for image masks, we MUST use soft masking (composite operations).
+            // If clip is true, we can't do anything here.
+            // We need to ensure drawMediaToCanvas uses soft masking for 'image' type.
+        }
     }
 
     ctx.restore();

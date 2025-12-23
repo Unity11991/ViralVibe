@@ -56,7 +56,8 @@ const VideoPropertiesPanel = ({
     isCropMode,
     onToggleCropMode,
     cropPreset,
-    onCropPresetChange
+    onCropPresetChange,
+    onRemoveBackground
 }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
@@ -397,7 +398,66 @@ const VideoPropertiesPanel = ({
                             />
                         )}
 
-                        {videoSubTab !== 'basic' && videoSubTab !== 'retouch' && videoSubTab !== 'crop' && (
+                        {videoSubTab === 'remove-bg' && (
+                            <div className="space-y-6">
+                                <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border border-white/10 rounded-xl p-4">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg shadow-lg shadow-blue-500/20">
+                                            <Layers size={16} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-white">AI Background Remover</h4>
+                                            <p className="text-[10px] text-white/50">Remove background from images & videos</p>
+                                        </div>
+                                    </div>
+
+                                    {!['image', 'video'].includes(activeItem.type) ? (
+                                        <div className="text-center py-4 px-2 bg-black/20 rounded-lg border border-white/5">
+                                            <p className="text-[10px] text-white/40 italic">Background removal is currently only supported for images and videos.</p>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={async () => {
+                                                if (onRemoveBackground) {
+                                                    setIsProcessing(true);
+                                                    setProcessingStatus('Removing background...');
+                                                    try {
+                                                        await onRemoveBackground(activeItem.id);
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                    } finally {
+                                                        setIsProcessing(false);
+                                                        setProcessingStatus('');
+                                                    }
+                                                }
+                                            }}
+                                            disabled={isProcessing}
+                                            className={`w-full py-2.5 bg-white text-black font-bold text-xs rounded-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/5 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        >
+                                            {isProcessing ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    Processing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Zap size={14} className="text-yellow-600" fill="currentColor" />
+                                                    Remove Background
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                                    <p className="text-[10px] text-white/50 leading-relaxed">
+                                        <span className="text-blue-400 font-bold">Pro Tip:</span> For best results, use images with a clear subject and good contrast between the foreground and background.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {videoSubTab === 'mask' && (
                             <div className="flex flex-col items-center justify-center py-12 text-white/30 space-y-2">
                                 <Wand2 size={24} />
                                 <span className="text-xs">Coming Soon</span>
@@ -507,7 +567,8 @@ export const PropertiesPanel = ({
     isCropMode,
     onToggleCropMode,
     cropPreset,
-    onCropPresetChange
+    onCropPresetChange,
+    onRemoveBackground
 }) => {
     const [activeTab, setActiveTab] = useState('style'); // style, animation
 
@@ -542,6 +603,7 @@ export const PropertiesPanel = ({
                 onToggleCropMode={onToggleCropMode}
                 cropPreset={cropPreset}
                 onCropPresetChange={onCropPresetChange}
+                onRemoveBackground={onRemoveBackground}
             />
         );
     }
