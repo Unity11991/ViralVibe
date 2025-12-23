@@ -11,31 +11,44 @@ export const useTimelineState = () => {
     const [selectedClipIds, setSelectedClipIds] = useState(new Set()); // Multi-select
     const [magneticMode, setMagneticMode] = useState(false);
 
-    // History Management
-    const [history, setHistory] = useState([]);
-    const [historyIndex, setHistoryIndex] = useState(-1);
+    // Consolidated History State to prevent race conditions
+    const [historyState, setHistoryState] = useState({
+        past: [],
+        present: null,
+        future: []
+    });
+
+    // We keep track of "isUndoing" to prevent circular updates if needed, 
+    // although with this pattern it's less critical if we manage updates carefully.
     const isUndoing = useRef(false);
 
-    // Helper to add state to history
+    // Initialization Helper
+    const _initHistory = (initialTracks) => {
+        setHistoryState({
+            past: [],
+            present: initialTracks,
+            future: []
+        });
+    };
+
+    // Add to History
     const addToHistory = useCallback((newTracks) => {
         if (isUndoing.current) return;
 
-        setHistory(prev => {
-            const currentHistory = prev.slice(0, historyIndex + 1);
+        setHistoryState(prev => {
+            // If we have a present state, push it to past
+            const newPast = prev.present ? [...prev.past, prev.present] : [...prev.past];
 
-            // Self-healing: If history is empty (e.g. skipped init), seed it with current state
-            if (currentHistory.length === 0) {
-                // We need to set index to 1 (0: old, 1: new)
-                // Since we can't update state index inside here easily without side effects,
-                // we'll handle this case carefully.
-                setHistoryIndex(1);
-                return [tracks, newTracks];
-            }
+            // Limit history size if needed (e.g. 50 steps)
+            if (newPast.length > 50) newPast.shift();
 
-            setHistoryIndex(prevIndex => prevIndex + 1);
-            return [...currentHistory, newTracks];
+            return {
+                past: newPast,
+                present: newTracks,
+                future: [] // Clear future on new action
+            };
         });
-    }, [historyIndex, tracks]);
+    }, []);
 
     // Selection Logic
     const selectClip = useCallback((clipId, isMulti = false) => {
@@ -45,18 +58,14 @@ export const useTimelineState = () => {
                 if (isMulti) newSet.delete(clipId);
             } else {
                 newSet.add(clipId);
-
-                // If this clip is part of a group, select all group members
-                // We need access to tracks here. 
-                // Since setState updater doesn't give us tracks, we rely on the `tracks` closure variable.
-                // Assuming `tracks` is fresh enough or included in dependency? 
-                // Ideally we should pass tracks to this function or use a ref for tracks if needed inside setState?
-                // But `useCallback` has `[tracks]` dependency, so it's fine.
+                // Group logic requires current tracks reference or lookahead.
+                // Since we need tracks to find groups, and tracks is a dependency
+                // this is acceptable, but be aware of stale closures if selectClip is called async.
+                // For direct interactions it's fine.
                 const groupMembers = [];
                 tracks.forEach(track => {
                     track.clips.forEach(c => {
                         if (c.id === clipId && c.groupId) {
-                            // Found the clip, now find others with same groupId
                             tracks.forEach(t2 => {
                                 t2.clips.forEach(c2 => {
                                     if (c2.groupId === c.groupId) groupMembers.push(c2.id);
@@ -68,10 +77,8 @@ export const useTimelineState = () => {
                 groupMembers.forEach(id => newSet.add(id));
             }
 
-            // Sync legacy state (first item or null)
             const firstId = newSet.size > 0 ? Array.from(newSet)[0] : null;
             setSelectedClipId(firstId);
-
             return newSet;
         });
     }, [tracks]);
@@ -88,15 +95,12 @@ export const useTimelineState = () => {
         setSelectedClipId(null);
     }, []);
 
-    // Toggle Magnetic Mode
     const toggleMagneticMode = useCallback(() => {
         setMagneticMode(prev => !prev);
     }, []);
 
-    // Grouping
     const groupSelectedClips = useCallback(() => {
-        if (selectedClipIds.size < 2) return; // Need 2+ to group
-
+        if (selectedClipIds.size < 2) return;
         const groupId = `group-${Date.now()}`;
         const newTracks = tracks.map(track => ({
             ...track,
@@ -119,77 +123,74 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, selectedClipIds, addToHistory]);
 
-    // Initialize timeline with a main media file OR empty for blank canvas
     const initializeTimeline = useCallback((mediaFile, mediaType, duration) => {
-        // If no media file, initialize with empty timeline
+        let newTracks;
         if (!mediaFile) {
-            // Initialize with default empty tracks (1 Video, 1 Audio)
-            const newTracks = [
-                {
-                    id: 'track-video-main',
-                    type: 'video',
-                    height: 80,
-                    clips: []
-                },
-                {
-                    id: 'track-audio-main',
-                    type: 'audio',
-                    height: 48,
-                    clips: []
-                }
+            newTracks = [
+                { id: 'track-video-main', type: 'video', height: 80, clips: [] },
+                { id: 'track-audio-main', type: 'audio', height: 48, clips: [] }
             ];
-            setTracks(newTracks);
-            setHistory([newTracks]);
-            setHistoryIndex(0);
-            return;
-        }
-
-        // Otherwise create initial track with main media
-        const initialTrack = {
-            id: 'track-main',
-            type: mediaType === 'video' ? 'video' : 'image',
-            height: 80,
-            clips: [{
-                id: `clip-${Date.now()}`,
+        } else {
+            newTracks = [{
+                id: 'track-main',
                 type: mediaType === 'video' ? 'video' : 'image',
-                name: 'Main Media',
-                startTime: 0,
-                duration: duration || 10,
-                startOffset: 0,
-                source: mediaFile,
-                sourceDuration: duration || 10
-            }]
-        };
-
-        const newTracks = [initialTrack];
+                height: 80,
+                clips: [{
+                    id: `clip-${Date.now()}`,
+                    type: mediaType === 'video' ? 'video' : 'image',
+                    name: 'Main Media',
+                    startTime: 0,
+                    duration: duration || 10,
+                    startOffset: 0,
+                    source: mediaFile,
+                    sourceDuration: duration || 10
+                }]
+            }];
+        }
         setTracks(newTracks);
-        setHistory([newTracks]);
-        setHistoryIndex(0);
+        _initHistory(newTracks);
     }, []);
 
     // Undo
     const undo = useCallback(() => {
-        if (historyIndex > 0) {
+        setHistoryState(prev => {
+            if (prev.past.length === 0) return prev; // Cannot undo
+
+            const previous = prev.past[prev.past.length - 1];
+            const newPast = prev.past.slice(0, prev.past.length - 1);
+
             isUndoing.current = true;
-            const newIndex = historyIndex - 1;
-            setTracks(history[newIndex]);
-            setHistoryIndex(newIndex);
+            setTracks(previous);
             setTimeout(() => { isUndoing.current = false; }, 0);
-        }
-    }, [history, historyIndex]);
+
+            return {
+                past: newPast,
+                present: previous,
+                future: [prev.present, ...prev.future]
+            };
+        });
+    }, []);
 
     // Redo
     const redo = useCallback(() => {
-        if (historyIndex < history.length - 1) {
-            isUndoing.current = true;
-            const newIndex = historyIndex + 1;
-            setTracks(history[newIndex]);
-            setHistoryIndex(newIndex);
-            setTimeout(() => { isUndoing.current = false; }, 0);
-        }
-    }, [history, historyIndex]);
+        setHistoryState(prev => {
+            if (prev.future.length === 0) return prev; // Cannot redo
 
-    // Add a new track
+            const next = prev.future[0];
+            const newFuture = prev.future.slice(1);
+
+            isUndoing.current = true;
+            setTracks(next);
+            setTimeout(() => { isUndoing.current = false; }, 0);
+
+            return {
+                past: [...prev.past, prev.present],
+                present: next,
+                future: newFuture
+            };
+        });
+    }, []);
+
     const addTrack = useCallback((type) => {
         const count = tracks.filter(t => t.type === type).length;
         const newTrack = {
@@ -203,7 +204,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Reorder tracks
     const reorderTracks = useCallback((fromIndex, toIndex) => {
         const newTracks = [...tracks];
         const [movedTrack] = newTracks.splice(fromIndex, 1);
@@ -212,7 +212,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Update track height
     const updateTrackHeight = useCallback((trackId, newHeight) => {
         setTracks(prev => {
             const newTracks = prev.map(track =>
@@ -222,7 +221,6 @@ export const useTimelineState = () => {
         });
     }, []);
 
-    // Add a clip to a track
     const addClip = useCallback((trackId, clipData) => {
         const newTracks = (tracks || []).map(track => {
             if (track.id === trackId) {
@@ -240,7 +238,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Add a clip to a new track
     const addClipToNewTrack = useCallback((type, clipData) => {
         const currentTracks = tracks || [];
         const count = currentTracks.filter(t => t.type === type).length;
@@ -259,7 +256,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Update a clip's properties
     const updateClip = useCallback((clipId, updates) => {
         const newTracks = tracks.map(track => ({
             ...track,
@@ -271,7 +267,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Add a transition
     const addTransition = useCallback((clipId, transitionType, duration = 1.0) => {
         const newTracks = tracks.map(track => ({
             ...track,
@@ -286,7 +281,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Split a clip
     const splitClip = useCallback((clipId, splitTime) => {
         let tracksChanged = false;
         const newTracks = tracks.map(track => {
@@ -328,8 +322,8 @@ export const useTimelineState = () => {
         }
     }, [tracks, addToHistory]);
 
-    // Trim a clip
     const trimClip = useCallback((clipId, newStartTime, newDuration, newStartOffset) => {
+        // Optimistic update for UI performance (drag)
         setTracks(prev => {
             const newTracks = prev.map(track => {
                 const clipIndex = track.clips.findIndex(c => c.id === clipId);
@@ -384,10 +378,8 @@ export const useTimelineState = () => {
         });
     }, []);
 
-    // Move a clip (supports cross-track)
     const moveClip = useCallback((clipId, newStartTime, newTrackId) => {
         setTracks(prev => {
-            // 1. Find the clip and its current track
             let sourceTrackIndex = -1;
             let sourceClipIndex = -1;
             let clip = null;
@@ -401,49 +393,33 @@ export const useTimelineState = () => {
                 }
             });
 
-            if (!clip) return prev; // Clip not found
+            if (!clip) return prev;
 
             const sourceTrack = prev[sourceTrackIndex];
             const targetTrackId = newTrackId || sourceTrack.id;
             const targetTrackIndex = prev.findIndex(t => t.id === targetTrackId);
 
-            if (targetTrackIndex === -1) return prev; // Target track not found
+            if (targetTrackIndex === -1) return prev;
 
-            // 2. Check compatibility (if changing tracks)
             const targetTrack = prev[targetTrackIndex];
             if (sourceTrack.id !== targetTrack.id) {
-                // Allow video->video, audio->audio, text->text, etc.
-                // Also allow video->image (if we treat them as visual)
-                // For now, strict type check or specific allowances
                 const isCompatible =
                     (sourceTrack.type === targetTrack.type) ||
-                    (sourceTrack.type === 'video' && targetTrack.type === 'video') || // both video
-                    (sourceTrack.type === 'video' && clip.type === 'image' && targetTrack.type === 'video'); // image on video track
+                    (sourceTrack.type === 'video' && targetTrack.type === 'video') ||
+                    (sourceTrack.type === 'video' && clip.type === 'image' && targetTrack.type === 'video');
 
-                if (!isCompatible) {
-                    // console.warn("Incompatible track type");
-                    return prev;
-                }
+                if (!isCompatible) return prev;
             }
 
-            // 3. Remove from source track
             const newSourceClips = [...sourceTrack.clips];
             newSourceClips.splice(sourceClipIndex, 1);
 
-            // 4. Prepare clip for target
             const updatedClip = { ...clip, startTime: Math.max(0, newStartTime) };
 
-            // 5. Add to target track (and handle collisions/constraints)
             let newTargetClips = sourceTrack.id === targetTrack.id ? newSourceClips : [...targetTrack.clips];
-
-            // Simple insertion for now. 
-            // Ideally we should check for collisions and prevent move if it overlaps?
-            // Or just let it overlap? The user asked to "drag to other tracks".
-            // Let's just add it and sort by time.
             newTargetClips.push(updatedClip);
             newTargetClips.sort((a, b) => a.startTime - b.startTime);
 
-            // 6. Construct new tracks array
             const newTracks = [...prev];
             newTracks[sourceTrackIndex] = { ...sourceTrack, clips: newSourceClips };
             newTracks[targetTrackIndex] = { ...targetTrack, clips: newTargetClips };
@@ -456,7 +432,6 @@ export const useTimelineState = () => {
         addToHistory(tracks);
     }, [tracks, addToHistory]);
 
-    // Delete a clip (Ripple Aware)
     const deleteClip = useCallback((targetClipId) => {
         let idsToDelete = new Set();
         if (targetClipId && selectedClipIds.has(targetClipId)) {
@@ -474,7 +449,6 @@ export const useTimelineState = () => {
             return { ...track, clips: keptClips };
         });
 
-        // Post-process for Ripple if Magnetic is ON
         if (magneticMode) {
             newTracks.forEach(track => {
                 const deletedClips = tracks.find(t => t.id === track.id)?.clips.filter(c => idsToDelete.has(c.id)) || [];
@@ -499,7 +473,6 @@ export const useTimelineState = () => {
         setSelectedClipIds(new Set());
     }, [tracks, selectedClipIds, selectedClipId, addToHistory, magneticMode]);
 
-    // Detach audio
     const detachAudio = useCallback((clipId) => {
         let clipToDetach = null;
         let tracksChanged = false;
@@ -552,7 +525,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Add markers
     const addMarkersToClip = useCallback((clipId, markers) => {
         const newTracks = tracks.map(track => ({
             ...track,
@@ -564,7 +536,6 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
-    // Keyframe Management
     const addKeyframe = useCallback((clipId, property, time, value, easing = 'linear') => {
         const newTracks = tracks.map(track => ({
             ...track,
@@ -573,15 +544,11 @@ export const useTimelineState = () => {
 
                 const keyframes = { ...(clip.keyframes || {}) };
                 const propKeyframes = [...(keyframes[property] || [])];
-
-                // Check if keyframe exists at this time (allow small tolerance)
                 const existingIndex = propKeyframes.findIndex(k => Math.abs(k.time - time) < 0.01);
 
                 if (existingIndex !== -1) {
-                    // Update existing
                     propKeyframes[existingIndex] = { ...propKeyframes[existingIndex], value, easing };
                 } else {
-                    // Add new
                     propKeyframes.push({
                         id: `kf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         time,
@@ -590,9 +557,7 @@ export const useTimelineState = () => {
                     });
                 }
 
-                // Sort by time
                 propKeyframes.sort((a, b) => a.time - b.time);
-
                 keyframes[property] = propKeyframes;
                 return { ...clip, keyframes };
             })
@@ -656,7 +621,7 @@ export const useTimelineState = () => {
         removeKeyframe,
         undo,
         redo,
-        canUndo: historyIndex > 0,
-        canRedo: historyIndex < history.length - 1
+        canUndo: historyState.past.length > 0,
+        canRedo: historyState.future.length > 0
     };
 };
