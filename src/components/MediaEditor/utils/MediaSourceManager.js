@@ -54,7 +54,7 @@ class MediaSourceManager {
             element.src = url;
         } else if (resolvedType === 'audio') {
             element = new Audio();
-            element.crossOrigin = 'anonymous';
+            // element.crossOrigin = 'anonymous'; // Removed to allow opaque playback from external sources
             element.preload = 'auto';
             element.src = url;
             element.load();
