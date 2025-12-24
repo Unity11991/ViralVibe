@@ -7,6 +7,7 @@ import { MaskPanel } from '../MaskPanel';
 import { TransitionsPanel } from './TransitionsPanel';
 import { TemplatesPanel } from './TemplatesPanel';
 import { StickerPanel } from '../StickerPanel';
+import { MusicPanel } from './MusicPanel';
 
 const TABS = [
     { id: 'media', icon: ImageIcon, label: 'Media' },
@@ -140,63 +141,10 @@ export const AssetsPanel = ({
                     )}
 
                     {activeTab === 'audio' && (
-                        <div className="space-y-4">
-                            <div className="p-4 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-2 text-white/30 hover:border-blue-500/50 hover:bg-white/5 transition-all cursor-pointer relative">
-                                <input
-                                    type="file"
-                                    accept="audio/*"
-                                    multiple
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    onChange={(e) => {
-                                        if (e.target.files && e.target.files.length > 0) {
-                                            // Upload all selected files
-                                            Array.from(e.target.files).forEach(file => {
-                                                onAddToLibrary(file);
-                                            });
-                                        }
-                                    }}
-                                />
-                                <Music size={24} />
-                                <span className="text-sm">Upload Audio</span>
-                            </div>
-
-                            <div className="space-y-2">
-                                {mediaLibrary.filter(item => item.type === 'audio').map(item => (
-                                    <div
-                                        key={item.id}
-                                        className="p-3 bg-white/5 rounded-lg flex items-center gap-3 hover:bg-white/10 cursor-pointer group"
-                                        onClick={() => onAddAsset('audio', { file: item.file, url: item.url, duration: item.duration || 10 })}
-                                        draggable="true"
-                                        onDragStart={(e) => {
-                                            e.dataTransfer.setData('application/json', JSON.stringify({
-                                                type: 'audio',
-                                                url: item.url,
-                                                name: item.name,
-                                                duration: item.duration || 10
-                                            }));
-                                        }}
-                                    >
-                                        <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
-                                            <Music size={16} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium truncate text-white">{item.name}</div>
-                                            <div className="text-xs text-white/40">
-                                                {(() => {
-                                                    const d = item.duration || 0;
-                                                    const m = Math.floor(d / 60);
-                                                    const s = Math.floor(d % 60);
-                                                    return `${m}:${s.toString().padStart(2, '0')}`;
-                                                })()}
-                                            </div>
-                                        </div>
-                                        <button className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/10 rounded text-white transition-opacity">
-                                            <span className="text-xs font-bold">+ Add</span>
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                        <MusicPanel
+                            onAddAsset={onAddAsset}
+                            onUpload={(file) => onAddToLibrary(file)}
+                        />
                     )}
 
                     {activeTab === 'text' && (

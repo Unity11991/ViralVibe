@@ -209,7 +209,37 @@ export const useExport = (timelineState, canvasRef) => {
                     await Promise.all(seekPromises);
                 }
 
-                const frameState = getFrameState(time, timelineState.tracks, {
+                // SCALING FIX:
+                // Transform absolute pixel coordinates from editing canvas to export canvas
+                const editingDimensions = timelineState.canvasDimensions || { width: 800, height: 600 };
+                const scaleX = width / editingDimensions.width;
+                const scaleY = height / editingDimensions.height;
+
+                const scaledTracks = timelineState.tracks.map(track => ({
+                    ...track,
+                    clips: track.clips.map(clip => {
+                        // Only scale absolute transforms (media), not percentage based (text)
+                        if (['video', 'image', 'sticker'].includes(track.type) || ['video', 'image', 'sticker'].includes(clip.type)) {
+                            if (clip.transform) {
+                                return {
+                                    ...clip,
+                                    transform: {
+                                        ...clip.transform,
+                                        x: (clip.transform.x || 0) * scaleX,
+                                        y: (clip.transform.y || 0) * scaleY,
+                                        // Scale is percentage, so it remains same relative to base dimensions
+                                        // But wait, drawMediaToCanvas uses baseWidth * scaleFactor.
+                                        // baseWidth is calculated from canvas dimensions.
+                                        // So scale % should be fine.
+                                    }
+                                };
+                            }
+                        }
+                        return clip;
+                    })
+                }));
+
+                const frameState = getFrameState(time, scaledTracks, {
                     ...timelineState,
                     selectedClipId: null, // Force no selection during export
                     canvasDimensions: { width, height },
