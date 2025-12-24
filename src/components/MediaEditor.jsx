@@ -899,10 +899,15 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         tracks.forEach((track, index) => {
             track.clips.forEach(clip => {
                 if (currentTime >= clip.startTime && currentTime < (clip.startTime + clip.duration)) {
+                    // Skip invisible items
+                    if (clip.opacity === 0) return;
                     visibleItems.push({ ...clip, trackType: track.type, zIndex: index });
                 }
             });
         });
+
+        // Sort by Z-Index (Track Index) to ensure correct layering
+        visibleItems.sort((a, b) => a.zIndex - b.zIndex);
 
         // Iterate reverse (Top to Bottom)
         for (let i = visibleItems.length - 1; i >= 0; i--) {
@@ -944,10 +949,18 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     const type = item.trackType === 'image' ? 'image' : 'video';
                     const el = mediaSourceManager.getMedia(item.source, type);
                     if (el) {
-                        mediaDims = {
-                            width: el.videoWidth || el.width || 100,
-                            height: el.videoHeight || el.height || 100
-                        };
+                        const vW = el.videoWidth || el.width;
+                        const vH = el.videoHeight || el.height;
+                        if (vW && vH) {
+                            mediaDims = { width: vW, height: vH };
+                        } else {
+                            // Fallback to canvas dimensions if metadata not loaded
+                            // This ensures we have a large enough hit box
+                            mediaDims = { width: canvasDimensions.width, height: canvasDimensions.height };
+                        }
+                    } else {
+                        // Fallback if element not found
+                        mediaDims = { width: canvasDimensions.width, height: canvasDimensions.height };
                     }
                 }
 
