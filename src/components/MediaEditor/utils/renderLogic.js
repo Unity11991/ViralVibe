@@ -112,16 +112,11 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
                             type: incomingPreClip.transition.type,
                             progress: progress
                         };
-                        // Optional: Force role to 'outgoing' if needed for logic, but 'primary' is fine as long as transition is set?
-                        // Actually, render logic uses `isOutgoing` for `sourceTime` calculation (extension).
-                        // If it is 'primary', it uses standard time.
-                        // If we are in Pre-Roll, standard time is correct (we are before the cut).
-                        // So we don't need to change role to 'outgoing' for time calc.
-                        // But we DO need transition for Animation.
                     }
                 }
             }
         }
+
 
         // --- POST-ROLL TRANSITION LOGIC ---
         // If we are in the "Post-Roll" (currentTime >= startTime), the clip IS primaryClip.
@@ -175,7 +170,7 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
             const isPreRoll = role === 'incoming_preroll';
 
             // Resolve Adjustments & Overrides
-            let activeCrop = clip.crop;
+            let activeCrop = clip.crop || clip.transform?.crop;
             if (globalState.clipOverrides && globalState.clipOverrides[clip.id]) {
                 activeCrop = globalState.clipOverrides[clip.id].crop;
             }

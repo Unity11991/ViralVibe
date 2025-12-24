@@ -417,7 +417,13 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         return JSON.stringify(prev) !== JSON.stringify(newAdj) ? newAdj : prev;
                     });
                     setActiveFilterId(prev => clip.filter !== prev ? (clip.filter || 'normal') : prev);
+                    setActiveFilterId(prev => clip.filter !== prev ? (clip.filter || 'normal') : prev);
                     setActiveEffectId(prev => clip.effect !== prev ? (clip.effect || null) : prev);
+
+                    // Sync Crop State
+                    // This was missing! It caused timeline selection to not update crop state immediately.
+                    setCropData(clip.crop || clip.transform?.crop || { left: 0, top: 0, right: 0, bottom: 0 });
+                    setCropPreset(clip.cropPreset || 'free');
                 }
             }
         }
@@ -439,7 +445,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 setActiveEffectId(clip.effect || null);
 
                 // Sync Crop State
-                setCropData(clip.crop || { left: 0, top: 0, right: 0, bottom: 0 });
+                setCropData(clip.crop || clip.transform?.crop || { left: 0, top: 0, right: 0, bottom: 0 });
                 setCropPreset(clip.cropPreset || 'free');
                 // Note: effectIntensity might need to be stored on clip too if we want per-clip intensity
             }
@@ -728,7 +734,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             effectIntensity,
             activeEffectId,
             activeFilterId,
-            clipOverrides: selectedClipId ? { [selectedClipId]: { crop: cropData } } : null
+            clipOverrides: selectedClipId ? {
+                [selectedClipId]: {
+                    crop: isCropMode ? { left: 0, top: 0, right: 0, bottom: 0 } : cropData
+                }
+            } : null
         };
 
         const newState = getFrameState(currentTime, tracks, globalState);
@@ -738,7 +748,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         // Render immediately
         render(newState, { applyFiltersToContext: true });
 
-    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo, render, mediaUrl, cropData]);
+    }, [adjustments, tracks, rotation, zoom, canvasDimensions, selectedClipId, memeMode, activeEffectId, effectIntensity, activeFilterId, currentTime, isVideo, render, mediaUrl, cropData, isCropMode]);
 
     // Playback controls are now handled by usePlayback
     // We just need to sync secondary videos and audio manually in the render/tick loop if usePlayback doesn't handle them all.
@@ -1923,6 +1933,20 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             buildFilterString={buildFilterString}
                             onCanvasPointerDown={handleCanvasPointerDown}
                             onCanvasPointerMove={handleCanvasPointerMove}
+                            activeClip={{
+                                ...getActiveItem(),
+                                mediaDimensions: (() => {
+                                    const activeLayer = renderStateRef.current.visibleLayers?.find(l => l.id === selectedClipId);
+                                    if (activeLayer?.media) {
+                                        return {
+                                            width: activeLayer.media.videoWidth || activeLayer.media.naturalWidth || activeLayer.media.width,
+                                            height: activeLayer.media.videoHeight || activeLayer.media.naturalHeight || activeLayer.media.height
+                                        };
+                                    }
+                                    return null;
+                                })()
+                            }}
+                            canvasDimensions={canvasDimensions}
                             onCanvasPointerUp={handleCanvasPointerUp}
                         />
                     </div>
