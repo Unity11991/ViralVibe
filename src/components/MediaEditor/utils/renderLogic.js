@@ -83,7 +83,7 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
         };
 
         // CHECK FOR OVERRIDES (e.g. Live Cropping)
-        let activeCrop = clip.crop;
+        let activeCrop = clip.crop || clip.transform?.crop;
         if (globalState.clipOverrides && globalState.clipOverrides[clip.id]) {
             const override = globalState.clipOverrides[clip.id];
             if (override.crop) activeCrop = override.crop;

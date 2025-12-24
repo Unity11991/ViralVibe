@@ -25,6 +25,8 @@ export const PreviewPlayer = ({
     onCanvasPointerUp,
     isVideoLoading = false,
     isCropMode = false,
+    activeClip,
+    canvasDimensions,
     onCropEnd
 }) => {
     return (
@@ -61,6 +63,9 @@ export const PreviewPlayer = ({
                         onCropEnd={onCropEnd}
                         aspectRatio={cropPreset === 'free' ? null : cropPreset === '16:9' ? 16 / 9 : cropPreset === '9:16' ? 9 / 16 : cropPreset === '1:1' ? 1 : cropPreset === '4:5' ? 4 / 5 : null}
                         isActive={isCropMode}
+                        transform={activeClip?.transform}
+                        mediaDimensions={activeClip?.mediaDimensions}
+                        canvasDimensions={canvasDimensions}
                     />
 
                     {/* Loading Indicator */}

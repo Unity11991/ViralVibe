@@ -10,14 +10,42 @@ export const CropOverlay = ({
     onCropChange,
     onCropEnd,
     aspectRatio = null,
-    isActive = false
+    isActive = false,
+    transform = {},
+    mediaDimensions, // Optional, for aspect ratio if needed
+    canvasDimensions // Required for correct aspect ratio fitting
 }) => {
+    const { x: tx = 0, y: ty = 0, scale = 100, rotation = 0 } = transform || {};
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(null);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const overlayRef = useRef(null);
 
     const { left = 0, top = 0, right = 0, bottom = 0 } = cropData;
+
+    // Calculate Fitted Dimensions (Same logic as drawMediaToCanvas)
+    let fittedWidth = 0;
+    let fittedHeight = 0;
+
+    // Fallbacks if data missing (graceful degradation to canvas size)
+    const cw = canvasDimensions?.width || 800;
+    const ch = canvasDimensions?.height || 450;
+
+    if (mediaDimensions && canvasDimensions) {
+        const mediaAspect = mediaDimensions.width / mediaDimensions.height;
+        const canvasAspect = canvasDimensions.width / canvasDimensions.height;
+
+        if (mediaAspect > canvasAspect) {
+            fittedWidth = canvasDimensions.width;
+            fittedHeight = canvasDimensions.width / mediaAspect;
+        } else {
+            fittedHeight = canvasDimensions.height;
+            fittedWidth = canvasDimensions.height * mediaAspect;
+        }
+    } else {
+        fittedWidth = cw;
+        fittedHeight = ch;
+    }
 
     // Derived visual values
     const x = left;
@@ -31,8 +59,37 @@ export const CropOverlay = ({
 
             const canvas = canvasRef.current;
             const rect = canvas.getBoundingClientRect();
-            const pointerX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-            const pointerY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+
+            // 1. Normalize pointer to canvas space (0-width, 0-height)
+            const canvasX = e.clientX - rect.left;
+            const canvasY = e.clientY - rect.top;
+
+            // 2. Inverse Transform to get Media Local Coordinates
+            // Media Center (relative to canvas top-left)
+            const cx = rect.width / 2 + tx;
+            const cy = rect.height / 2 + ty;
+
+            // Translate to center
+            const dx = canvasX - cx;
+            const dy = canvasY - cy;
+
+            // Inverse Rotation
+            const rad = (-rotation * Math.PI) / 180;
+            const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+            const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+            // Inverse Scale
+            const finalX = rx / (scale / 100);
+            const finalY = ry / (scale / 100); // Corrected property access
+
+            // Convert to Percentage (Media Space)
+            // Use FITTED dimensions instead of Canvas "Rect" dimensions
+            // This ensures 0-100% maps to the EDGE of the media content, not the canvas
+            const localWidth = fittedWidth;
+            const localHeight = fittedHeight;
+
+            const pointerX = Math.max(0, Math.min(100, ((finalX + localWidth / 2) / localWidth) * 100));
+            const pointerY = Math.max(0, Math.min(100, ((finalY + localHeight / 2) / localHeight) * 100));
 
             if (isDragging) {
                 const dx = pointerX - dragStart.x;
@@ -121,8 +178,28 @@ export const CropOverlay = ({
 
         const canvas = canvasRef.current;
         const rect = canvas.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+        // Similar math to pointer move
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+
+        const { x: tx = 0, y: ty = 0, scale = 100, rotation = 0 } = transform || {}; // Re-destructure local if needed or use prop
+
+        const cx = rect.width / 2 + tx;
+        const cy = rect.height / 2 + ty;
+        const dx = canvasX - cx;
+        const dy = canvasY - cy;
+        const rad = (-rotation * Math.PI) / 180;
+        const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+        const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+        const finalX = rx / (scale / 100);
+        const finalY = ry / (scale / 100);
+
+        const localWidth = fittedWidth;
+        const localHeight = fittedHeight;
+
+        const x = Math.max(0, Math.min(100, ((finalX + localWidth / 2) / localWidth) * 100));
+        const y = Math.max(0, Math.min(100, ((finalY + localHeight / 2) / localHeight) * 100));
 
         e.target.setPointerCapture(e.pointerId);
         setIsDragging(true);
@@ -142,68 +219,80 @@ export const CropOverlay = ({
     return (
         <div
             ref={overlayRef}
-            className="absolute inset-0 pointer-events-none"
+            className="absolute inset-0 pointer-events-none" // Clip to canvas if needed, or let it overflow? transform might push it out.
         >
-            {/* Darkened areas outside crop */}
-            <div className="absolute inset-0">
-                {/* Top */}
-                <div className="absolute bg-black/60" style={{ left: 0, top: 0, width: '100%', height: `${y}%` }} />
-                {/* Left */}
-                <div className="absolute bg-black/60" style={{ left: 0, top: `${y}%`, width: `${x}%`, height: `${height}%` }} />
-                {/* Right */}
-                <div className="absolute bg-black/60" style={{ left: `${x + width}%`, top: `${y}%`, width: `${100 - x - width}%`, height: `${height}%` }} />
-                {/* Bottom */}
-                <div className="absolute bg-black/60" style={{ left: 0, top: `${y + height}%`, width: '100%', height: `${100 - y - height}%` }} />
-            </div>
-
-            {/* Crop rectangle */}
             <div
-                onPointerDown={handleDragStart}
-                className="absolute border-2 border-white shadow-lg pointer-events-auto cursor-move"
+                className="absolute"
                 style={{
-                    left: `${x}%`,
-                    top: `${y}%`,
-                    width: `${width}%`,
-                    height: `${height}%`,
-                    touchAction: 'none'
+                    width: fittedWidth,
+                    height: fittedHeight,
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px) scale(${scale / 100}) rotate(${rotation}deg)`,
+                    transformOrigin: 'center center' // Rotation happens around its center
                 }}
             >
-                {/* Grid lines */}
-                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-                    {[...Array(9)].map((_, i) => (
-                        <div key={i} className="border border-white/30" />
-                    ))}
+                {/* Darkened areas outside crop */}
+                <div className="absolute inset-0">
+                    {/* Top */}
+                    <div className="absolute bg-black/60" style={{ left: 0, top: 0, width: '100%', height: `${y}%` }} />
+                    {/* Left */}
+                    <div className="absolute bg-black/60" style={{ left: 0, top: `${y}%`, width: `${x}%`, height: `${height}%` }} />
+                    {/* Right */}
+                    <div className="absolute bg-black/60" style={{ left: `${x + width}%`, top: `${y}%`, width: `${100 - x - width}%`, height: `${height}%` }} />
+                    {/* Bottom */}
+                    <div className="absolute bg-black/60" style={{ left: 0, top: `${y + height}%`, width: '100%', height: `${100 - y - height}%` }} />
                 </div>
 
-                {/* Resize handles */}
-                {['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'bottom', 'left', 'right'].map(position => {
-                    const isCorner = position.includes('-');
-                    const positionStyles = {
-                        'top-left': { top: '-6px', left: '-6px', cursor: 'nwse-resize' },
-                        'top-right': { top: '-6px', right: '-6px', cursor: 'nesw-resize' },
-                        'bottom-left': { bottom: '-6px', left: '-6px', cursor: 'nesw-resize' },
-                        'bottom-right': { bottom: '-6px', right: '-6px', cursor: 'nwse-resize' },
-                        'top': { top: '-4px', left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize' },
-                        'bottom': { bottom: '-4px', left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize' },
-                        'left': { left: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
-                        'right': { right: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' }
-                    };
+                {/* Crop rectangle */}
+                <div
+                    onPointerDown={handleDragStart}
+                    className="absolute border-2 border-white shadow-lg pointer-events-auto cursor-move"
+                    style={{
+                        left: `${x}%`,
+                        top: `${y}%`,
+                        width: `${width}%`,
+                        height: `${height}%`,
+                        touchAction: 'none'
+                    }}
+                >
+                    {/* Grid lines */}
+                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                        {[...Array(9)].map((_, i) => (
+                            <div key={i} className="border border-white/30" />
+                        ))}
+                    </div>
 
-                    return (
-                        <div
-                            key={position}
-                            onPointerDown={(e) => handleResizeStart(e, position)}
-                            className="absolute bg-white border-2 border-blue-500 pointer-events-auto hover:scale-125 transition-transform shadow-md"
-                            style={{
-                                ...positionStyles[position],
-                                width: isCorner ? '14px' : '10px',
-                                height: isCorner ? '14px' : '10px',
-                                borderRadius: isCorner ? '4px' : '3px',
-                                touchAction: 'none'
-                            }}
-                        />
-                    );
-                })}
+                    {/* Resize handles */}
+                    {['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'bottom', 'left', 'right'].map(position => {
+                        const isCorner = position.includes('-');
+                        const positionStyles = {
+                            'top-left': { top: '-6px', left: '-6px', cursor: 'nwse-resize' },
+                            'top-right': { top: '-6px', right: '-6px', cursor: 'nesw-resize' },
+                            'bottom-left': { bottom: '-6px', left: '-6px', cursor: 'nesw-resize' },
+                            'bottom-right': { bottom: '-6px', right: '-6px', cursor: 'nwse-resize' },
+                            'top': { top: '-4px', left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize' },
+                            'bottom': { bottom: '-4px', left: '50%', transform: 'translateX(-50%)', cursor: 'ns-resize' },
+                            'left': { left: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
+                            'right': { right: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' }
+                        };
+
+                        return (
+                            <div
+                                key={position}
+                                onPointerDown={(e) => handleResizeStart(e, position)}
+                                className="absolute bg-white border-2 border-blue-500 pointer-events-auto hover:scale-125 transition-transform shadow-md"
+                                style={{
+                                    ...positionStyles[position],
+                                    width: isCorner ? '14px' : '10px',
+                                    height: isCorner ? '14px' : '10px',
+                                    borderRadius: isCorner ? '4px' : '3px',
+                                    touchAction: 'none'
+                                }}
+                            />
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );
