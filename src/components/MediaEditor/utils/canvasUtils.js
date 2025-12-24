@@ -1565,64 +1565,158 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
     const p = progress;
 
     ctx.save();
+
+    // Default operation for masking incoming clip
     ctx.globalCompositeOperation = 'destination-in';
 
-    if (type === 'fade' || type === 'none') {
-        // Simple cross-fade (opacity)
+    if (type === 'fade' || type === 'mix' || type === 'gradual_fade' || type === 'none') {
         ctx.globalAlpha = p;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
+
     } else if (type === 'fade_black') {
-        // Fade to black (two-phase: fade out to black, then fade in from black)
-        if (p < 0.5) {
-            // First half: fade out to black
-            ctx.globalAlpha = 1 - (p * 2);
-        } else {
-            // Second half: fade in from black
-            ctx.globalAlpha = (p - 0.5) * 2;
-        }
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, width, height);
-    } else if (type === 'fade_white') {
-        // Fade to white (two-phase: fade out to white, then fade in from white)
-        // First draw the clip normally
-        ctx.globalAlpha = 1;
+        // Fallback to Cross Fade for mask logic
+        ctx.globalAlpha = p;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
 
-        // Then overlay white with varying opacity
-        ctx.globalCompositeOperation = 'source-over';
-        if (p < 0.5) {
-            // First half: increase white
-            ctx.globalAlpha = p * 2;
-        } else {
-            // Second half: decrease white
-            ctx.globalAlpha = (1 - p) * 2;
-        }
+    } else if (type === 'blur_focus' || type === 'blur' || type === 'vertical_blur' || type === 'bubble_blur') {
+        // Blur transition: Incoming clip starts blurry and fades in
+        ctx.globalAlpha = p;
+        const blurAmount = (1 - p) * 30;
+        ctx.filter = `blur(${blurAmount}px)`;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
-    } else if (type === 'dissolve') {
-        // OPTIMIZED DISSOLVE: Use low-res noise and scale up
-        // Full resolution putImageData is too slow for HD video (CPU bottleneck)
-        const scale = 0.1; // 1/10th resolution
+
+    } else if (type === 'whirl' || type === 'swirl_in' || type === 'paper_ball') {
+        // Swirl In
+        ctx.globalAlpha = p;
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        const spiralTurns = 2;
+        const steps = 50;
+        ctx.beginPath();
+        ctx.moveTo(width / 2, height / 2);
+        for (let i = 0; i <= steps; i++) {
+            const t = (i / steps) * p;
+            const angle = t * spiralTurns * Math.PI * 2;
+            const r = maxRadius * t;
+            const x = width / 2 + Math.cos(angle) * r;
+            const y = height / 2 + Math.sin(angle) * r;
+            ctx.lineTo(x, y);
+        }
+        ctx.lineTo(width / 2, height / 2);
+        ctx.fill();
+
+    } else if (type === 'comparision' || type === 'wipe_left' || type === 'left') {
+        // Simple Wipe Left
+        ctx.beginPath();
+        ctx.rect(0, 0, width * p, height);
+        ctx.fill();
+
+    } else if (type === 'wipe_right') {
+        ctx.beginPath();
+        ctx.rect(width * (1 - p), 0, width * p, height);
+        ctx.fill();
+
+    } else if (type === 'shake_zoom_in' || type === 'shaky_inhale' || type === 'tremble_zoom' || type === 'shock_zoom') {
+        // Zoom reveal
+        const maxRadius = Math.sqrt(width * width + height * height) / 1.5;
+        ctx.beginPath();
+        const r = maxRadius * p;
+        ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (type === 'blink') {
+        // Strobe
+        const visible = Math.floor(p * 6) % 2 === 0; // 3 blinks
+        ctx.globalAlpha = visible ? 1 : 0;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+
+    } else if (type === 'glare' || type === 'glasre' || type === 'gloss_wipe') {
+        // Wipe with a "Glare" leading edge
+        // 1. Mask
+        ctx.beginPath();
+        ctx.rect(0, 0, width * p, height);
+        ctx.fill();
+
+        // 2. Glare (Additive on top)
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0 - Math.abs(0.5 - p) * 2;
+        const grad = ctx.createLinearGradient(width * p - 50, 0, width * p + 50, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(width * p - 50, 0, 100, height);
+
+    } else if (type === 'fast_swipe' || type === 'slide_fast') {
+        // Slide with blur approximation
+        ctx.filter = 'blur(10px)';
+        ctx.beginPath();
+        ctx.rect(0, 0, width * p, height);
+        ctx.fill();
+        ctx.filter = 'none';
+
+    } else if (type === 'app_switch') {
+        // Zoom reveal rect
+        ctx.beginPath();
+        const w = width * p;
+        const h = height * p;
+        const r = 20 * (1 - p);
+        ctx.roundRect((width - w) / 2, (height - h) / 2, w, h, r);
+        ctx.fill();
+
+    } else if (type === 'slice_reveal' || type === 'slice_strips') {
+        // Vertical strips
+        const strips = 10;
+        const stripW = width / strips;
+        ctx.beginPath();
+        for (let i = 0; i < strips; i++) {
+            const delay = i * 0.05;
+            const adjP = Math.max(0, Math.min(1, (p - delay) * 2));
+            ctx.rect(i * stripW, 0, stripW, height * adjP);
+        }
+        ctx.fill();
+
+    } else if (type === 'pull_in' || type === 'zoom_in') {
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        ctx.beginPath();
+        ctx.arc(width / 2, height / 2, maxRadius * p, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (type === 'pull_out' || type === 'zoom_out') {
+        // Iris In (Zoom out reveal)
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        ctx.beginPath();
+        ctx.arc(width / 2, height / 2, maxRadius * p, 0, Math.PI * 2);
+        ctx.fill();
+
+    } else if (type === 'twist_turn' || type === 'zoom_rotate_in') {
+        const maxRadius = Math.sqrt(width * width + height * height) / 2;
+        const r = maxRadius * p;
+        const segments = 8;
+        ctx.beginPath();
+        for (let i = 0; i < segments; i++) {
+            const angle1 = (i / segments) * Math.PI * 2 - p * Math.PI * 2;
+            const angle2 = ((i + 0.5) / segments) * Math.PI * 2 - p * Math.PI * 2;
+            ctx.moveTo(width / 2, height / 2);
+            ctx.arc(width / 2, height / 2, r, angle1, angle2);
+            ctx.lineTo(width / 2, height / 2);
+        }
+        ctx.fill();
+
+    } else if (type === 'film_erase' || type === 'dissolve') {
+        // Noise Dissolve
+        const scale = 0.1;
         const w = Math.ceil(width * scale);
         const h = Math.ceil(height * scale);
-
-        // Create offscreen canvas if needed (or just use a small one here)
-        // Since we can't easily cache a canvas across module calls without state, we'll create a small one.
-        // 192x108 is very fast to process.
         const offCanvas = document.createElement('canvas');
         offCanvas.width = w;
         offCanvas.height = h;
         const offCtx = offCanvas.getContext('2d');
-
         const imageData = offCtx.createImageData(w, h);
         const data = imageData.data;
-
-        // Reduce randomness frequency to avoid flickering too much or use a seed if possible
-        // For simple dissolve, random per frame is fine but can look like 'noise' rather than 'dissolve'.
-        // To make it look like 'dissolve', we usually want static noise + threshold.
-        // But for performance, simple random noise matches the previous implementation.
 
         for (let i = 0; i < data.length; i += 4) {
             const alpha = Math.random() < p ? 255 : 0;
@@ -1631,380 +1725,54 @@ export const applyTransitionMask = (ctx, transition, width, height) => {
             data[i + 2] = 255;
             data[i + 3] = alpha;
         }
-
         offCtx.putImageData(imageData, 0, 0);
-
-        // Draw scaled up
         ctx.save();
-        ctx.imageSmoothingEnabled = false; // Nearest neighbor for pixelated dissolve look
+        ctx.imageSmoothingEnabled = false;
         ctx.drawImage(offCanvas, 0, 0, width, height);
         ctx.restore();
-    } else if (type === 'luma_fade') {
-        // Luminance-based fade (bright areas fade first)
-        ctx.globalAlpha = p;
-        ctx.fillStyle = 'white';
-        ctx.filter = `brightness(${100 + (p * 50)}%)`;
-        ctx.fillRect(0, 0, width, height);
-    } else if (type === 'additive') {
-        // Additive blend
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = p;
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, width, height);
-    } else if (type === 'multiply') {
-        // Multiply blend (darken)
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.globalAlpha = 1 - p;
-        ctx.fillStyle = `rgba(0, 0, 0, ${1 - p})`;
-        ctx.fillRect(0, 0, width, height);
-    } else if (type === 'screen') {
-        // Screen blend (lighten)
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = p;
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, width, height);
-    } else if (type === 'overlay') {
-        // Overlay blend
-        ctx.globalCompositeOperation = 'overlay';
-        ctx.globalAlpha = p;
-        ctx.fillStyle = 'gray';
-        ctx.fillRect(0, 0, width, height);
-    } else if (type.startsWith('wipe_')) {
-        ctx.beginPath();
-        if (type === 'wipe_left') ctx.rect(0, 0, width * p, height);
-        else if (type === 'wipe_right') ctx.rect(width * (1 - p), 0, width * p, height);
-        else if (type === 'wipe_up') ctx.rect(0, height * (1 - p), width, height * p);
-        else if (type === 'wipe_down') ctx.rect(0, 0, width, height * p);
-        else if (type === 'wipe_tl') ctx.moveTo(0, 0), ctx.lineTo(width * p * 2, 0), ctx.lineTo(0, height * p * 2);
-        else if (type === 'wipe_tr') ctx.moveTo(width, 0), ctx.lineTo(width - width * p * 2, 0), ctx.lineTo(width, height * p * 2);
-        else if (type === 'wipe_bl') ctx.moveTo(0, height), ctx.lineTo(width * p * 2, height), ctx.lineTo(0, height - height * p * 2);
-        else if (type === 'wipe_br') ctx.moveTo(width, height), ctx.lineTo(width - width * p * 2, height), ctx.lineTo(width, height - height * p * 2);
-        else if (type === 'wipe_center_h') ctx.rect(width / 2 - (width * p) / 2, 0, width * p, height);
-        else if (type === 'wipe_center_v') ctx.rect(0, height / 2 - (height * p) / 2, width, height * p);
-        else if (type === 'clock_cw') {
-            ctx.moveTo(width / 2, height / 2);
-            ctx.arc(width / 2, height / 2, Math.max(width, height), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
-        } else if (type === 'clock_ccw') {
-            ctx.moveTo(width / 2, height / 2);
-            ctx.arc(width / 2, height / 2, Math.max(width, height), -Math.PI / 2, -Math.PI / 2 - Math.PI * 2 * p, true);
-        } else if (type === 'barn_door_h') {
-            ctx.rect(0, 0, width * p / 2, height);
-            ctx.rect(width - width * p / 2, 0, width * p / 2, height);
-        } else if (type === 'barn_door_v') {
-            ctx.rect(0, 0, width, height * p / 2);
-            ctx.rect(0, height - height * p / 2, width, height * p / 2);
-        } else if (type === 'matrix_wipe') {
-            const cols = 10;
-            const rows = 10;
-            const cellW = width / cols;
-            const cellH = height / rows;
-            for (let i = 0; i < cols; i++) {
-                for (let j = 0; j < rows; j++) {
-                    if (Math.random() < p) {
-                        ctx.rect(i * cellW, j * cellH, cellW, cellH);
-                    }
-                }
-            }
-        }
-        ctx.fill();
-    } else if (type.startsWith('slide_') || type.startsWith('cover_') || type.startsWith('reveal_')) {
-        // Slide, Cover, and Reveal transitions
-        ctx.beginPath();
 
-        if (type === 'slide_left' || type === 'cover_left') {
-            ctx.rect(0, 0, width * p, height);
-        } else if (type === 'slide_right' || type === 'cover_right') {
-            ctx.rect(width * (1 - p), 0, width * p, height);
-        } else if (type === 'slide_up' || type === 'cover_up') {
-            ctx.rect(0, height * (1 - p), width, height * p);
-        } else if (type === 'slide_down' || type === 'cover_down') {
-            ctx.rect(0, 0, width, height * p);
-        } else if (type === 'reveal_left') {
-            ctx.rect(width * (1 - p), 0, width * p, height);
-        } else if (type === 'reveal_right') {
-            ctx.rect(0, 0, width * p, height);
-        } else if (type === 'reveal_up') {
-            ctx.rect(0, 0, width, height * p);
-        } else if (type === 'reveal_down') {
-            ctx.rect(0, height * (1 - p), width, height * p);
-        }
+    } else if (type === 'shake') {
+        ctx.globalAlpha = p;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
 
-        ctx.fill();
-    } else if (type.startsWith('zoom_') || type.startsWith('swirl_') || type.startsWith('elastic_') || type.startsWith('bounce_')) {
-        // Zoom, Swirl, Elastic, and Bounce transitions
+    } else if (type === 'delay_zoom' || type === 'zoom_step') {
+        const stepP = p < 0.5 ? 0.1 : (p - 0.5) * 2;
         const maxRadius = Math.sqrt(width * width + height * height) / 2;
         ctx.beginPath();
+        ctx.arc(width / 2, height / 2, maxRadius * stepP, 0, Math.PI * 2);
+        ctx.fill();
 
-        if (type === 'zoom_in') {
-            const r = maxRadius * p;
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
-        } else if (type === 'zoom_out') {
-            ctx.rect(0, 0, width, height);
-            const r = maxRadius * (1 - p);
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
-        } else if (type === 'zoom_rotate_in') {
-            const r = maxRadius * p;
-            const segments = 8;
-            for (let i = 0; i < segments; i++) {
-                const angle1 = (i / segments) * Math.PI * 2 - p * Math.PI * 2;
-                const angle2 = ((i + 0.5) / segments) * Math.PI * 2 - p * Math.PI * 2;
-                ctx.moveTo(width / 2, height / 2);
-                ctx.arc(width / 2, height / 2, r, angle1, angle2);
-                ctx.lineTo(width / 2, height / 2);
+    } else if (type === 'rotating_spotlight') {
+        // Rotating Spotlight Effect (Radar Sweep)
+        try {
+            const gradient = ctx.createConicGradient(-Math.PI / 2, width / 2, height / 2);
+            if (p > 0) {
+                // White = Reveal, Transparent = Hide
+                gradient.addColorStop(0, 'white');
+                // Harder edge for the 'beam' start, smoother tail?
+                // Or soft lead edge?
+                // Let's do: 0 to P is WHITE. The edge at P fades out.
+                gradient.addColorStop(Math.max(0, p - 0.1), 'white');
+                gradient.addColorStop(p, 'rgba(255,255,255,0.5)');
+                gradient.addColorStop(Math.min(1, p + 0.1), 'transparent');
+                gradient.addColorStop(1, 'transparent');
+            } else {
+                gradient.addColorStop(0, 'transparent');
             }
-        } else if (type === 'zoom_rotate_out') {
-            ctx.rect(0, 0, width, height);
-            const r = maxRadius * (1 - p);
-            const segments = 8;
-            for (let i = 0; i < segments; i++) {
-                const angle1 = (i / segments) * Math.PI * 2 + p * Math.PI * 2;
-                const angle2 = ((i + 0.5) / segments) * Math.PI * 2 + p * Math.PI * 2;
-                ctx.moveTo(width / 2, height / 2);
-                ctx.arc(width / 2, height / 2, r, angle1, angle2, true);
-                ctx.lineTo(width / 2, height / 2);
-            }
-        } else if (type === 'swirl_in') {
-            const spiralTurns = 3;
-            const steps = 100;
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        } catch (e) {
+            // Fallback
+            ctx.beginPath();
             ctx.moveTo(width / 2, height / 2);
-            for (let i = 0; i <= steps; i++) {
-                const t = (i / steps) * p;
-                const angle = t * spiralTurns * Math.PI * 2;
-                const r = maxRadius * t;
-                const x = width / 2 + Math.cos(angle) * r;
-                const y = height / 2 + Math.sin(angle) * r;
-                ctx.lineTo(x, y);
-            }
+            ctx.arc(width / 2, height / 2, Math.max(width, height), -Math.PI / 2, -Math.PI / 2 + (p * Math.PI * 2));
             ctx.lineTo(width / 2, height / 2);
-        } else if (type === 'swirl_out') {
-            const spiralTurns = 3;
-            const steps = 100;
-            ctx.rect(0, 0, width, height);
-            ctx.moveTo(width / 2, height / 2);
-            for (let i = steps; i >= 0; i--) {
-                const t = (i / steps) * (1 - p);
-                const angle = t * spiralTurns * Math.PI * 2;
-                const r = maxRadius * t;
-                const x = width / 2 + Math.cos(angle) * r;
-                const y = height / 2 + Math.sin(angle) * r;
-                ctx.lineTo(x, y);
-            }
-            ctx.lineTo(width / 2, height / 2);
-        } else if (type === 'elastic_in') {
-            // Elastic bounce effect
-            const elasticP = p < 0.5 ?
-                4 * p * p * p :
-                1 - Math.pow(-2 * p + 2, 3) / 2;
-            const r = maxRadius * elasticP;
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
-        } else if (type === 'elastic_out') {
-            const elasticP = p < 0.5 ?
-                4 * p * p * p :
-                1 - Math.pow(-2 * p + 2, 3) / 2;
-            ctx.rect(0, 0, width, height);
-            const r = maxRadius * (1 - elasticP);
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
-        } else if (type === 'bounce_in') {
-            // Bounce easing
-            const bounceP = p < 0.5 ?
-                8 * p * p * p * p :
-                1 - Math.pow(-2 * p + 2, 4) / 2;
-            const r = maxRadius * bounceP;
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
-        } else if (type === 'bounce_out') {
-            const bounceP = p < 0.5 ?
-                8 * p * p * p * p :
-                1 - Math.pow(-2 * p + 2, 4) / 2;
-            ctx.rect(0, 0, width, height);
-            const r = maxRadius * (1 - bounceP);
-            ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2, true);
+            ctx.fill();
         }
 
-        ctx.fill();
-    } else if (type.startsWith('iris_')) {
-        ctx.beginPath();
-        const maxRadius = Math.sqrt(width * width + height * height) / 2;
-        if (type === 'iris_circle_in') ctx.arc(width / 2, height / 2, maxRadius * p, 0, Math.PI * 2);
-        else if (type === 'iris_circle_out') {
-            ctx.rect(0, 0, width, height);
-            ctx.arc(width / 2, height / 2, maxRadius * (1 - p), 0, Math.PI * 2, true);
-        }
-        else if (type === 'iris_rect_in') {
-            const w = width * p;
-            const h = height * p;
-            ctx.rect((width - w) / 2, (height - h) / 2, w, h);
-        }
-        else if (type === 'iris_diamond_in') {
-            const s = maxRadius * p;
-            ctx.moveTo(width / 2, height / 2 - s);
-            ctx.lineTo(width / 2 + s, height / 2);
-            ctx.lineTo(width / 2, height / 2 + s);
-            ctx.lineTo(width / 2 - s, height / 2);
-        }
-        else if (type === 'iris_star_in') {
-            const cx = width / 2;
-            const cy = height / 2;
-            const outer = maxRadius * p;
-            const inner = outer / 2;
-            for (let i = 0; i < 5; i++) {
-                ctx.lineTo(cx + Math.cos((18 + i * 72) * Math.PI / 180) * outer,
-                    cy - Math.sin((18 + i * 72) * Math.PI / 180) * outer);
-                ctx.lineTo(cx + Math.cos((54 + i * 72) * Math.PI / 180) * inner,
-                    cy - Math.sin((54 + i * 72) * Math.PI / 180) * inner);
-            }
-        } else if (type === 'iris_heart_in') {
-            const s = maxRadius * p / 2;
-            ctx.translate(width / 2, height / 2);
-            ctx.moveTo(0, -s * 0.3);
-            ctx.bezierCurveTo(s * 0.5, -s, s, -s * 0.5, 0, s);
-            ctx.bezierCurveTo(-s, -s * 0.5, -s * 0.5, -s, 0, -s * 0.3);
-        }
-        ctx.translate(-width / 2, -height / 2);
-        ctx.fill();
-    } else if (type.startsWith('shape_')) {
-        // Shapes Transitions
-        ctx.beginPath();
-        if (type === 'shape_checker') {
-            const cols = 8;
-            const rows = 6;
-            const cellW = width / cols;
-            const cellH = height / rows;
-            for (let i = 0; i < cols; i++) {
-                for (let j = 0; j < rows; j++) {
-                    const delay = (i + j) / (cols + rows);
-                    const start = delay * 0.5;
-                    const duration = 0.5;
-                    let localP = (p - start) / duration;
-                    localP = Math.max(0, Math.min(1, localP));
-
-                    if (localP > 0) {
-                        const w = cellW * localP;
-                        const h = cellH * localP;
-                        ctx.rect(i * cellW + (cellW - w) / 2, j * cellH + (cellH - h) / 2, w, h);
-                    }
-                }
-            }
-        } else if (type === 'shape_blinds') {
-            const count = 10;
-            const slatH = height / count;
-            for (let i = 0; i < count; i++) {
-                // Open blinds from center of slat? Or top?
-                // Let's do from center of slat for "Venetian blinds" feel
-                const h = slatH * p;
-                ctx.rect(0, i * slatH + (slatH - h) / 2, width, h);
-            }
-        } else if (type === 'shape_stripes_h') {
-            const count = 10;
-            const h = height / count;
-            for (let i = 0; i < count; i += 2) {
-                ctx.fillRect(0, i * h, width * p * 2, h);
-                ctx.fillRect(width * (1 - p * 2), (i + 1) * h, width, h);
-            }
-        } else if (type === 'shape_stripes_v') {
-            const count = 10;
-            const w = width / count;
-            for (let i = 0; i < count; i += 2) {
-                ctx.fillRect(i * w, 0, w, height * p * 2);
-                ctx.fillRect((i + 1) * w, height * (1 - p * 2), w, height);
-            }
-        } else if (type === 'shape_dots') {
-            const cols = 12;
-            const rows = 9;
-            const maxR = (Math.min(width / cols, height / rows)) / 2 * 1.5;
-            const cx = cols / 2;
-            const cy = rows / 2;
-            const maxDist = Math.sqrt(cx * cx + cy * cy);
-
-            for (let i = 0; i < cols; i++) {
-                for (let j = 0; j < rows; j++) {
-                    const dist = Math.sqrt(Math.pow(i - cx, 2) + Math.pow(j - cy, 2));
-                    const normalizedDist = dist / maxDist;
-                    const start = normalizedDist * 0.5;
-                    let localP = (p - start) / 0.5;
-                    localP = Math.max(0, Math.min(1, localP));
-
-                    if (localP > 0) {
-                        const x = (i + 0.5) * (width / cols);
-                        const y = (j + 0.5) * (height / rows);
-                        ctx.moveTo(x, y);
-                        ctx.arc(x, y, maxR * localP, 0, Math.PI * 2);
-                    }
-                }
-            }
-        } else if (type === 'shape_spiral') {
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const maxRadius = Math.sqrt(width * width + height * height) / 2;
-            const rings = 5;
-            for (let i = 0; i < rings; i++) {
-                const innerR = (maxRadius / rings) * i;
-                const outerR = (maxRadius / rings) * (i + 1);
-                const start = (i / rings) * 0.5;
-                let localP = (p - start) / 0.5;
-                localP = Math.max(0, Math.min(1, localP));
-                if (localP > 0) {
-                    ctx.moveTo(centerX + outerR + 2, centerY); // prevent auto-close lines
-                    // Sub-path? No, we are in a big path.
-                    // Ctx.arc adds to current subpath.
-                    // Check arc connection lines.
-                    // Better to separate subpaths or just use closePath per ring if needed, but we want one fill.
-                    // The issue with single path fill for annuli is winding rule.
-                    // Use non-zero rule (default).
-                    // Draw outer CCW, inner CW?
-                    // Let's use individual fills if safer, but structural expectation is one big path + last fill.
-                    // Actually, I can call ctx.fill() inside loop if I want, but the structure prefers one fill at end.
-                    // Let's just manage path correctly.
-
-                    ctx.moveTo(centerX + (outerR + 2) * Math.cos(-Math.PI / 2), centerY + (outerR + 2) * Math.sin(-Math.PI / 2));
-                    ctx.arc(centerX, centerY, outerR + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * localP);
-                    ctx.arc(centerX, centerY, innerR - 1, -Math.PI / 2 + Math.PI * 2 * localP, -Math.PI / 2, true);
-                }
-            }
-        } else if (type === 'shape_zigzag') {
-            const zigHeight = 40;
-            const zigWidth = 60;
-            const cols = Math.ceil(width / zigWidth);
-            ctx.moveTo(0, 0);
-            for (let i = 0; i <= cols * p * 2; i++) {
-                const x = (i * zigWidth) / 2;
-                const y = (i % 2 === 0) ? 0 : zigHeight;
-                ctx.lineTo(x, y);
-            }
-            ctx.lineTo(width * p, height);
-            ctx.lineTo(0, height);
-        } else if (type === 'shape_waves') {
-            const waves = 5;
-            const amplitude = 30;
-            ctx.moveTo(0, 0);
-            for (let x = 0; x <= width * p; x++) {
-                const y = Math.sin((x / width) * Math.PI * waves) * amplitude + amplitude;
-                ctx.lineTo(x, y);
-            }
-            ctx.lineTo(width * p, height);
-            ctx.lineTo(0, height);
-        } else if (type === 'shape_curtain') {
-            const panels = 8;
-            const panelW = width / panels;
-            for (let i = 0; i < panels; i++) {
-                const x = i * panelW;
-                const panelP = Math.max(0, Math.min(1, (p - (i / panels) * 0.3) * 1.5));
-                ctx.rect(x, height * (1 - panelP), panelW, height * panelP);
-            }
-        } else if (type === 'shape_shutter') {
-            const blades = 6;
-            const maxR = Math.sqrt(width * width + height * height);
-            const centerR = maxR * p;
-            const angleOffset = p * Math.PI / 2;
-
-            ctx.moveTo(width / 2 + centerR * Math.cos(angleOffset), height / 2 + centerR * Math.sin(angleOffset));
-            for (let i = 1; i <= blades; i++) {
-                const angle = angleOffset + (i * 2 * Math.PI / blades);
-                ctx.lineTo(width / 2 + centerR * Math.cos(angle), height / 2 + centerR * Math.sin(angle));
-            }
-        }
-        ctx.fill();
     } else {
-        // Default fallback
+        // Fallback
         ctx.globalAlpha = p;
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);

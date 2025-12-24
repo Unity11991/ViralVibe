@@ -2,20 +2,37 @@ import React, { useState } from 'react';
 import { Sparkles, ArrowRight, Layers, Zap, Grid, Circle, Box, Move, Activity, Aperture } from 'lucide-react';
 
 export const TransitionsPanel = ({ activeClip, onUpdate }) => {
-    // Simplified to just Basic transitions per user request
-    const basicTransitions = [
+    const transitions = [
         { id: 'none', label: 'None' },
-        { id: 'fade', label: 'Cross Fade' },
-        { id: 'fade_black', label: 'Fade to Black' },
-        { id: 'fade_white', label: 'Fade to White' },
-        { id: 'dissolve', label: 'Dissolve' },
-        { id: 'luma_fade', label: 'Luma Fade' },
-        { id: 'additive', label: 'Additive' },
-        { id: 'multiply', label: 'Multiply' },
-        { id: 'screen', label: 'Screen' },
-        { id: 'overlay', label: 'Overlay' },
+        { id: 'mix', label: 'Mix' },
+        { id: 'fade_black', label: 'Black Fade' },
+        { id: 'blur_focus', label: 'Blur' },
+        { id: 'whirl', label: 'Whirl' },
+        { id: 'comparision', label: 'Comparision' },
+        { id: 'shaky_inhale', label: 'Shaky Inhale' },
+        { id: 'pull_in', label: 'Pull In' },
+        { id: 'blink', label: 'Blink' },
+        { id: 'vertical_blur', label: 'Vertical Blur' },
+        { id: 'shock_zoom', label: 'Shock Zoom' },
+        { id: 'bubble_blur', label: 'Bubble Blur' },
+        { id: 'glasre', label: 'Glasre' },
+        { id: 'fast_swipe', label: 'Fast Swipe' },
+        { id: 'paper_ball', label: 'Paper Ball' },
+        { id: 'app_switch', label: 'App Switch' },
+        { id: 'slice_reveal', label: 'Slice Reveal' },
+        { id: 'gloss_wipe', label: 'Gloss Wipe' },
+        { id: 'gradual_fade', label: 'Gradual Fade' },
+        { id: 'pull_out', label: 'Pull Out' },
+        { id: 'shake', label: 'Shake' },
+        { id: 'left', label: 'Left' },
+        { id: 'twist_turn', label: 'Twist Turn' },
+        { id: 'film_erase', label: 'Film Erase' },
+        { id: 'delay_zoom', label: 'Delay Zoom' },
+        { id: 'tremble_zoom', label: 'Tremble Zoom' },
+        { id: 'rotating_spotlight', label: 'Rotating Spotlight' },
     ];
 
+    if (!activeClip) return <div className="p-4 text-white/50 text-center text-xs">No clip selected</div>;
     const currentTransition = activeClip.transition || { type: 'none', duration: 1.0 };
 
     return (
@@ -24,7 +41,7 @@ export const TransitionsPanel = ({ activeClip, onUpdate }) => {
                 {/* Transition Grid */}
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     <div className="grid grid-cols-3 gap-3">
-                        {basicTransitions.map(trans => (
+                        {transitions.map(trans => (
                             <button
                                 key={trans.id}
                                 onClick={() => {

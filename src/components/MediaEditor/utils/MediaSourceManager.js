@@ -84,25 +84,42 @@ class MediaSourceManager {
 
         // Calculate expected time on the source
         // Calculate expected time on the source
-        const drift = Math.abs(media.currentTime - clipTime);
+        // Helper to get safe time
+        let safeTime = clipTime;
+        if (Number.isFinite(media.duration)) {
+            // Just clamp to duration. If we are past it, we hold the last frame.
+            safeTime = Math.min(clipTime, media.duration);
+        }
+
+        const drift = Math.abs(media.currentTime - safeTime);
 
         // SYNC LOGIC:
         if (isPlaying) {
+            // Check if we reached the end and should just hold
+            const isAtEnd = Number.isFinite(media.duration) && Math.abs(media.currentTime - media.duration) < 0.1 && safeTime >= media.duration;
+
+            if (isAtEnd) {
+                // Do nothing, let it rest at the end.
+                // Ensure it's paused to save resources?
+                if (!media.paused) media.pause();
+                return;
+            }
+
             // While playing, rely on playback unless drift is large (> 0.2s)
             // Also never interrupt if already seeking
             if (drift > 0.2 && !media.seeking) {
-                media.currentTime = clipTime;
+                media.currentTime = safeTime;
             }
 
             // Ensure playing
-            if (media.paused) {
+            if (media.paused && !isAtEnd) {
                 // Avoid spamming play() if a promise is pending (though browser handles this mostly)
                 media.play().catch(() => { });
             }
         } else {
             // While paused/scrubbing, we want exact frame (tight tolerance)
             if (drift > 0.05 && !media.seeking) {
-                media.currentTime = clipTime;
+                media.currentTime = safeTime;
             }
 
             // Ensure paused
