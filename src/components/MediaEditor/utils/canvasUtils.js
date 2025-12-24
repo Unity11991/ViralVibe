@@ -2569,7 +2569,8 @@ export const drawTextSelectionBox = (ctx, textOverlay, canvasDimensions) => {
 export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => {
     const { width, height } = canvasDimensions;
     const transform = clip.transform || {};
-    const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0, crop } = transform;
+    const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0 } = transform;
+    const crop = transform.crop || clip.crop;
 
     const centerX = width / 2 + cx;
     const centerY = height / 2 + cy;
@@ -2712,7 +2713,8 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
         drawWidth = metrics.width + 20;
         drawHeight = scaledFontSize + 20;
     } else {
-        const { x: tx = 0, y: ty = 0, scale: s = 100, rotation: r = 0, crop } = transform;
+        const { x: tx = 0, y: ty = 0, scale: s = 100, rotation: r = 0 } = transform;
+        const crop = transform.crop || clip.crop;
         cx = width / 2 + tx;
         cy = height / 2 + ty;
         scale = s;
