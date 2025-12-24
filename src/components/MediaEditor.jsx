@@ -137,7 +137,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [activeEffectId, setActiveEffectId] = useState(null);
     const [effectIntensity, setEffectIntensity] = useState(50);
     const [cropPreset, setCropPreset] = useState('free');
-    const [cropData, setCropData] = useState({ x: 0, y: 0, width: 100, height: 100 });
+    const [cropData, setCropData] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
     const [rotation, setRotation] = useState(0);
     const [zoom, setZoom] = useState(1);
     const [timelineZoom, setTimelineZoom] = useState(1);
@@ -439,7 +439,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 setActiveEffectId(clip.effect || null);
 
                 // Sync Crop State
-                setCropData(clip.crop || { x: 0, y: 0, width: 100, height: 100 });
+                setCropData(clip.crop || { left: 0, top: 0, right: 0, bottom: 0 });
                 setCropPreset(clip.cropPreset || 'free');
                 // Note: effectIntensity might need to be stored on clip too if we want per-clip intensity
             }

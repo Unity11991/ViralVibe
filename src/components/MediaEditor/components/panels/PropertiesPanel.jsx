@@ -384,14 +384,14 @@ const VideoPropertiesPanel = ({
 
                         {videoSubTab === 'crop' && (
                             <CropPanel
-                                cropPreset={cropPreset}
+                                crop={activeItem.crop || { left: 0, top: 0, right: 0, bottom: 0 }}
+                                onUpdate={(newCrop) => handleUpdate({ crop: newCrop })}
                                 rotation={activeItem.transform?.rotation || 0}
                                 zoom={activeItem.transform?.scale ? activeItem.transform.scale / 100 : 1}
-                                onCropPresetChange={onCropPresetChange}
                                 onRotationChange={(val) => handleTransformUpdate('rotation', val)}
                                 onZoomChange={(val) => handleTransformUpdate('scale', Math.round(val * 100))}
                                 onReset={() => {
-                                    onCropPresetChange('free');
+                                    handleUpdate({ crop: { left: 0, top: 0, right: 0, bottom: 0 } });
                                 }}
                                 onApply={handleApply}
                                 onCancel={handleCancel}
