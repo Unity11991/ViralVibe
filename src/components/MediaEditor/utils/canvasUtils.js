@@ -212,23 +212,32 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
     const mediaWidth = media.videoWidth || media.width;
     const mediaHeight = media.videoHeight || media.height;
 
+    // Default to full media
     let sourceX = 0, sourceY = 0, sourceW = mediaWidth, sourceH = mediaHeight;
+    let cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0;
 
     if (crop) {
-        const { x: cropX, y: cropY, width: cropW, height: cropH } = crop;
-        sourceX = (cropX / 100) * mediaWidth;
-        sourceY = (cropY / 100) * mediaHeight;
-        sourceW = (cropW / 100) * mediaWidth;
-        sourceH = (cropH / 100) * mediaHeight;
+        const { left = 0, top = 0, right = 0, bottom = 0 } = crop;
+        cropLeft = left;
+        cropTop = top;
+        cropRight = right;
+        cropBottom = bottom;
+
+        sourceX = (left / 100) * mediaWidth;
+        sourceY = (top / 100) * mediaHeight;
+        sourceW = mediaWidth - ((left + right) / 100) * mediaWidth;
+        sourceH = mediaHeight - ((top + bottom) / 100) * mediaHeight;
     }
 
     // 2. Calculate Destination Rectangle (Transform)
-    const mediaAspect = sourceW / sourceH;
+    // PREMIERE STYLE: Calculate fit based on ORIGINAL (uncropped) dimensions
+    // This ensures the image scale doesn't change when cropping
+    const mediaAspect = mediaWidth / mediaHeight;
     const canvasAspect = logicalWidth / logicalHeight;
 
     let baseWidth, baseHeight;
 
-    // "Contain" logic (Fit within canvas)
+    // "Contain" logic (Fit within canvas) based on ORIGINAL media
     if (mediaAspect > canvasAspect) {
         baseWidth = logicalWidth;
         baseHeight = logicalWidth / mediaAspect;
@@ -237,14 +246,36 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         baseWidth = logicalHeight * mediaAspect;
     }
 
-    // Apply User Transform
+    // Apply User Transform (Scale/Rotation)
     const scaleFactor = scale / 100;
-    const drawWidth = baseWidth * scaleFactor;
-    const drawHeight = baseHeight * scaleFactor;
+    const fullDrawWidth = baseWidth * scaleFactor;
+    const fullDrawHeight = baseHeight * scaleFactor;
 
-    // Center position + Offset
+    // Calculate the destination size of the CROPPED portion
+    // It should be proportional to the source crop
+    const drawWidth = fullDrawWidth * (sourceW / mediaWidth);
+    const drawHeight = fullDrawHeight * (sourceH / mediaHeight);
+
+    // Calculate Center Position
+    // The "center" (x, y) refers to the center of the FULL image (or the layer's anchor point)
+    // We need to find where to draw the top-left of the cropped piece relative to that center.
+
+    // Center of the canvas + user offset
     const centerX = logicalWidth / 2 + x;
     const centerY = logicalHeight / 2 + y;
+
+    // Offset of the cropped piece relative to the full image center
+    // Full image top-left relative to center is (-fullDrawWidth/2, -fullDrawHeight/2)
+    // Crop starts at (cropLeft% * fullDrawWidth) from the left
+    const cropOffsetX = (cropLeft / 100) * fullDrawWidth;
+    const cropOffsetY = (cropTop / 100) * fullDrawHeight;
+
+    // The draw position (relative to the translated center)
+    // We want to draw at: (OriginalTopLeft + CropOffset)
+    const drawX = -fullDrawWidth / 2 + cropOffsetX;
+    const drawY = -fullDrawHeight / 2 + cropOffsetY;
+
+
 
     // 3. Draw with Filters, Transforms, and Masks
 
@@ -259,16 +290,16 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
                 context.drawImage(
                     media,
                     sourceX, sourceY, sourceW, sourceH,
-                    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
+                    drawX, drawY, drawWidth, drawHeight
                 );
             } catch (e) {
                 // Fallback
                 context.fillStyle = '#000000';
-                context.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                context.fillRect(drawX, drawY, drawWidth, drawHeight);
             }
         } else {
             context.fillStyle = '#000000';
-            context.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            context.fillRect(drawX, drawY, drawWidth, drawHeight);
         }
     };
 
@@ -304,7 +335,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
                 maskCtx.save();
                 maskCtx.translate(centerX, centerY);
                 maskCtx.rotate((rotation * Math.PI) / 180);
-                drawMask(maskCtx, mask, drawWidth, drawHeight, false);
+                drawMask(maskCtx, mask, fullDrawWidth, fullDrawHeight, false);
                 maskCtx.restore();
 
                 // Convert Luma to Alpha
@@ -332,7 +363,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             tempCtx.save();
             tempCtx.translate(centerX, centerY);
             tempCtx.rotate((rotation * Math.PI) / 180);
-            drawMask(tempCtx, mask, drawWidth, drawHeight, false);
+            drawMask(tempCtx, mask, fullDrawWidth, fullDrawHeight, false);
             tempCtx.restore();
         }
 
@@ -351,7 +382,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         ctx.rotate((rotation * Math.PI) / 180);
 
         if (mask && mask.type !== 'none') {
-            drawMask(ctx, mask, drawWidth, drawHeight, true);
+            drawMask(ctx, mask, fullDrawWidth, fullDrawHeight, true);
         }
 
         // NEURAL ENHANCE ALGORITHM: Multi-pass compositing
@@ -450,42 +481,69 @@ const applyFaceRetouchingToCanvas = async (ctx, media, faceRetouch, transform, c
             return; // No faces detected
         }
 
-        // Calculate scaling factors to map face coordinates to canvas coordinates
+        const { width: logicalWidth, height: logicalHeight } = canvasDimensions;
         const mediaWidth = media.videoWidth || media.width;
         const mediaHeight = media.videoHeight || media.height;
-        const { width: canvasWidth, height: canvasHeight } = canvasDimensions;
 
-        // Calculate how the media is displayed on canvas (same logic as drawMediaToCanvas)
+        // 1. Calculate Full Image Dimensions (same as drawMediaToCanvas)
         const mediaAspect = mediaWidth / mediaHeight;
-        const canvasAspect = canvasWidth / canvasHeight;
+        const canvasAspect = logicalWidth / logicalHeight;
 
         let baseWidth, baseHeight;
         if (mediaAspect > canvasAspect) {
-            baseWidth = canvasWidth;
-            baseHeight = canvasWidth / mediaAspect;
+            baseWidth = logicalWidth;
+            baseHeight = logicalWidth / mediaAspect;
         } else {
-            baseHeight = canvasHeight;
-            baseWidth = canvasHeight * mediaAspect;
+            baseHeight = logicalHeight;
+            baseWidth = logicalHeight * mediaAspect;
         }
 
         const scaleFactor = (transform.scale || 100) / 100;
-        const drawWidth = baseWidth * scaleFactor;
-        const drawHeight = baseHeight * scaleFactor;
+        const fullDrawWidth = baseWidth * scaleFactor;
+        const fullDrawHeight = baseHeight * scaleFactor;
 
-        // Calculate offset
-        const offsetX = (canvasWidth - drawWidth) / 2 + (transform.x || 0);
-        const offsetY = (canvasHeight - drawHeight) / 2 + (transform.y || 0);
+        // 2. Calculate Position of Full Image Top-Left
+        const centerX = logicalWidth / 2 + (transform.x || 0);
+        const centerY = logicalHeight / 2 + (transform.y || 0);
 
-        // Map face coordinates from media space to canvas space
+        const fullImageX = centerX - fullDrawWidth / 2;
+        const fullImageY = centerY - fullDrawHeight / 2;
+
+        // 3. Calculate Clipping Region (Crop)
+        const { crop } = transform;
+        let clipX = fullImageX;
+        let clipY = fullImageY;
+        let clipW = fullDrawWidth;
+        let clipH = fullDrawHeight;
+
+        if (crop) {
+            const { left = 0, top = 0, right = 0, bottom = 0 } = crop;
+            const cropLeftPx = (left / 100) * fullDrawWidth;
+            const cropTopPx = (top / 100) * fullDrawHeight;
+            const cropRightPx = (right / 100) * fullDrawWidth;
+            const cropBottomPx = (bottom / 100) * fullDrawHeight;
+
+            clipX = fullImageX + cropLeftPx;
+            clipY = fullImageY + cropTopPx;
+            clipW = fullDrawWidth - cropLeftPx - cropRightPx;
+            clipH = fullDrawHeight - cropTopPx - cropBottomPx;
+        }
+
+        // 4. Map Faces
         const canvasFaces = faces.map(face => ({
-            x: (face.x / mediaWidth) * drawWidth + offsetX,
-            y: (face.y / mediaHeight) * drawHeight + offsetY,
-            width: (face.width / mediaWidth) * drawWidth,
-            height: (face.height / mediaHeight) * drawHeight,
+            x: fullImageX + (face.x / mediaWidth) * fullDrawWidth,
+            y: fullImageY + (face.y / mediaHeight) * fullDrawHeight,
+            width: (face.width / mediaWidth) * fullDrawWidth,
+            height: (face.height / mediaHeight) * fullDrawHeight,
             landmarks: face.landmarks
         }));
 
-        // Apply effects
+        // 5. Apply Effects with Clipping
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(clipX, clipY, clipW, clipH);
+        ctx.clip();
+
         if (faceRetouch.smoothSkin > 0) {
             applySkinSmoothing(ctx, canvasFaces, faceRetouch.smoothSkin);
         }
@@ -493,6 +551,9 @@ const applyFaceRetouchingToCanvas = async (ctx, media, faceRetouch, transform, c
         if (faceRetouch.whitenTeeth > 0) {
             applyTeethWhitening(ctx, canvasFaces, faceRetouch.whitenTeeth);
         }
+
+        ctx.restore();
+
     } catch (error) {
         // Silently fail - face detection may not be ready yet
     }
@@ -2329,14 +2390,11 @@ export const applyTransitionFX = (ctx, transition, width, height, media, isPrevi
  */
 export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensions, type = 'video') => {
     const { width, height } = canvasDimensions;
-    const { x = 0, y = 0, scale = 100, rotation = 0 } = transform;
-
-    // Calculate drawn dimensions
-    // Note: This logic must match drawMediaToCanvas positioning logic
-    // We assume "contain" logic or explicit transform
-    // For now, let's replicate the basic transform logic
+    const { x = 0, y = 0, scale = 100, rotation = 0, crop } = transform;
 
     let drawWidth, drawHeight;
+    let boxCenterX = 0;
+    let boxCenterY = 0;
 
     if (type === 'sticker') {
         const scaleFactor = height / 600;
@@ -2358,8 +2416,40 @@ export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensio
         }
 
         const scaleFactor = scale / 100;
-        drawWidth = baseWidth * scaleFactor;
-        drawHeight = baseHeight * scaleFactor;
+        const fullDrawWidth = baseWidth * scaleFactor;
+        const fullDrawHeight = baseHeight * scaleFactor;
+
+        // Default to full size
+        drawWidth = fullDrawWidth;
+        drawHeight = fullDrawHeight;
+
+        // Apply Crop if exists
+        if (crop) {
+            const { left = 0, top = 0, right = 0, bottom = 0 } = crop;
+
+            // Calculate cropped dimensions
+            const cropW = 100 - left - right;
+            const cropH = 100 - top - bottom;
+
+            drawWidth = fullDrawWidth * (cropW / 100);
+            drawHeight = fullDrawHeight * (cropH / 100);
+
+            // Calculate Offset from Center (Anchor Point)
+            const cropLeftPx = (left / 100) * fullDrawWidth;
+            const cropTopPx = (top / 100) * fullDrawHeight;
+
+            // Center of the cropped rect relative to the Top-Left of the Full Image
+            const cropCenterRelX = cropLeftPx + drawWidth / 2;
+            const cropCenterRelY = cropTopPx + drawHeight / 2;
+
+            // Top-Left of Full Image relative to Anchor Point (Center)
+            const fullTLRelX = -fullDrawWidth / 2;
+            const fullTLRelY = -fullDrawHeight / 2;
+
+            // Final Offset relative to Anchor Point
+            boxCenterX = fullTLRelX + cropCenterRelX;
+            boxCenterY = fullTLRelY + cropCenterRelY;
+        }
     }
 
     const centerX = width / 2 + x;
@@ -2372,7 +2462,7 @@ export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensio
     // Draw Border
     ctx.strokeStyle = '#00a8ff'; // Selection Blue
     ctx.lineWidth = 2;
-    ctx.strokeRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    ctx.strokeRect(boxCenterX - drawWidth / 2, boxCenterY - drawHeight / 2, drawWidth, drawHeight);
 
     // Draw Handles
     const handleSize = 6;
@@ -2381,10 +2471,10 @@ export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensio
     ctx.lineWidth = 1;
 
     const handles = [
-        { x: -drawWidth / 2, y: -drawHeight / 2 }, // Top-Left
-        { x: drawWidth / 2, y: -drawHeight / 2 },  // Top-Right
-        { x: drawWidth / 2, y: drawHeight / 2 },   // Bottom-Right
-        { x: -drawWidth / 2, y: drawHeight / 2 },  // Bottom-Left
+        { x: boxCenterX - drawWidth / 2, y: boxCenterY - drawHeight / 2 }, // Top-Left
+        { x: boxCenterX + drawWidth / 2, y: boxCenterY - drawHeight / 2 },  // Top-Right
+        { x: boxCenterX + drawWidth / 2, y: boxCenterY + drawHeight / 2 },   // Bottom-Right
+        { x: boxCenterX - drawWidth / 2, y: boxCenterY + drawHeight / 2 },  // Bottom-Left
     ];
 
     handles.forEach(h => {
@@ -2396,12 +2486,12 @@ export const drawSelectionBox = (ctx, transform, canvasDimensions, mediaDimensio
 
     // Rotation Handle (Top Center + Offset)
     ctx.beginPath();
-    ctx.moveTo(0, -drawHeight / 2);
-    ctx.lineTo(0, -drawHeight / 2 - 20);
+    ctx.moveTo(boxCenterX, boxCenterY - drawHeight / 2);
+    ctx.lineTo(boxCenterX, boxCenterY - drawHeight / 2 - 20);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(0, -drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
+    ctx.arc(boxCenterX, boxCenterY - drawHeight / 2 - 20, handleSize, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
@@ -2479,12 +2569,14 @@ export const drawTextSelectionBox = (ctx, textOverlay, canvasDimensions) => {
 export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => {
     const { width, height } = canvasDimensions;
     const transform = clip.transform || {};
-    const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0 } = transform;
+    const { x: cx = 0, y: cy = 0, scale = 100, rotation = 0, crop } = transform;
 
     const centerX = width / 2 + cx;
     const centerY = height / 2 + cy;
 
     let drawWidth, drawHeight;
+    let boxCenterX = 0;
+    let boxCenterY = 0;
 
     if (clip.type === 'sticker') {
         const scaleFactor = height / 600;
@@ -2505,8 +2597,32 @@ export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => 
         }
 
         const scaleFactor = scale / 100;
-        drawWidth = baseWidth * scaleFactor;
-        drawHeight = baseHeight * scaleFactor;
+        const fullDrawWidth = baseWidth * scaleFactor;
+        const fullDrawHeight = baseHeight * scaleFactor;
+
+        drawWidth = fullDrawWidth;
+        drawHeight = fullDrawHeight;
+
+        if (crop) {
+            const { left = 0, top = 0, right = 0, bottom = 0 } = crop;
+            const cropW = 100 - left - right;
+            const cropH = 100 - top - bottom;
+
+            drawWidth = fullDrawWidth * (cropW / 100);
+            drawHeight = fullDrawHeight * (cropH / 100);
+
+            const cropLeftPx = (left / 100) * fullDrawWidth;
+            const cropTopPx = (top / 100) * fullDrawHeight;
+
+            const cropCenterRelX = cropLeftPx + drawWidth / 2;
+            const cropCenterRelY = cropTopPx + drawHeight / 2;
+
+            const fullTLRelX = -fullDrawWidth / 2;
+            const fullTLRelY = -fullDrawHeight / 2;
+
+            boxCenterX = fullTLRelX + cropCenterRelX;
+            boxCenterY = fullTLRelY + cropCenterRelY;
+        }
     }
 
     // Rotate point around center to align with unrotated box
@@ -2521,10 +2637,10 @@ export const isPointInClip = (x, y, clip, canvasDimensions, mediaDimensions) => 
     const halfHeight = drawHeight / 2;
 
     return (
-        rotatedX >= -halfWidth &&
-        rotatedX <= halfWidth &&
-        rotatedY >= -halfHeight &&
-        rotatedY <= halfHeight
+        rotatedX >= boxCenterX - halfWidth &&
+        rotatedX <= boxCenterX + halfWidth &&
+        rotatedY >= boxCenterY - halfHeight &&
+        rotatedY <= boxCenterY + halfHeight
     );
 };
 
@@ -2578,6 +2694,8 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
     const isText = clip.type === 'text';
 
     let cx, cy, scale, rotation, drawWidth, drawHeight;
+    let boxCenterX = 0;
+    let boxCenterY = 0;
 
     if (isText) {
         cx = (clip.x / 100) * width;
@@ -2594,7 +2712,7 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
         drawWidth = metrics.width + 20;
         drawHeight = scaledFontSize + 20;
     } else {
-        const { x: tx = 0, y: ty = 0, scale: s = 100, rotation: r = 0 } = transform;
+        const { x: tx = 0, y: ty = 0, scale: s = 100, rotation: r = 0, crop } = transform;
         cx = width / 2 + tx;
         cy = height / 2 + ty;
         scale = s;
@@ -2618,8 +2736,32 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
                 baseWidth = height * mediaAspect;
             }
             const scaleFactor = scale / 100;
-            drawWidth = baseWidth * scaleFactor;
-            drawHeight = baseHeight * scaleFactor;
+            const fullDrawWidth = baseWidth * scaleFactor;
+            const fullDrawHeight = baseHeight * scaleFactor;
+
+            drawWidth = fullDrawWidth;
+            drawHeight = fullDrawHeight;
+
+            if (crop) {
+                const { left = 0, top = 0, right = 0, bottom = 0 } = crop;
+                const cropW = 100 - left - right;
+                const cropH = 100 - top - bottom;
+
+                drawWidth = fullDrawWidth * (cropW / 100);
+                drawHeight = fullDrawHeight * (cropH / 100);
+
+                const cropLeftPx = (left / 100) * fullDrawWidth;
+                const cropTopPx = (top / 100) * fullDrawHeight;
+
+                const cropCenterRelX = cropLeftPx + drawWidth / 2;
+                const cropCenterRelY = cropTopPx + drawHeight / 2;
+
+                const fullTLRelX = -fullDrawWidth / 2;
+                const fullTLRelY = -fullDrawHeight / 2;
+
+                boxCenterX = fullTLRelX + cropCenterRelX;
+                boxCenterY = fullTLRelY + cropCenterRelY;
+            }
         }
     }
 
@@ -2636,11 +2778,11 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
 
     // Check handles
     const handles = [
-        { name: 'tl', x: -halfWidth, y: -halfHeight },
-        { name: 'tr', x: halfWidth, y: -halfHeight },
-        { name: 'br', x: halfWidth, y: halfHeight },
-        { name: 'bl', x: -halfWidth, y: halfHeight },
-        { name: 'rot', x: 0, y: -halfHeight - 20 }
+        { name: 'tl', x: boxCenterX - halfWidth, y: boxCenterY - halfHeight },
+        { name: 'tr', x: boxCenterX + halfWidth, y: boxCenterY - halfHeight },
+        { name: 'br', x: boxCenterX + halfWidth, y: boxCenterY + halfHeight },
+        { name: 'bl', x: boxCenterX - halfWidth, y: boxCenterY + halfHeight },
+        { name: 'rot', x: boxCenterX, y: boxCenterY - halfHeight - 20 }
     ];
 
     for (const h of handles) {

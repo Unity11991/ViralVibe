@@ -14,10 +14,10 @@ const ASPECT_RATIOS = [
  * Crop Panel Component
  */
 export const CropPanel = ({
-    cropPreset,
+    crop = {},
+    onUpdate,
     rotation,
     zoom,
-    onCropPresetChange,
     onRotationChange,
     onZoomChange,
     onReset,
@@ -26,31 +26,26 @@ export const CropPanel = ({
 }) => {
     return (
         <div className="space-y-6 animate-slide-up">
-            {/* Aspect Ratio Grid */}
+            {/* Edge Crop Controls */}
             <div className="grid grid-cols-2 gap-4">
-                {ASPECT_RATIOS.map((option) => (
-                    <button
-                        key={option.id}
-                        onClick={() => onCropPresetChange(option.id)}
-                        className={`
-                            p-4 rounded-2xl border transition-all flex flex-col items-center gap-2
-                            ${cropPreset === option.id
-                                ? 'bg-blue-500/20 border-blue-500 text-white'
-                                : 'bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/10 hover:text-white'
-                            }
-                        `}
-                    >
-                        <div
-                            className={`border-2 rounded-sm mb-1 ${cropPreset === option.id ? 'border-blue-400' : 'border-current'
-                                }`}
-                            style={{
-                                width: '24px',
-                                height: option.height || '24px'
+                {['Top', 'Bottom', 'Left', 'Right'].map((edge) => (
+                    <div key={edge} className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                            <span className="text-white/70">{edge}</span>
+                            <span className="text-white/40">{crop[edge.toLowerCase()] || 0}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={crop[edge.toLowerCase()] || 0}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                onUpdate({ ...crop, [edge.toLowerCase()]: val });
                             }}
+                            className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
                         />
-                        <span className="text-sm font-medium">{option.label}</span>
-                        <span className="text-xs opacity-50">{option.id === 'free' ? 'Any' : option.id}</span>
-                    </button>
+                    </div>
                 ))}
             </div>
 

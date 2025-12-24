@@ -17,26 +17,43 @@ export const CropOverlay = ({
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const overlayRef = useRef(null);
 
+    const { left = 0, top = 0, right = 0, bottom = 0 } = cropData;
+
+    // Derived visual values
+    const x = left;
+    const y = top;
+    const width = 100 - left - right;
+    const height = 100 - top - bottom;
+
     useEffect(() => {
         const handlePointerMove = (e) => {
             if (!canvasRef.current) return;
 
             const canvas = canvasRef.current;
             const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width) * 100;
-            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            const pointerX = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+            const pointerY = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
 
             if (isDragging) {
-                const dx = x - dragStart.x;
-                const dy = y - dragStart.y;
+                const dx = pointerX - dragStart.x;
+                const dy = pointerY - dragStart.y;
 
-                const newX = Math.max(0, Math.min(100 - cropData.width, cropData.x + dx));
-                const newY = Math.max(0, Math.min(100 - cropData.height, cropData.y + dy));
+                // Calculate new positions clamping to bounds
+                // We want to move the box, so width/height remain constant
+                // newLeft + newRight + width = 100
+                // newTop + newBottom + height = 100
 
-                onCropChange({ ...cropData, x: newX, y: newY });
-                setDragStart({ x, y });
+                let newLeft = Math.max(0, Math.min(100 - width, left + dx));
+                let newTop = Math.max(0, Math.min(100 - height, top + dy));
+
+                // Recalculate right/bottom based on new position and fixed size
+                const newRight = 100 - newLeft - width;
+                const newBottom = 100 - newTop - height;
+
+                onCropChange({ ...cropData, left: newLeft, top: newTop, right: newRight, bottom: newBottom });
+                setDragStart({ x: pointerX, y: pointerY });
             } else if (isResizing) {
-                handleResize(x, y);
+                handleResize(pointerX, pointerY);
             }
         };
 
@@ -56,54 +73,46 @@ export const CropOverlay = ({
                 window.removeEventListener('pointerup', handlePointerUp);
             };
         }
-    }, [isDragging, isResizing, dragStart, cropData, onCropChange, canvasRef]);
+    }, [isDragging, isResizing, dragStart, cropData, onCropChange, canvasRef, left, top, right, bottom, width, height]);
 
-    const handleResize = (x, y) => {
-        const { x: cropX, y: cropY, width: cropWidth, height: cropHeight } = cropData;
+    const handleResize = (pointerX, pointerY) => {
+        let newLeft = left;
+        let newTop = top;
+        let newRight = right;
+        let newBottom = bottom;
 
-        let newX = cropX;
-        let newY = cropY;
-        let newWidth = cropWidth;
-        let newHeight = cropHeight;
+        // Minimum size constraint (e.g. 10%)
+        const minSize = 10;
 
-        // Calculate new dimensions based on resize handle
-        if (isResizing.includes('right')) {
-            newWidth = Math.max(10, Math.min(100 - cropX, x - cropX));
-        }
         if (isResizing.includes('left')) {
-            const diff = x - cropX;
-            newX = Math.max(0, Math.min(cropX + cropWidth - 10, x));
-            newWidth = cropWidth + (cropX - newX);
+            // Adjust left edge
+            // pointerX is the new left position
+            // Constraint: pointerX < (100 - right - minSize)
+            newLeft = Math.min(pointerX, 100 - right - minSize);
         }
-        if (isResizing.includes('bottom')) {
-            newHeight = Math.max(10, Math.min(100 - cropY, y - cropY));
+        if (isResizing.includes('right')) {
+            // Adjust right edge
+            // pointerX is the new right edge position (from left)
+            // right = 100 - pointerX
+            // Constraint: pointerX > (left + minSize)
+            const newRightPos = Math.max(pointerX, left + minSize);
+            newRight = 100 - newRightPos;
         }
         if (isResizing.includes('top')) {
-            const diff = y - cropY;
-            newY = Math.max(0, Math.min(cropY + cropHeight - 10, y));
-            newHeight = cropHeight + (cropY - newY);
+            // Adjust top edge
+            newTop = Math.min(pointerY, 100 - bottom - minSize);
+        }
+        if (isResizing.includes('bottom')) {
+            // Adjust bottom edge
+            const newBottomPos = Math.max(pointerY, top + minSize);
+            newBottom = 100 - newBottomPos;
         }
 
-        // Maintain aspect ratio if specified
-        if (aspectRatio) {
-            if (isResizing.includes('right') || isResizing.includes('left')) {
-                newHeight = newWidth / aspectRatio;
-                // Adjust if exceeds bounds
-                if (newY + newHeight > 100) {
-                    newHeight = 100 - newY;
-                    newWidth = newHeight * aspectRatio;
-                }
-            } else {
-                newWidth = newHeight * aspectRatio;
-                // Adjust if exceeds bounds
-                if (newX + newWidth > 100) {
-                    newWidth = 100 - newX;
-                    newHeight = newWidth / aspectRatio;
-                }
-            }
-        }
+        // Aspect Ratio logic removed as requested (or simplified if needed, but "Edge Crop" usually implies free form)
+        // If aspect ratio is strictly required, we'd need to adjust adjacent edges.
+        // But user asked to "remove current aspect ratio crop", so I assume free form edge crop.
 
-        onCropChange({ x: newX, y: newY, width: newWidth, height: newHeight });
+        onCropChange({ left: newLeft, top: newTop, right: newRight, bottom: newBottom });
     };
 
     const handleDragStart = (e) => {
@@ -128,7 +137,7 @@ export const CropOverlay = ({
 
     if (!isActive || !canvasRef.current) return null;
 
-    const { x, y, width, height } = cropData;
+
 
     return (
         <div
