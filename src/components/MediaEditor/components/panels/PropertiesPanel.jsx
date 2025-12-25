@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X } from 'lucide-react';
+import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, RotateCcw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { CropPanel } from '../CropPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
@@ -57,7 +57,8 @@ const VideoPropertiesPanel = ({
     onToggleCropMode,
     cropPreset,
     onCropPresetChange,
-    onRemoveBackground
+    onRemoveBackground,
+    onRestoreBackground
 }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
@@ -416,42 +417,69 @@ const VideoPropertiesPanel = ({
                                             <p className="text-[10px] text-white/40 italic">Background removal is currently only supported for images and videos.</p>
                                         </div>
                                     ) : (
-                                        <button
-                                            onClick={async () => {
-                                                if (onRemoveBackground) {
-                                                    setIsProcessing(true);
-                                                    setProcessingStatus('Removing background...');
-                                                    try {
-                                                        await onRemoveBackground(activeItem.id);
-                                                    } catch (e) {
-                                                        console.error(e);
-                                                    } finally {
-                                                        setIsProcessing(false);
-                                                        setProcessingStatus('');
-                                                    }
-                                                }
-                                            }}
-                                            disabled={isProcessing}
-                                            className={`w-full py-2.5 bg-white text-black font-bold text-xs rounded-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/5 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        >
-                                            {isProcessing ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" />
-                                                    Processing...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Zap size={14} className="text-yellow-600" fill="currentColor" />
-                                                    Remove Background
-                                                </>
+                                        <>
+                                            {/* Status Display - Show if background already removed */}
+                                            {activeItem.backgroundRemoved && (
+                                                <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                                                    <p className="text-xs text-green-300 font-medium">✓ Background Removed</p>
+                                                    <p className="text-[9px] text-green-300/60 mt-1">
+                                                        Background has been successfully removed from this {activeItem.type}
+                                                    </p>
+                                                </div>
                                             )}
-                                        </button>
+
+                                            {/* Remove Background Button */}
+                                            {!activeItem.backgroundRemoved && (
+                                                <button
+                                                    onClick={async () => {
+                                                        if (onRemoveBackground) {
+                                                            setIsProcessing(true);
+                                                            setProcessingStatus('Removing background...');
+                                                            try {
+                                                                await onRemoveBackground(activeItem.id);
+                                                            } catch (e) {
+                                                                console.error(e);
+                                                            } finally {
+                                                                setIsProcessing(false);
+                                                                setProcessingStatus('');
+                                                            }
+                                                        }
+                                                    }}
+                                                    disabled={isProcessing}
+                                                    className={`w-full py-2.5 bg-white text-black font-bold text-xs rounded-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/5 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''
+                                                        }`}
+                                                >
+                                                    {isProcessing ? (
+                                                        <>
+                                                            <Loader2 size={14} className="animate-spin" />
+                                                            Processing...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Zap size={14} className="text-yellow-600" fill="currentColor" />
+                                                            Remove Background
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {/* Restore Button - Show if background was removed */}
+                                            {activeItem.backgroundRemoved && activeItem.originalSource && onRestoreBackground && (
+                                                <button
+                                                    onClick={() => onRestoreBackground(activeItem.id)}
+                                                    className="w-full py-2.5 bg-blue-500/20 text-blue-300 font-bold text-xs rounded-lg hover:bg-blue-500/30 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <RotateCcw size={14} />
+                                                    Restore Original Background
+                                                </button>
+                                            )}
+                                        </>
                                     )}
                                 </div>
 
                                 <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                                     <p className="text-[10px] text-white/50 leading-relaxed">
-                                        <span className="text-blue-400 font-bold">Pro Tip:</span> For best results, use images with a clear subject and good contrast between the foreground and background.
+                                        <span className="text-blue-400 font-bold">Pro Tip:</span> For videos, processing may take a few minutes. The result will have a transparent background that you can replace with any color or image.
                                     </p>
                                 </div>
                             </div>

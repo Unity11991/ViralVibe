@@ -20,7 +20,8 @@ import { Button } from './MediaEditor/components/UI';
 import { getFrameState } from './MediaEditor/utils/renderLogic';
 import mediaSourceManager from './MediaEditor/utils/MediaSourceManager';
 import { removeBackgroundAI } from '../utils/aiService';
-import { processVideoBackgroundRemoval } from '../utils/videoProcessor';
+import { processVideoWithBackgroundRemoval } from './MediaEditor/utils/processVideoWithBackgroundRemoval';
+import BackgroundRemovalProgressModal from './MediaEditor/components/modals/BackgroundRemovalProgressModal';
 
 // New Layout Components
 import { EditorLayout } from './MediaEditor/components/layout/EditorLayout';
@@ -57,6 +58,12 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [compositionStatus, setCompositionStatus] = useState('');
     const [compositionSteps, setCompositionSteps] = useState({ current: 0, total: 0 });
     const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+
+    // Background Removal State
+    const [showBgRemovalProgress, setShowBgRemovalProgress] = useState(false);
+    const [bgRemovalProgress, setBgRemovalProgress] = useState(0);
+    const [bgRemovalCurrentFrame, setBgRemovalCurrentFrame] = useState(0);
+    const [bgRemovalTotalFrames, setBgRemovalTotalFrames] = useState(0);
     // Load Fonts
     useEffect(() => {
         const link = document.createElement('link');
@@ -1575,34 +1582,43 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         const isVideo = item.type === 'video';
 
         try {
-            // Get the actual media element
-            const mediaElement = getVideoElement(clipId);
-            if (!mediaElement) throw new Error("Media element not found");
-
             if (isVideo) {
-                // Video Background Removal Logic
-                console.log("Starting Video Background Removal (Baked Alpha)...");
+                // Video Background Removal - Baked Processing (Canva/CapCut Style)
+                console.log("Starting Video Background Removal (Baked Processing)...");
 
-                // Process Video
-                const processedVideoUrl = await processVideoBackgroundRemoval(item.source, (progress) => {
-                    console.log(`Processing: ${progress}%`);
-                });
+                // Show progress modal
+                setShowBgRemovalProgress(true);
+                setBgRemovalProgress(0);
 
-                // Update Clip with new transparent video
+                // Process video with background removal
+                const processedVideoUrl = await processVideoWithBackgroundRemoval(
+                    item.source,
+                    (progress) => {
+                        setBgRemovalProgress(progress);
+                        console.log(`Processing: ${progress}%`);
+                    }
+                );
+
+                // Update clip with processed video
                 updateClip(clipId, {
                     source: processedVideoUrl,
-                    maskSource: null,
-                    mask: null // Clear any existing mask
+                    originalSource: item.source, // Keep original for restore option
+                    backgroundRemoved: true
                 });
 
-                // Register new source
+                // Register new source in media manager
                 mediaSourceManager.getMedia(processedVideoUrl, 'video');
+
+                // Hide progress modal
+                setShowBgRemovalProgress(false);
 
                 console.log("Video Background Removal Complete!");
 
-
             } else {
                 // Image Background Removal (Existing Logic)
+                const mediaElement = getVideoElement(clipId);
+                if (!mediaElement) throw new Error("Media element not found");
+
                 const canvas = document.createElement('canvas');
                 canvas.width = mediaElement.naturalWidth || mediaElement.width;
                 canvas.height = mediaElement.naturalHeight || mediaElement.height;
@@ -1614,16 +1630,42 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 const resultBase64 = await removeBackgroundAI(base64);
 
                 if (resultBase64) {
-                    updateClip(clipId, { source: resultBase64 });
+                    updateClip(clipId, {
+                        source: resultBase64,
+                        originalSource: item.source,
+                        backgroundRemoved: true
+                    });
                     // Also update the media source manager so it doesn't use the old cached version
                     mediaSourceManager.getMedia(resultBase64, 'image');
                 }
             }
         } catch (error) {
             console.error("Failed to remove background:", error);
+            setShowBgRemovalProgress(false);
             alert("Failed to remove background: " + error.message);
         }
     }, [selectedClipId, tracks, updateClip, getVideoElement]);
+
+    const handleRestoreBackground = useCallback((clipId) => {
+        const item = getActiveItem();
+
+        if (!item || item.id !== clipId) {
+            console.error("Invalid item for restore");
+            return;
+        }
+
+        if (item.originalSource && item.backgroundRemoved) {
+            updateClip(clipId, {
+                source: item.originalSource,
+                backgroundRemoved: false
+            });
+
+            mediaSourceManager.getMedia(item.originalSource, item.type);
+            console.log("Background restored successfully!");
+        } else {
+            console.warn("No original source to restore");
+        }
+    }, [selectedClipId, tracks, updateClip]);
 
     const handleCropPresetChange = useCallback((preset) => {
         setCropPreset(preset);
@@ -1965,6 +2007,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         cropPreset={cropPreset}
                         onCropPresetChange={handleCropPresetChange}
                         onRemoveBackground={handleRemoveBackground}
+                        onRestoreBackground={handleRestoreBackground}
                     />
                 }
                 bottomPanel={
@@ -2044,6 +2087,18 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 status={compositionStatus}
                 currentStep={compositionSteps.current}
                 totalSteps={compositionSteps.total}
+            />
+
+            {/* Background Removal Progress Modal */}
+            <BackgroundRemovalProgressModal
+                isOpen={showBgRemovalProgress}
+                progress={bgRemovalProgress}
+                currentFrame={bgRemovalCurrentFrame}
+                totalFrames={bgRemovalTotalFrames}
+                onCancel={() => {
+                    setShowBgRemovalProgress(false);
+                    // TODO: Implement actual cancellation logic
+                }}
             />
 
             <ExportModal

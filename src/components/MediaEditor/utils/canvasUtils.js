@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Canvas Utilities for MediaEditor
  * Handles all canvas rendering operations
  * OPTIMIZED FOR HD VIDEO PERFORMANCE
@@ -6,6 +6,7 @@
 
 import { detectFaces, applySkinSmoothing, applyTeethWhitening } from './aiFaceService';
 import { getGrainTexture, getVignetteGradient } from './textureCache';
+import { getBackgroundRemovalProcessor } from './BackgroundRemovalProcessor';
 
 /**
  * Draw image or video frame to canvas with filters
@@ -165,7 +166,7 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
         blendMode = 'normal'
     } = transform;
 
-    const { mask = null, faceRetouch = null, isPlaying = false } = options;
+    const { mask = null, faceRetouch = null, isPlaying = false, backgroundRemoval = null, clipId = null, currentTime = 0 } = options;
 
     const { clearCanvas = true } = options;
 
@@ -302,6 +303,51 @@ export const drawMediaToCanvas = (ctx, media, filters, transform = {}, canvasDim
             context.fillRect(drawX, drawY, drawWidth, drawHeight);
         }
     };
+
+    // Background Removal Processing (for videos with backgroundRemoval enabled)
+    if (backgroundRemoval && backgroundRemoval.enabled && media instanceof HTMLVideoElement) {
+        const processor = getBackgroundRemovalProcessor();
+
+        // Ensure processor is initialized with current quality setting
+        const quality = backgroundRemoval.quality || 'balanced';
+        if (!processor.isInitialized || processor.currentQuality !== quality) {
+            processor.initialize(quality).catch(err => console.error('BG Removal init error:', err));
+        }
+
+        // Process current frame to get segmentation mask (async but cached)
+        processor.processFrame(media, currentTime, clipId).then(maskData => {
+            if (!maskData) return;
+
+            // Apply background removal mask in a separate compositing pass
+            // This modifies the canvas after the main draw
+            const tempCanvas = getCachedCanvas(logicalWidth, logicalHeight);
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+
+            // Copy current canvas content to temp
+            tempCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Create mask image from mask data
+            const maskCanvas = getCachedCanvas(maskData.width, maskData.height);
+            const maskCtx = maskCanvas.getContext('2d');
+            maskCtx.putImageData(maskData, 0, 0);
+
+            // Apply mask as alpha channel
+            tempCtx.globalCompositeOperation = 'destination-in';
+            tempCtx.drawImage(maskCanvas, 0, 0, logicalWidth, logicalHeight);
+
+            //'Clear main canvas and draw masked result
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(tempCanvas, 0, 0);
+
+            releaseCanvas(tempCanvas);
+            releaseCanvas(maskCanvas);
+        }).catch(err => {
+            console.error('Background removal error:', err);
+            // Continue without background removal on error
+        });
+    }
+
 
     // Soft Masking (Composite)
     if (mask && mask.type !== 'none' && (mask.blur > 0 || mask.type === 'text' || mask.type === 'image')) {
@@ -953,7 +999,8 @@ const renderLayer = (ctx, layer, globalState) => {
         opacity = 100,
         blendMode = 'normal',
         transition = null,
-        faceRetouch = null
+        faceRetouch = null,
+        backgroundRemoval = null
     } = layer;
 
     // 1. Setup Context State
@@ -988,7 +1035,10 @@ const renderLayer = (ctx, layer, globalState) => {
             applyFiltersToContext: true,
             clearCanvas: false,
             mask: mask,
-            faceRetouch: faceRetouch
+            faceRetouch: faceRetouch,
+            backgroundRemoval: backgroundRemoval,
+            clipId: layer.id,
+            currentTime: globalState.currentTime || 0
         });
 
         // 3. Apply Transition Mask (Destination-In)
@@ -1009,7 +1059,10 @@ const renderLayer = (ctx, layer, globalState) => {
             applyFiltersToContext: true,
             clearCanvas: false,
             mask: mask,
-            faceRetouch: faceRetouch
+            faceRetouch: faceRetouch,
+            backgroundRemoval: backgroundRemoval,
+            clipId: layer.id,
+            currentTime: globalState.currentTime || 0
         });
     } else if (type === 'text') {
         drawTextOverlay(ctx, layer, canvasDimensions.width, canvasDimensions.height);
@@ -2568,3 +2621,5 @@ export const getHandleAtPoint = (x, y, clip, canvasDimensions, mediaDimensions) 
 
     return null;
 };
+
+

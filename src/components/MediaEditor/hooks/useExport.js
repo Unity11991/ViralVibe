@@ -3,6 +3,7 @@ import * as Mp4Muxer from 'mp4-muxer';
 import { renderFrame } from '../utils/canvasUtils';
 import { getFrameState } from '../utils/renderLogic';
 import mediaSourceManager from '../utils/MediaSourceManager';
+import VideoDecoderManager from '../utils/VideoDecoderManager';
 
 /**
  * Hook for High Quality Video Export using WebCodecs and mp4-muxer
@@ -123,22 +124,57 @@ export const useExport = (timelineState, canvasRef) => {
             });
 
             // 5. Video Render Loop
+            setExportStatus('Initializing Decoders...');
+
+            // Initialize Decoders for all video clips
+            const decoders = new Map(); // url -> VideoDecoderManager
+
+            // Collect unique video sources
+            const videoSources = new Set();
+            timelineState.tracks.forEach(t => {
+                if (t.type === 'video') {
+                    t.clips.forEach(c => {
+                        if (c.source && c.source.toLowerCase().includes('mp4')) { // Simple check for V1
+                            videoSources.add(c.source);
+                        }
+                    });
+                }
+            });
+
+            // Init Managers
+            const initPromises = Array.from(videoSources).map(async (url) => {
+                const manager = new VideoDecoderManager(url);
+                try {
+                    await manager.prepare();
+                    decoders.set(url, manager);
+                } catch (e) {
+                    console.warn(`Failed to init decoder for ${url}, falling back to legacy seeking.`, e);
+                }
+            });
+
+            await Promise.all(initPromises);
+
+
             setExportStatus('Rendering video frames...');
             for (let i = 0; i < totalFrames; i++) {
                 if (abortControllerRef.current.signal.aborted) {
+                    decoders.forEach(d => d.release()); // Cleanup
                     throw new Error('Export cancelled');
                 }
 
                 if (encoderError) {
+                    decoders.forEach(d => d.release());
                     throw new Error(`Encoding failed: ${encoderError.message}`);
                 }
 
                 const time = i / fps;
-                setExportProgress(Math.round((i / totalFrames) * 80)); // 80% for video
+                setExportProgress(Math.round((i / totalFrames) * 80));
 
                 const seekPromises = [];
+                const activeDecodedFrames = new Map(); // url -> VideoFrame (to be closed after render)
+
+                // Legacy Seek Function (Fallback)
                 const seekVideo = async (videoEl, targetTime) => {
-                    // 1. Ensure video has enough data to start with
                     if (videoEl.readyState < 2) {
                         await new Promise(resolve => {
                             const onCanPlay = () => {
@@ -146,15 +182,10 @@ export const useExport = (timelineState, canvasRef) => {
                                 resolve();
                             };
                             videoEl.addEventListener('canplay', onCanPlay, { once: true });
-                            // Fallback timeout
-                            setTimeout(resolve, 1000);
+                            setTimeout(resolve, 300);
                         });
                     }
-
-                    // 2. Perform Seek
                     videoEl.currentTime = targetTime;
-
-                    // 3. Wait for seek to complete
                     if (videoEl.seeking || Math.abs(videoEl.currentTime - targetTime) > 0.001) {
                         await new Promise(resolve => {
                             const onSeeked = () => {
@@ -162,52 +193,54 @@ export const useExport = (timelineState, canvasRef) => {
                                 resolve();
                             };
                             videoEl.addEventListener('seeked', onSeeked, { once: true });
-                            // Fallback timeout
-                            setTimeout(resolve, 1000);
+                            setTimeout(resolve, 300);
                         });
                     }
-
-                    // 4. Wait for frame data to be available (readyState >= 2)
-                    // Double check after seek
-                    if (videoEl.readyState < 2) {
-                        await new Promise(resolve => {
-                            const onCanPlay = () => {
-                                videoEl.removeEventListener('canplay', onCanPlay);
-                                resolve();
-                            };
-                            videoEl.addEventListener('canplay', onCanPlay, { once: true });
-                            setTimeout(resolve, 500);
-                        });
-                    }
-
-                    // 5. Request Video Frame Callback to ensure texture is updated
                     if (videoEl.requestVideoFrameCallback) {
                         await new Promise(resolve => {
                             videoEl.requestVideoFrameCallback(() => resolve());
-                            // Safety timeout in case rVFC doesn't fire (e.g. background tab throttling, though unlikely in export loop)
-                            setTimeout(resolve, 100);
+                            setTimeout(resolve, 20);
                         });
                     } else {
-                        // Fallback for browsers without rVFC
-                        await new Promise(r => setTimeout(r, 50));
+                        await new Promise(r => setTimeout(r, 20));
                     }
                 };
+
+                // Prepare Sources (Mixed Mode: Decoder vs Legacy)
+                const processingPromises = [];
 
                 timelineState.tracks.forEach(track => {
                     const clip = track.clips.find(c => time >= c.startTime && time < (c.startTime + c.duration));
                     if (clip && clip.source && (track.type === 'video' || track.type === 'image')) {
-                        const mediaEl = mediaSourceManager.getMedia(clip.source, track.type === 'image' ? 'image' : 'video');
-                        if (mediaEl && track.type === 'video') {
+                        // Check if we have a fast decoder
+                        const decoder = decoders.get(clip.source);
+
+                        if (decoder && track.type === 'video') {
                             const clipTime = time - clip.startTime;
                             const sourceTime = (clip.startOffset || 0) + clipTime;
-                            seekPromises.push(seekVideo(mediaEl, sourceTime));
+
+                            // Fast Path: Get Frame from Decoder
+                            processingPromises.push(async () => {
+                                const frame = await decoder.getFrame(sourceTime);
+                                if (frame) {
+                                    activeDecodedFrames.set(clip.id, frame);
+                                }
+                            });
+                        } else {
+                            // Slow Path: Legacy Fallback
+                            const mediaEl = mediaSourceManager.getMedia(clip.source, track.type === 'image' ? 'image' : 'video');
+                            if (mediaEl && track.type === 'video') {
+                                const clipTime = time - clip.startTime;
+                                const sourceTime = (clip.startOffset || 0) + clipTime;
+                                processingPromises.push(async () => await seekVideo(mediaEl, sourceTime));
+                            }
                         }
                     }
                 });
 
-                if (seekPromises.length > 0) {
-                    await Promise.all(seekPromises);
-                }
+                // Wait for all seeks/decodes
+                await Promise.all(processingPromises.map(p => p())); // execute wrapper funcs
+
 
                 // SCALING FIX:
                 // Transform absolute pixel coordinates from editing canvas to export canvas
@@ -245,13 +278,20 @@ export const useExport = (timelineState, canvasRef) => {
                     canvasDimensions: { width, height },
                     effectIntensity: timelineState.effectIntensity,
                     activeEffectId: timelineState.activeEffectId,
-                    activeFilterId: timelineState.activeFilterId
+                    activeFilterId: timelineState.activeFilterId,
+                    externalMediaMap: activeDecodedFrames // PASS DECODED FRAMES
                 });
 
                 renderFrame(ctx, null, frameState, {
                     forceHighQuality: true,
                     applyFiltersToContext: true
                 });
+
+                // CLEANUP: Close VideoFrames immediately after render to free VRAM
+                activeDecodedFrames.forEach((frame) => {
+                    frame.close();
+                });
+                activeDecodedFrames.clear();
 
                 const frame = new VideoFrame(exportCanvas, {
                     timestamp: i * (1000000 / fps),
@@ -261,7 +301,7 @@ export const useExport = (timelineState, canvasRef) => {
                 videoEncoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
                 frame.close();
 
-                if (i % 5 === 0) {
+                if (i % 15 === 0) {
                     await new Promise(r => setTimeout(r, 0));
                 }
             }

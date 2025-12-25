@@ -218,7 +218,13 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
 
             if (clip.source) {
                 const trackType = track.type === 'audio' ? 'audio' : (track.type === 'image' ? 'image' : 'video');
-                media = mediaSourceManager.getMedia(clip.source, clip.type || trackType, variant);
+
+                // Allow External Override (e.g. from Export Decoders)
+                if (globalState.externalMediaMap && globalState.externalMediaMap.has(clip.id)) {
+                    media = globalState.externalMediaMap.get(clip.id);
+                } else {
+                    media = mediaSourceManager.getMedia(clip.source, clip.type || trackType, variant);
+                }
             }
 
             let maskMedia = null;
