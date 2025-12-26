@@ -225,11 +225,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         setTrimRange(prev => ({ ...prev, end: timelineDuration }));
     }, [timelineDuration]);
 
-    // Initialize iOS timeline lock
-    useEffect(() => {
-        lockTimelinePositionIOS();
-    }, []);
-
     // Unified Loop Handler (Sync + Render)
     const handleRender = useCallback((time, isPlaying) => {
         const globalState = {

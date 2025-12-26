@@ -783,74 +783,81 @@
 
 /* ==================== Mobile Timeline Container Stability ==================== */
 
-/* Ensure timeline container is stable and doesn't move */
+/* Strict Viewport Locking for iOS - Prevents ALL global scrolling */
 @media (max-width: 767px) {
 
-    /* Lock timeline position */
-    .md\:hidden.fixed.bottom-\[72px\] {
+    /* Lock the root containers to the dynamic viewport height */
+    html {
+        height: 100dvh !important;
+        width: 100vw !important;
+        overflow: hidden !important;
         position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        touch-action: none !important;
+        /* Disable double-tap zoom etc */
+    }
+
+    body {
+        height: 100dvh !important;
+        width: 100vw !important;
+        overflow: hidden !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        touch-action: none !important;
+        overscroll-behavior: none !important;
+        /* Prevent rubber-banding */
+    }
+
+    /* Ensure specific app root also fills space */
+    #root {
+        height: 100dvh !important;
+        width: 100vw !important;
+        overflow: hidden !important;
+    }
+
+    /* The main editor layout must fit exactly */
+    .editor-layout {
+        height: 100dvh !important;
+        width: 100vw !important;
+        overflow: hidden !important;
+        position: relative !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* TIMELINE STABILITY */
+    /* Instead of fixed/sticky, we use absolute positioning within the locked container */
+    .md\:hidden.fixed.bottom-\[72px\] {
+        position: absolute !important;
         bottom: 72px !important;
         left: 0 !important;
         right: 0 !important;
+        height: auto !important;
         z-index: 30 !important;
-        transform: none !important;
-        will-change: auto !important;
+        background: #1a1a1f !important;
     }
 
-    /* Prevent any transforms or movements */
-    .md\:hidden.fixed.bottom-\[72px\] * {
-        transform: translateZ(0);
-        /* Force GPU acceleration */
-        -webkit-transform: translateZ(0);
-    }
-
-    /* Lock toolbar position */
+    /* Toolbar Stability */
     .capcut-mobile-toolbar {
-        position: fixed !important;
+        position: absolute !important;
         bottom: 0 !important;
         left: 0 !important;
         right: 0 !important;
-        z-index: 100 !important;
+        height: 72px !important;
+        z-index: 50 !important;
+        background: #000 !important;
+        /* Ensure background is solid */
     }
 
-    /* Ensure body doesn't scroll horizontally */
-    body {
-        overflow-x: hidden !important;
-        width: 100vw;
-        max-width: 100vw;
-        position: relative;
-    }
-
-    /* Prevent viewport shifting - iOS compatible */
-    html {
-        overflow-x: hidden !important;
-        width: 100vw;
-        max-width: 100vw;
-        /* Don't use position: fixed on html for iOS */
-    }
-
-    /* Lock main editor container */
-    .editor-layout {
-        width: 100vw;
-        max-width: 100vw;
-        overflow-x: hidden;
-    }
-
-    /* iOS Safari specific fixes */
-    @supports (-webkit-touch-callout: none) {
-
-        /* Prevent rubber band effect from moving timeline */
-        body {
-            position: relative;
-            overflow: hidden;
-            height: 100vh;
-            height: -webkit-fill-available;
-        }
-
-        /* Make timeline stick properly on iOS */
-        .md\:hidden.fixed.bottom-\[72px\] {
-            position: -webkit-sticky !important;
-            position: sticky !important;
-        }
+    /* Middle Canvas Area - Must take remaining space */
+    .editor-layout .flex-1.relative.bg-\[#0f0f12\] {
+        flex: 1 !important;
+        height: auto !important;
+        /* Ensure it doesn't push bounds */
+        margin-bottom: 272px !important;
+        /* 200px timeline + 72px toolbar */
+        overflow: hidden !important;
     }
 }
