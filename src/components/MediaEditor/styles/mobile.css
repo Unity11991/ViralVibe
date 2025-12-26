@@ -673,6 +673,8 @@
 /* ==================== Mobile Timeline Controls ==================== */
 
 .mobile-timeline-controls {
+    position: relative;
+    /* Changed from flex to relative */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -680,8 +682,8 @@
     background: #1a1a1f;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    min-height: 52px;
+    width: 100%;
 }
 
 .mobile-timeline-controls-left,
@@ -694,11 +696,24 @@
 .mobile-timeline-controls-left {
     flex: 1;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    /* Prevent scrollbar from affecting layout */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.mobile-timeline-controls-left::-webkit-scrollbar {
+    display: none;
 }
 
 .mobile-timeline-controls-right {
     flex-shrink: 0;
+    position: sticky;
+    right: 0;
+    background: #1a1a1f;
+    padding-left: 8px;
+    z-index: 1;
 }
 
 .mobile-control-btn {
@@ -764,4 +779,61 @@
 .mobile-timeline-controls-left {
     -ms-overflow-style: none;
     scrollbar-width: none;
+}
+
+/* ==================== Mobile Timeline Container Stability ==================== */
+
+/* Ensure timeline container is stable and doesn't move */
+@media (max-width: 767px) {
+
+    /* Lock timeline position */
+    .md\:hidden.fixed.bottom-\[72px\] {
+        position: fixed !important;
+        bottom: 72px !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 30 !important;
+        transform: none !important;
+        will-change: auto !important;
+    }
+
+    /* Prevent any transforms or movements */
+    .md\:hidden.fixed.bottom-\[72px\] * {
+        transform: translateZ(0);
+        /* Force GPU acceleration */
+        -webkit-transform: translateZ(0);
+    }
+
+    /* Lock toolbar position */
+    .capcut-mobile-toolbar {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 100 !important;
+    }
+
+    /* Ensure body doesn't scroll horizontally */
+    body {
+        overflow-x: hidden;
+        position: relative;
+    }
+
+    /* Prevent viewport shifting */
+    html {
+        overflow-x: hidden;
+        width: 100%;
+        position: fixed;
+        height: 100%;
+    }
+
+    /* Lock main editor container */
+    .editor-layout {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: hidden;
+    }
 }
