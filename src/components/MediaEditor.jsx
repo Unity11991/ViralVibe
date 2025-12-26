@@ -14,7 +14,7 @@ import ExportModal from './MediaEditor/components/modals/ExportModal';
 
 
 import { getInitialAdjustments, applyFilterPreset } from './MediaEditor/utils/filterUtils';
-import { isPointInClip, isPointInText, getHandleAtPoint, buildFilterString } from './MediaEditor/utils/canvasUtils';
+import { isPointInClip, isPointInText, getHandleAtPoint, buildFilterString, drawMaskOverlay, getMaskHandleAtPoint } from './MediaEditor/utils/canvasUtils';
 import { detectBeats } from './MediaEditor/utils/waveformUtils';
 import { Button } from './MediaEditor/components/UI';
 import { getFrameState } from './MediaEditor/utils/renderLogic';
@@ -840,6 +840,68 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
 
             if (selectedItem) {
+                // Check Mask Handles first
+                if (selectedItem.mask && selectedItem.mask.type === 'filmstrip') {
+                    // We need to pass the mask relative to the clip?
+                    // drawMask uses mask properties which are relative to the CLIP's dimensions.
+                    // But getMaskHandleAtPoint expects point in... what space?
+                    // It expects point relative to the clip center? No, it takes px, py and translates them relative to mask center.
+                    // But mask center is relative to clip center.
+                    // So we need to transform the mouse point from Canvas Space to Clip Space first.
+
+                    // Canvas Space -> Clip Space:
+                    // Translate by Clip Center
+                    // Rotate by Clip Rotation
+                    // Scale by Clip Scale? No, mask is drawn in clip space.
+
+                    // Wait, `drawMask` is called AFTER `ctx.translate` and `ctx.rotate` for the clip.
+                    // So `drawMask` operates in Clip Local Space (unscaled by clip scale? No, clip scale is applied).
+                    // Actually `drawMediaToCanvas` applies clip transform:
+                    // ctx.translate(centerX, centerY);
+                    // ctx.rotate(rotation);
+                    // ctx.scale(scale, scale);
+                    // Then it calls `drawMask`.
+
+                    // So `getMaskHandleAtPoint` needs the point in Clip Local Space (after clip transform).
+
+                    const cx = canvasDimensions.width / 2 + (selectedItem.transform?.x || 0);
+                    const cy = canvasDimensions.height / 2 + (selectedItem.transform?.y || 0);
+                    const cRot = (selectedItem.transform?.rotation || 0) * Math.PI / 180;
+                    const cScale = (selectedItem.transform?.scale || 100) / 100;
+
+                    let dx = x - cx;
+                    let dy = y - cy;
+
+                    // Rotate back (Clip Rotation)
+                    const lx = dx * Math.cos(-cRot) - dy * Math.sin(-cRot);
+                    const ly = dx * Math.sin(-cRot) + dy * Math.cos(-cRot);
+
+                    // Scale back (Clip Scale)
+                    const finalX = lx / cScale;
+                    const finalY = ly / cScale;
+
+                    // Now we are in Clip Local Space (where width/height are the media dimensions)
+                    // We need media dimensions
+                    let mediaW = 100, mediaH = 100;
+                    const el = mediaSourceManager.getMedia(selectedItem.source, selectedItem.type === 'image' ? 'image' : 'video');
+                    if (el) {
+                        mediaW = el.videoWidth || el.width || 100;
+                        mediaH = el.videoHeight || el.height || 100;
+                    }
+
+                    const maskHandle = getMaskHandleAtPoint(finalX, finalY, selectedItem.mask, mediaW, mediaH);
+
+                    if (maskHandle) {
+                        setIsDraggingCanvas(true);
+                        setDragAction(maskHandle); // 'mask-top', 'mask-bottom', etc.
+                        setActiveHandle(maskHandle);
+                        setDragStart({ x, y, initialMask: { ...selectedItem.mask } });
+                        return;
+                    }
+                }
+
+                // Check Clip Handles
+                // ... existing code ...
                 // Check if we hit a handle
                 // For text, we need to construct the overlay object expected by utils
                 const itemForHitTest = isText ? {
@@ -1062,6 +1124,53 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                     transform: { ...clip.transform, scale: newScaleVal }
                 });
             }
+        } else if (dragAction.startsWith('mask-')) {
+            // Handle Mask Dragging
+            const { initialMask } = dragStart;
+            // We need delta in Clip Local Space?
+            // Actually, simplified:
+            // Top/Bottom affects ScaleY
+            // Left/Right affects ScaleX
+
+            // Sensitivity factor
+            const sensitivity = 0.5;
+
+            // We need to know direction relative to mask rotation too?
+            // For simplicity, let's just use magnitude of mouse movement or project it?
+            // Correct way: Project mouse delta onto the mask's local axes.
+            // But that requires full transform chain again.
+
+            // Simple approach: Just use dy for top/bottom (assuming mostly upright)
+            // Or better: Use the same logic as handleCanvasPointerDown to get local delta.
+
+            // Let's just use raw dy for now and see if it feels okay. 
+            // If mask is rotated, this will be weird.
+            // But implementing full inverse transform here is verbose.
+            // Let's try simple delta first.
+
+            let dScaleX = 0;
+            let dScaleY = 0;
+
+            if (dragAction === 'mask-top') {
+                dScaleY = -dy * sensitivity; // Drag up increases height
+            } else if (dragAction === 'mask-bottom') {
+                dScaleY = dy * sensitivity; // Drag down increases height
+            } else if (dragAction === 'mask-left') {
+                dScaleX = -dx * sensitivity;
+            } else if (dragAction === 'mask-right') {
+                dScaleX = dx * sensitivity;
+            }
+
+            const newMask = { ...initialMask };
+            if (dScaleX !== 0) {
+                newMask.scaleX = Math.max(10, (initialMask.scaleX || 100) + dScaleX);
+            }
+            if (dScaleY !== 0) {
+                newMask.scaleY = Math.max(10, (initialMask.scaleY || 100) + dScaleY);
+            }
+
+            updateClip(selectedClipId, { mask: newMask });
+
         } else if (dragAction === 'rotate') {
             const { cx, cy, initialAngle, initialRotation } = dragStart;
             const dx = x - cx;

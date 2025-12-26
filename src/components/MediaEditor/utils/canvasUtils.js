@@ -1142,6 +1142,10 @@ const renderLayer = (ctx, layer, globalState) => {
             // Re-calculate draw transform for selection box if needed
             // But drawSelectionBox expects the transform object.
             drawSelectionBox(ctx, transform, canvasDimensions, dims, type);
+
+            if (layer.mask && layer.mask.type === 'filmstrip') {
+                drawMaskOverlay(ctx, transform, layer.mask, mediaW, mediaH, canvasDimensions);
+            }
         }
     }
 
@@ -1489,11 +1493,15 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
         ctx.rect(-rectW / 2, -rectH / 2, rectW, rectH);
     } else if (type === 'filmstrip') {
         // Filmstrip: Wide rectangle with aspect ratio ~2.35:1
-        const stripWidth = width; // Full width
-        const stripHeight = width / 2.35; // Cinematic aspect ratio
-        // Scale affects the height of the strip relative to the standard cinematic ratio
-        const scaledHeight = stripHeight * (scale / 100);
-        ctx.rect(-width / 2, -scaledHeight / 2, width, scaledHeight);
+        // scaleX affects width, scaleY affects height (opening)
+
+        const sX = (scaleX !== undefined ? scaleX : scale) / 100;
+        const sY = (scaleY !== undefined ? scaleY : scale) / 100;
+
+        const stripWidth = width * sX;
+        const stripHeight = (width / 2.35) * sY;
+
+        ctx.rect(-stripWidth / 2, -stripHeight / 2, stripWidth, stripHeight);
     } else if (type === 'text') {
         const { text = 'Default text', fontSize = 40, fontFamily = 'Arial', isBold, isItalic, textAlign = 'center' } = mask;
 
@@ -1608,6 +1616,119 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
     } else {
         ctx.fill();
     }
+};
+
+/**
+ * Draw overlay controls for mask (Filmstrip handles)
+ */
+/**
+ * Draw overlay controls for mask (Filmstrip handles)
+ */
+export const drawMaskOverlay = (ctx, transform, mask, width, height, canvasDimensions) => {
+    const { type, x = 0, y = 0, scale = 100, scaleX, scaleY, rotation = 0 } = mask;
+    if (type !== 'filmstrip') return;
+
+    // 1. Apply Clip Transform
+    const { x: cxOffset = 0, y: cyOffset = 0, scale: cScale = 100, rotation: cRotation = 0 } = transform;
+    const cx = canvasDimensions.width / 2 + cxOffset;
+    const cy = canvasDimensions.height / 2 + cyOffset;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((cRotation * Math.PI) / 180);
+    ctx.scale(cScale / 100, cScale / 100);
+
+    // 2. Apply Mask Transform (Relative to Clip)
+    const maskX = (x / 100) * width;
+    const maskY = (y / 100) * height;
+
+    const sX = (scaleX !== undefined ? scaleX : scale) / 100;
+    const sY = (scaleY !== undefined ? scaleY : scale) / 100;
+
+    const stripWidth = width * sX;
+    const stripHeight = (width / 2.35) * sY;
+
+    ctx.translate(maskX, maskY);
+    ctx.rotate((rotation * Math.PI) / 180);
+
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 2 / (cScale / 100); // Counter-scale linewidth
+    ctx.setLineDash([5, 5]);
+
+    // Draw bounding box
+    ctx.strokeRect(-stripWidth / 2, -stripHeight / 2, stripWidth, stripHeight);
+
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff0000';
+
+    // Draw Handles
+    // Scale handles inversely to clip scale so they remain constant size on screen?
+    // Or just let them scale. Let's keep them constant size for better UX.
+    const globalScale = cScale / 100;
+    const handleSize = 8 / globalScale;
+
+    const halfW = stripWidth / 2;
+    const halfH = stripHeight / 2;
+
+    // Top Handle
+    ctx.beginPath();
+    ctx.arc(0, -halfH, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bottom Handle
+    ctx.beginPath();
+    ctx.arc(0, halfH, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left Handle
+    ctx.beginPath();
+    ctx.arc(-halfW, 0, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right Handle
+    ctx.beginPath();
+    ctx.arc(halfW, 0, handleSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+};
+
+/**
+ * Hit test for mask handles
+ */
+export const getMaskHandleAtPoint = (px, py, mask, width, height) => {
+    const { type, x = 0, y = 0, scale = 100, scaleX, scaleY, rotation = 0 } = mask;
+    if (type !== 'filmstrip') return null;
+
+    const maskX = (x / 100) * width;
+    const maskY = (y / 100) * height;
+
+    // Transform point to local mask space
+    // 1. Translate back
+    let dx = px - maskX;
+    let dy = py - maskY;
+
+    // 2. Rotate back
+    const rad = -(rotation * Math.PI) / 180;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    const sX = (scaleX !== undefined ? scaleX : scale) / 100;
+    const sY = (scaleY !== undefined ? scaleY : scale) / 100;
+
+    const stripWidth = width * sX;
+    const stripHeight = (width / 2.35) * sY;
+    const halfW = stripWidth / 2;
+    const halfH = stripHeight / 2;
+    const hitRadius = 15;
+
+    // Check Handles
+    if (Math.abs(lx - 0) < hitRadius && Math.abs(ly - (-halfH)) < hitRadius) return 'mask-top';
+    if (Math.abs(lx - 0) < hitRadius && Math.abs(ly - halfH) < hitRadius) return 'mask-bottom';
+    if (Math.abs(lx - (-halfW)) < hitRadius && Math.abs(ly - 0) < hitRadius) return 'mask-left';
+    if (Math.abs(lx - halfW) < hitRadius && Math.abs(ly - 0) < hitRadius) return 'mask-right';
+
+    return null;
 };
 
 /**

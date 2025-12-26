@@ -253,6 +253,21 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
                 crop: activeCrop || null
             };
 
+            // Calculate Mask Animations
+            let maskProps = null;
+            if (clip.mask) {
+                maskProps = {
+                    ...clip.mask,
+                    x: getVal('mask.x', clip.mask.x || 0),
+                    y: getVal('mask.y', clip.mask.y || 0),
+                    scale: getVal('mask.scale', clip.mask.scale || 100),
+                    scaleX: getVal('mask.scaleX', clip.mask.scaleX || 100),
+                    scaleY: getVal('mask.scaleY', clip.mask.scaleY || 100),
+                    rotation: getVal('mask.rotation', clip.mask.rotation || 0),
+                    blur: getVal('mask.blur', clip.mask.blur || 0)
+                };
+            }
+
             // Preset Animation (Intro/Outro)
             if (clip.animation && clip.animation.type !== 'none') {
                 const animDuration = clip.animation.duration || 1.0;
@@ -367,7 +382,7 @@ export const getFrameState = (currentTime, tracks, globalState = {}) => {
                 adjustments: clip.adjustments || getInitialAdjustments(),
                 filter: clip.filter || 'normal',
                 effect: clip.effect || null,
-                mask: clip.mask ? { ...clip.mask, media: maskMedia, source: clip.maskSource } : null,
+                mask: maskProps ? { ...maskProps, media: maskMedia, source: clip.maskSource } : null,
                 text: clip.text,
                 style: clip.style,
                 faceRetouch: clip.faceRetouch,

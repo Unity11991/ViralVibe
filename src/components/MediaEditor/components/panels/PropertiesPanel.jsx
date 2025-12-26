@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, RotateCcw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X } from 'lucide-react';
+import { Sliders, Wand2, Zap, Crop, Layers, Move, RotateCw, RotateCcw, Play, FastForward, Activity, MonitorPlay, Square, Loader2, X, Circle, Heart, Star, Film } from 'lucide-react';
 import { AdjustPanel } from '../AdjustPanel';
 import { CropPanel } from '../CropPanel';
 import { AudioPropertiesPanel } from './AudioPropertiesPanel';
@@ -34,7 +34,7 @@ const KeyframeControl = ({ property, value, activeItem, currentTime, onAddKeyfra
                 ? 'text-blue-500' // on keyframe
                 : hasKeyframes
                     ? 'text-blue-500/50 hover:text-blue-500' // has keyframes elsewhere
-                    : 'text-white/20 hover:text-white/50' // no keyframes
+                    : 'text-white/50 hover:text-white/80' // no keyframes
                 }`}
             title={activeKeyframe ? "Remove Keyframe" : "Add Keyframe"}
         >
@@ -486,9 +486,162 @@ const VideoPropertiesPanel = ({
                         )}
 
                         {videoSubTab === 'mask' && (
-                            <div className="flex flex-col items-center justify-center py-12 text-white/30 space-y-2">
-                                <Wand2 size={24} />
-                                <span className="text-xs">Coming Soon</span>
+                            <div className="space-y-6">
+                                {/* Mask Type Selector */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { id: 'none', label: 'None', icon: <X size={16} /> },
+                                        { id: 'rectangle', label: 'Rect', icon: <Square size={16} /> },
+                                        { id: 'circle', label: 'Circle', icon: <Circle size={16} /> },
+                                        { id: 'filmstrip', label: 'Filmstrip', icon: <Film size={16} /> },
+                                        { id: 'heart', label: 'Heart', icon: <Heart size={16} /> },
+                                        { id: 'star', label: 'Star', icon: <Star size={16} /> }
+                                    ].map(type => (
+                                        <button
+                                            key={type.id}
+                                            onClick={() => handleUpdate({ mask: { ...activeItem.mask, type: type.id } })}
+                                            className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all h-16 ${activeItem.mask?.type === type.id || (!activeItem.mask?.type && type.id === 'none')
+                                                ? 'bg-blue-500/20 border-blue-500 text-white'
+                                                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/20'
+                                                }`}
+                                        >
+                                            {type.icon}
+                                            <span className="text-[10px] font-medium text-center leading-tight mt-1">{type.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {activeItem.mask?.type && activeItem.mask.type !== 'none' && (
+                                    <div className="space-y-4 pt-4 border-t border-white/5">
+                                        {/* Scale */}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="mask.scale" val={activeItem.mask.scale || 100} />
+                                                    <span className="text-white/70">Scale</span>
+                                                </div>
+                                                <span className="text-white/40">{activeItem.mask.scale || 100}%</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="10"
+                                                max="200"
+                                                value={activeItem.mask.scale || 100}
+                                                onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, scale: parseInt(e.target.value) } })}
+                                                className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                                            />
+                                        </div>
+
+                                        {/* Scale X / Y */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {/* Width (Scale X) */}
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <KF prop="mask.scaleX" val={activeItem.mask.scaleX || 100} />
+                                                        <span className="text-white/70">Width</span>
+                                                    </div>
+                                                    <span className="text-white/40">{activeItem.mask.scaleX || 100}%</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="10"
+                                                    max="200"
+                                                    value={activeItem.mask.scaleX || 100}
+                                                    onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, scaleX: parseInt(e.target.value) } })}
+                                                    className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                                                />
+                                            </div>
+
+                                            {/* Height (Scale Y) */}
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <KF prop="mask.scaleY" val={activeItem.mask.scaleY || 100} />
+                                                        <span className="text-white/70">Height</span>
+                                                    </div>
+                                                    <span className="text-white/40">{activeItem.mask.scaleY || 100}%</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="10"
+                                                    max="200"
+                                                    value={activeItem.mask.scaleY || 100}
+                                                    onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, scaleY: parseInt(e.target.value) } })}
+                                                    className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-white/70">Position</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="bg-white/5 rounded px-2 py-1 flex items-center gap-2">
+                                                    <KF prop="mask.x" val={activeItem.mask.x || 0} />
+                                                    <span className="text-xs text-white/30">X</span>
+                                                    <input
+                                                        type="number"
+                                                        value={activeItem.mask.x || 0}
+                                                        onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, x: parseInt(e.target.value) } })}
+                                                        className="w-full bg-transparent text-xs text-white outline-none text-right"
+                                                    />
+                                                </div>
+                                                <div className="bg-white/5 rounded px-2 py-1 flex items-center gap-2">
+                                                    <KF prop="mask.y" val={activeItem.mask.y || 0} />
+                                                    <span className="text-xs text-white/30">Y</span>
+                                                    <input
+                                                        type="number"
+                                                        value={activeItem.mask.y || 0}
+                                                        onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, y: parseInt(e.target.value) } })}
+                                                        className="w-full bg-transparent text-xs text-white outline-none text-right"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Rotation */}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="mask.rotation" val={activeItem.mask.rotation || 0} />
+                                                    <span className="text-white/70">Rotation</span>
+                                                </div>
+                                                <span className="text-white/40">{activeItem.mask.rotation || 0}°</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <RotateCw size={14} className="text-white/30" />
+                                                <input
+                                                    type="range"
+                                                    min="-180"
+                                                    max="180"
+                                                    value={activeItem.mask.rotation || 0}
+                                                    onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, rotation: parseInt(e.target.value) } })}
+                                                    className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Blur (Feather) */}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <KF prop="mask.blur" val={activeItem.mask.blur || 0} />
+                                                    <span className="text-white/70">Feather</span>
+                                                </div>
+                                                <span className="text-white/40">{activeItem.mask.blur || 0}px</span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="50"
+                                                value={activeItem.mask.blur || 0}
+                                                onChange={(e) => handleUpdate({ mask: { ...activeItem.mask, blur: parseInt(e.target.value) } })}
+                                                className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
