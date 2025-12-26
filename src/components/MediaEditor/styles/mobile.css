@@ -815,25 +815,42 @@
 
     /* Ensure body doesn't scroll horizontally */
     body {
-        overflow-x: hidden;
+        overflow-x: hidden !important;
+        width: 100vw;
+        max-width: 100vw;
         position: relative;
     }
 
-    /* Prevent viewport shifting */
+    /* Prevent viewport shifting - iOS compatible */
     html {
-        overflow-x: hidden;
-        width: 100%;
-        position: fixed;
-        height: 100%;
+        overflow-x: hidden !important;
+        width: 100vw;
+        max-width: 100vw;
+        /* Don't use position: fixed on html for iOS */
     }
 
     /* Lock main editor container */
     .editor-layout {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        overflow: hidden;
+        width: 100vw;
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
+    /* iOS Safari specific fixes */
+    @supports (-webkit-touch-callout: none) {
+
+        /* Prevent rubber band effect from moving timeline */
+        body {
+            position: relative;
+            overflow: hidden;
+            height: 100vh;
+            height: -webkit-fill-available;
+        }
+
+        /* Make timeline stick properly on iOS */
+        .md\:hidden.fixed.bottom-\[72px\] {
+            position: -webkit-sticky !important;
+            position: sticky !important;
+        }
     }
 }
