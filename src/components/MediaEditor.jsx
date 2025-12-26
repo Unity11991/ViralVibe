@@ -39,6 +39,10 @@ import { ProjectCreationModal } from './MediaEditor/components/modals/ProjectCre
 import { getDefaultAspectRatio } from './MediaEditor/utils/aspectRatios';
 import { PixelFilters } from './MediaEditor/components/PixelFilters'; // Import PixelFilters
 
+// Mobile Styles
+import './MediaEditor/styles/mobile.css';
+import { MobileToolPanel } from './MediaEditor/components/mobile/MobileToolPanel';
+
 const EPSILON = 0.01;
 
 /**
@@ -145,12 +149,17 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const [effectIntensity, setEffectIntensity] = useState(50);
     const [cropPreset, setCropPreset] = useState('free');
     const [cropData, setCropData] = useState({ left: 0, top: 0, right: 0, bottom: 0 });
+
+    // Mobile Tool State
+    const [activeMobileTool, setActiveMobileTool] = useState(null);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [rotation, setRotation] = useState(0);
     const [zoom, setZoom] = useState(1);
     const [timelineZoom, setTimelineZoom] = useState(1);
     const [trimRange, setTrimRange] = useState({ start: 0, end: 0 });
     const [memeMode, setMemeMode] = useState(!!initialText);
     const [isCropMode, setIsCropMode] = useState(false); // Crop Mode State
+    const [isMaskMode, setIsMaskMode] = useState(false); // Mask Mode State
 
     // Canvas Interaction State
     const [isDragging, setIsDragging] = useState(false);
@@ -340,7 +349,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         });
 
         // 3. Draw Frame
-        render(frameState, { isPlaying });
+        render(frameState, { isPlaying, isMaskMode });
 
         // 4. Cleanup old sources occasionally
         if (Math.floor(time) % 30 === 0 && !isPlaying) {
@@ -348,7 +357,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         }
     }, [
         tracks, canvasDimensions, memeMode, selectedClipId,
-        adjustments, effectIntensity, activeEffectId, activeFilterId, render
+        adjustments, effectIntensity, activeEffectId, activeFilterId, render, isMaskMode
     ]);
 
     // Playback Hook
@@ -435,6 +444,21 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             }
         }
     }, [tracks, selectedClipId]);
+
+    // Mobile Resize Detection
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Mobile Tool Selection Handler
+    const handleMobileToolSelect = useCallback((toolId) => {
+        setActiveMobileTool(toolId);
+        setActiveTab(toolId); // Sync with desktop tab
+    }, []);
 
     // Handle Clip Selection
     const handleClipSelect = useCallback((clipId) => {
@@ -889,7 +913,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         mediaH = el.videoHeight || el.height || 100;
                     }
 
-                    const maskHandle = getMaskHandleAtPoint(finalX, finalY, selectedItem.mask, mediaW, mediaH);
+                    const maskHandle = getMaskHandleAtPoint(finalX, finalY, selectedItem.mask, mediaW, mediaH, canvasDimensions, selectedItem.transform);
 
                     if (maskHandle) {
                         setIsDraggingCanvas(true);
@@ -2007,6 +2031,29 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         <>
             <PixelFilters />
             <EditorLayout
+                onToolSelect={handleMobileToolSelect}
+                activeTool={activeMobileTool}
+                activeMobileTool={activeMobileTool}
+
+                // Timeline controls
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onSplit={handleSplit}
+                onDelete={handleDelete}
+                onDetachAudio={detachAudio}
+                onVoiceover={handleVoiceoverToggle}
+                onCamera={handleVideoOverToggle}
+                isRecording={isRecording}
+                isRecordingVideo={isRecordingVideo}
+                isPlaying={isPlaying}
+                onPlayPause={handlePlayPause}
+                onFullscreen={handleToggleFullscreen}
+                currentTime={currentTime}
+                duration={timelineDuration}
+                hasActiveClip={!!selectedClipId}
+
                 header={
                     <div className="flex items-center justify-between px-4 h-full">
                         <div className="flex items-center gap-3">
@@ -2099,6 +2146,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             }}
                             canvasDimensions={canvasDimensions}
                             onCanvasPointerUp={handleCanvasPointerUp}
+                            isMaskMode={isMaskMode}
                         />
                     </div>
                 }
@@ -2113,6 +2161,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onAddAdjustmentLayer={handleAddAdjustmentLayer}
                         isCropMode={isCropMode}
                         onToggleCropMode={setIsCropMode}
+                        isMaskMode={isMaskMode}
+                        onToggleMaskMode={setIsMaskMode}
                         cropPreset={cropPreset}
                         onCropPresetChange={handleCropPresetChange}
                         onRemoveBackground={handleRemoveBackground}
@@ -2219,6 +2269,64 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 status={exportStatus}
                 error={exportError}
             />
+
+            {/* Mobile Tool Panel */}
+            {isMobile && activeMobileTool && (
+                <MobileToolPanel
+                    isOpen={!!activeMobileTool}
+                    onClose={() => setActiveMobileTool(null)}
+                    title={activeMobileTool === 'edit' ? 'Properties' : activeMobileTool}
+                >
+                    {activeMobileTool === 'edit' ? (
+                        <PropertiesPanel
+                            activeItem={getActiveItem()}
+                            onUpdate={handleUpdateActiveItem}
+                            currentTime={currentTime}
+                            onAddKeyframe={addKeyframe}
+                            onRemoveKeyframe={removeKeyframe}
+                            getVideoElement={getVideoElement}
+                            onAddAdjustmentLayer={handleAddAdjustmentLayer}
+                            isCropMode={isCropMode}
+                            onToggleCropMode={setIsCropMode}
+                            isMaskMode={isMaskMode}
+                            onToggleMaskMode={setIsMaskMode}
+                            cropPreset={cropPreset}
+                            onCropPresetChange={handleCropPresetChange}
+                            onRemoveBackground={handleRemoveBackground}
+                            onRestoreBackground={handleRestoreBackground}
+                        />
+                    ) : (
+                        <AssetsPanel
+                            activeTab={activeMobileTool}
+                            setActiveTab={setActiveTab}
+                            onAddAsset={handleAddAsset}
+                            adjustments={adjustments}
+                            setAdjustments={handleSetAdjustments}
+                            activeFilterId={activeFilterId}
+                            setActiveFilterId={handleSetFilter}
+                            activeEffectId={activeEffectId}
+                            setActiveEffectId={handleSetEffect}
+                            effectIntensity={effectIntensity}
+                            setEffectIntensity={handleSetEffectIntensity}
+                            mediaUrl={mediaUrl}
+                            thumbnailUrl={thumbnailUrl}
+                            suggestedFilter={suggestedFilter}
+                            mediaLibrary={mediaLibrary}
+                            onAddToLibrary={handleAddToLibrary}
+                            mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
+                            onUpdateMask={handleSetMask}
+                            activeClip={getActiveItem()}
+                            onUpdateClip={handleUpdateActiveItem}
+                            onApplyTemplate={(newTracks) => {
+                                setTracks(newTracks);
+                                setAdjustments(getInitialAdjustments());
+                                setActiveFilterId('normal');
+                                setSelectedClipId(null);
+                            }}
+                        />
+                    )}
+                </MobileToolPanel>
+            )}
         </>
     );
 };

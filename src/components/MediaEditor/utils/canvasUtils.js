@@ -1228,7 +1228,9 @@ export const renderFrame = (ctx, media, state, options = { applyFiltersToContext
             memePadding,
             activeOverlayId: state.activeOverlayId,
             effectIntensity,
-            isPreview: options.isPreview // Pass preview flag to layers
+            effectIntensity,
+            isPreview: options.isPreview, // Pass preview flag to layers
+            isMaskMode: options.isMaskMode
         });
     });
 
@@ -1492,14 +1494,15 @@ export const drawMask = (ctx, mask, width, height, clip = true) => {
 
         ctx.rect(-rectW / 2, -rectH / 2, rectW, rectH);
     } else if (type === 'filmstrip') {
-        // Filmstrip: Wide rectangle with aspect ratio ~2.35:1
+        // Filmstrip: Wide rectangle
         // scaleX affects width, scaleY affects height (opening)
+        // Use actual media height instead of deriving from aspect ratio
 
         const sX = (scaleX !== undefined ? scaleX : scale) / 100;
         const sY = (scaleY !== undefined ? scaleY : scale) / 100;
 
         const stripWidth = width * sX;
-        const stripHeight = (width / 2.35) * sY;
+        const stripHeight = height * sY;
 
         ctx.rect(-stripWidth / 2, -stripHeight / 2, stripWidth, stripHeight);
     } else if (type === 'text') {
@@ -1645,14 +1648,36 @@ export const drawMaskOverlay = (ctx, transform, mask, width, height, canvasDimen
     const sX = (scaleX !== undefined ? scaleX : scale) / 100;
     const sY = (scaleY !== undefined ? scaleY : scale) / 100;
 
-    const stripWidth = width * sX;
-    const stripHeight = (width / 2.35) * sY;
+    let stripWidth = width * sX;
+    let stripHeight = height * sY;
+
+    // 3. Clamp mask dimensions to stay within canvas bounds
+    // Calculate the canvas boundaries in the current transformed space
+    const globalScale = cScale / 100;
+    const handleSize = 8 / globalScale;
+    const padding = handleSize * 2; // Extra padding to keep handles visible
+
+    // Maximum dimensions based on canvas size and current position
+    const canvasHalfW = (canvasDimensions.width / 2) / globalScale;
+    const canvasHalfH = (canvasDimensions.height / 2) / globalScale;
+
+    // Clamp width to ensure left/right handles stay in bounds
+    const maxWidth = (canvasHalfW - Math.abs(maskX) - padding) * 2;
+    if (stripWidth > maxWidth) {
+        stripWidth = Math.max(maxWidth, handleSize * 4); // Minimum visible size
+    }
+
+    // Clamp height to ensure top/bottom handles stay in bounds
+    const maxHeight = (canvasHalfH - Math.abs(maskY) - padding) * 2;
+    if (stripHeight > maxHeight) {
+        stripHeight = Math.max(maxHeight, handleSize * 4); // Minimum visible size
+    }
 
     ctx.translate(maskX, maskY);
     ctx.rotate((rotation * Math.PI) / 180);
 
     ctx.strokeStyle = '#ff0000';
-    ctx.lineWidth = 2 / (cScale / 100); // Counter-scale linewidth
+    ctx.lineWidth = 2 / globalScale; // Counter-scale linewidth
     ctx.setLineDash([5, 5]);
 
     // Draw bounding box
@@ -1662,11 +1687,6 @@ export const drawMaskOverlay = (ctx, transform, mask, width, height, canvasDimen
     ctx.fillStyle = '#ff0000';
 
     // Draw Handles
-    // Scale handles inversely to clip scale so they remain constant size on screen?
-    // Or just let them scale. Let's keep them constant size for better UX.
-    const globalScale = cScale / 100;
-    const handleSize = 8 / globalScale;
-
     const halfW = stripWidth / 2;
     const halfH = stripHeight / 2;
 
@@ -1696,7 +1716,11 @@ export const drawMaskOverlay = (ctx, transform, mask, width, height, canvasDimen
 /**
  * Hit test for mask handles
  */
-export const getMaskHandleAtPoint = (px, py, mask, width, height) => {
+/**
+ * Hit test for mask handles
+ * UPDATED: Matches drawMaskOverlay clamping logic
+ */
+export const getMaskHandleAtPoint = (px, py, mask, width, height, canvasDimensions, transform = {}) => {
     const { type, x = 0, y = 0, scale = 100, scaleX, scaleY, rotation = 0 } = mask;
     if (type !== 'filmstrip') return null;
 
@@ -1716,11 +1740,35 @@ export const getMaskHandleAtPoint = (px, py, mask, width, height) => {
     const sX = (scaleX !== undefined ? scaleX : scale) / 100;
     const sY = (scaleY !== undefined ? scaleY : scale) / 100;
 
-    const stripWidth = width * sX;
-    const stripHeight = (width / 2.35) * sY;
+    let stripWidth = width * sX;
+    let stripHeight = height * sY;
+
+    // 3. Apply Clamping (if canvasDimensions provided)
+    if (canvasDimensions) {
+        const { scale: cScale = 100 } = transform;
+        const globalScale = cScale / 100;
+        const handleSize = 8 / globalScale;
+        const padding = handleSize * 2;
+
+        const canvasHalfW = (canvasDimensions.width / 2) / globalScale;
+        const canvasHalfH = (canvasDimensions.height / 2) / globalScale;
+
+        // Clamp width
+        const maxWidth = (canvasHalfW - Math.abs(maskX) - padding) * 2;
+        if (stripWidth > maxWidth) {
+            stripWidth = Math.max(maxWidth, handleSize * 4);
+        }
+
+        // Clamp height
+        const maxHeight = (canvasHalfH - Math.abs(maskY) - padding) * 2;
+        if (stripHeight > maxHeight) {
+            stripHeight = Math.max(maxHeight, handleSize * 4);
+        }
+    }
+
     const halfW = stripWidth / 2;
     const halfH = stripHeight / 2;
-    const hitRadius = 15;
+    const hitRadius = 20; // Increased from 15 for easier grabbing
 
     // Check Handles
     if (Math.abs(lx - 0) < hitRadius && Math.abs(ly - (-halfH)) < hitRadius) return 'mask-top';

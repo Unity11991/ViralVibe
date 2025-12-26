@@ -4,6 +4,8 @@ import { useState, useCallback, useRef } from 'react';
  * Custom hook for managing timeline state (Tracks & Clips)
  * Includes History, Selection, and Magnetic Timeline logic.
  */
+const MIN_DURATION = 0.04; // ~1 frame at 25fps
+
 export const useTimelineState = () => {
     // State
     const [tracks, setTracks] = useState([]);
@@ -289,8 +291,9 @@ export const useTimelineState = () => {
 
             const clip = track.clips[clipIndex];
             const relativeSplit = splitTime - clip.startTime;
+            const minDur = MIN_DURATION;
 
-            if (relativeSplit <= 0.1 || relativeSplit >= clip.duration - 0.1) return track;
+            if (relativeSplit <= minDur || relativeSplit >= clip.duration - minDur) return track;
 
             tracksChanged = true;
 
@@ -359,7 +362,7 @@ export const useTimelineState = () => {
                     newStartOffset = validatedStartOffset;
                 }
 
-                if (validatedDuration < 0.1) validatedDuration = 0.1;
+                if (validatedDuration < MIN_DURATION) validatedDuration = MIN_DURATION;
 
                 const updatedClip = {
                     ...clip,

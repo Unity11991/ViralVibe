@@ -58,7 +58,9 @@ const VideoPropertiesPanel = ({
     cropPreset,
     onCropPresetChange,
     onRemoveBackground,
-    onRestoreBackground
+    onRestoreBackground,
+    isMaskMode,
+    onToggleMaskMode
 }) => {
     const [activeTab, setActiveTab] = useState('video'); // video, audio, speed, animation, adjust
     const [videoSubTab, setVideoSubTab] = useState('basic'); // basic, remove-bg, mask, retouch
@@ -137,6 +139,13 @@ const VideoPropertiesPanel = ({
             onToggleCropMode(videoSubTab === 'crop');
         }
     }, [videoSubTab, onToggleCropMode]);
+
+    // Sync Mask Mode (NEW)
+    React.useEffect(() => {
+        if (onToggleMaskMode) {
+            onToggleMaskMode(videoSubTab === 'mask');
+        }
+    }, [videoSubTab, onToggleMaskMode]);
 
     return (
         <div className="flex flex-col h-full">
@@ -749,7 +758,10 @@ export const PropertiesPanel = ({
     onToggleCropMode,
     cropPreset,
     onCropPresetChange,
-    onRemoveBackground
+
+    onRemoveBackground,
+    isMaskMode,
+    onToggleMaskMode
 }) => {
     const [activeTab, setActiveTab] = useState('style'); // style, animation
 
@@ -785,6 +797,8 @@ export const PropertiesPanel = ({
                 cropPreset={cropPreset}
                 onCropPresetChange={onCropPresetChange}
                 onRemoveBackground={onRemoveBackground}
+                isMaskMode={isMaskMode}
+                onToggleMaskMode={onToggleMaskMode}
             />
         );
     }
