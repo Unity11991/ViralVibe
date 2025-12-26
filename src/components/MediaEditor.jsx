@@ -42,6 +42,7 @@ import { PixelFilters } from './MediaEditor/components/PixelFilters'; // Import 
 // Mobile Styles
 import './MediaEditor/styles/mobile.css';
 import { MobileToolPanel } from './MediaEditor/components/mobile/MobileToolPanel';
+import { lockTimelinePositionIOS } from './MediaEditor/utils/iosTimelineLock';
 
 const EPSILON = 0.01;
 
@@ -223,6 +224,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     useEffect(() => {
         setTrimRange(prev => ({ ...prev, end: timelineDuration }));
     }, [timelineDuration]);
+
+    // Initialize iOS timeline lock
+    useEffect(() => {
+        lockTimelinePositionIOS();
+    }, []);
 
     // Unified Loop Handler (Sync + Render)
     const handleRender = useCallback((time, isPlaying) => {
