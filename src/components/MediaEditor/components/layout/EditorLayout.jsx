@@ -32,7 +32,12 @@ export const EditorLayout = ({
     onFullscreen,
     currentTime,
     duration,
-    hasActiveClip
+    hasActiveClip,
+    magneticMode,
+    onToggleMagnetic,
+    onGroup,
+    onUngroup,
+    onBeatDetect
 }) => {
     const [timelineHeight, setTimelineHeight] = useState(300);
     const [isResizing, setIsResizing] = useState(false);
@@ -99,7 +104,7 @@ export const EditorLayout = ({
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0f0f12] text-white overflow-hidden">
             {/* Header */}
-            <div className="h-14 border-b border-white/5 flex-shrink-0">
+            <div className="min-h-14 h-auto border-b border-white/5 flex-shrink-0 pt-safe-offset">
                 {header}
             </div>
 
@@ -144,35 +149,16 @@ export const EditorLayout = ({
                         {bottomPanel}
                     </div>
 
-                    {/* Mobile: Timeline Controls + Timeline (Always visible, above toolbar) */}
+                    {/* Mobile: Timeline (Always visible, above toolbar) */}
                     {isMobile && (
                         <div className="md:hidden fixed bottom-[72px] left-0 right-0 z-30">
-                            {/* Timeline Controls Bar */}
-                            <MobileTimelineControls
-                                onUndo={onUndo}
-                                onRedo={onRedo}
-                                canUndo={canUndo}
-                                canRedo={canRedo}
-                                onSplit={onSplit}
-                                onDelete={onDelete}
-                                onDetachAudio={onDetachAudio}
-                                onVoiceover={onVoiceover}
-                                onCamera={onCamera}
-                                isRecording={isRecording}
-                                isRecordingVideo={isRecordingVideo}
-                                isPlaying={isPlaying}
-                                onPlayPause={onPlayPause}
-                                onFullscreen={onFullscreen}
-                                currentTime={currentTime}
-                                duration={duration}
-                                hasActiveClip={hasActiveClip}
-                            />
-                            {/* Timeline */}
                             <div className="h-[200px] border-t border-white/5 bg-[#1a1a1f] overflow-hidden">
                                 {bottomPanel}
                             </div>
                         </div>
                     )}
+
+
                 </div>
 
                 {/* Right Panel (Properties) - Desktop Always Visible */}

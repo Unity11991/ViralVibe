@@ -1264,7 +1264,7 @@ const AudioStudio = ({ onClose, isPro }) => {
     return (
         <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white flex flex-col overflow-hidden">
             {/* Header Bar */}
-            <div className="h-14 bg-[#18181b] border-b border-white/10 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 relative">
+            <div className="min-h-14 h-auto bg-[#18181b] border-b border-white/10 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 relative pt-safe-offset">
                 <div className="flex items-center gap-3">
                     <Volume2 className="text-green-400" size={24} />
                     <h1 className="text-lg font-bold hidden md:block">Audio Studio</h1>

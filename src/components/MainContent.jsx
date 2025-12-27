@@ -86,7 +86,7 @@ const MainContent = ({
         <div className="flex flex-col min-h-screen">
             <div className="flex-1 max-w-[1600px] mx-auto p-4 lg:p-8 w-full flex flex-col">
                 {/* Header */}
-                <header className="flex items-center justify-between mb-8 shrink-0">
+                <header className="flex items-center justify-between mb-8 shrink-0 pt-safe-offset">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                             <Zap className="text-white" size={20} fill="currentColor" />
@@ -215,7 +215,7 @@ const MainContent = ({
                         {/* Right Column: Results (Scrollable) */}
                         <div
                             ref={resultsRef}
-                            className={`lg:col-span-7 lg:h-full glass-panel lg:overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}
+                            className={`lg:col-span-7 lg:h-full glass-panel lg:overflow-hidden flex-col relative flex`}
                         >
                             {results ? (
                                 <div className="lg:flex-1 lg:overflow-y-auto custom-scrollbar p-6 lg:p-8">

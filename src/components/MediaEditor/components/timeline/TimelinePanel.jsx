@@ -376,7 +376,7 @@ export const TimelinePanel = ({
     return (
         <div className={`flex flex-col h-full ${activeTool === 'razor' ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]' : ''}`}>
             {/* Timeline Toolbar */}
-            <div className="h-10 border-b border-white/5 flex items-center justify-between px-4 bg-[#1a1a1f]">
+            <div className="flex h-10 border-b border-white/5 items-center justify-between px-4 bg-[#1a1a1f] overflow-x-auto hide-scrollbar gap-4 min-w-full">
                 {/* ... existing toolbar ... */}
                 <div className="flex items-center gap-2">
                     <button

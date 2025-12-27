@@ -87,7 +87,7 @@ const IntelligenceHub = ({
             </div>
 
             <div className="max-w-[1600px] mx-auto p-4 lg:p-8 w-full flex-1 flex flex-col">
-                <header className="flex items-center justify-between mb-12">
+                <header className="flex items-center justify-between mb-12 pt-safe-offset">
                     <div className="flex items-center gap-4">
                         <button
                             onClick={() => navigate('/')}

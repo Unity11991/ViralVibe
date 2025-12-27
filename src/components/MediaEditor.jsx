@@ -2063,6 +2063,11 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 currentTime={currentTime}
                 duration={timelineDuration}
                 hasActiveClip={!!selectedClipId}
+                magneticMode={magneticMode}
+                onToggleMagnetic={toggleMagneticMode}
+                onGroup={groupSelectedClips}
+                onUngroup={ungroupSelectedClips}
+                onBeatDetect={handleBeatDetect}
 
                 header={
                     <div className="flex items-center justify-between px-4 h-full">
