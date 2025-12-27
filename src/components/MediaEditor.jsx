@@ -1220,6 +1220,84 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
     const handleCanvasPointerUp = () => {
         setIsDraggingCanvas(false);
         setDragAction(null);
+        setActiveHandle(null);
+        document.body.style.cursor = '';
+    };
+
+    // --- Touch / Pinch Logic ---
+    const [touchStartDist, setTouchStartDist] = useState(null);
+    const [initialPinchScale, setInitialPinchScale] = useState(100);
+
+    const getTouchDistance = (touches) => {
+        if (touches.length < 2) return 0;
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const findSelectedClip = () => {
+        if (!selectedClipId) return null;
+        for (const track of tracks) {
+            const clip = track.clips.find(c => c.id === selectedClipId);
+            if (clip) return clip;
+        }
+        return null;
+    };
+
+    const handleCanvasTouchStart = (e) => {
+        if (!selectedClipId) return;
+
+        if (e.touches.length === 2) {
+            // e.preventDefault(); // handled in EditorCanvas or by passive: false if needed
+            const dist = getTouchDistance(e.touches);
+            setTouchStartDist(dist);
+
+            // Get current scale
+            const selectedItem = findSelectedClip();
+            if (selectedItem) {
+                const isText = selectedItem.type === 'text' || (!selectedItem.type && selectedItem.text);
+                const currentScale = isText
+                    ? (selectedItem.style?.fontSize || 48)
+                    : (selectedItem.transform?.scale || 100);
+                setInitialPinchScale(currentScale);
+                setIsDraggingCanvas(true);
+                setDragAction('pinch');
+            }
+        }
+    };
+
+    const handleCanvasTouchMove = (e) => {
+        if (dragAction === 'pinch' && e.touches.length === 2) {
+            e.preventDefault(); // Important to stop scrolling
+            const dist = getTouchDistance(e.touches);
+            if (touchStartDist > 0) {
+                const scaleFactor = dist / touchStartDist;
+                const newScale = initialPinchScale * scaleFactor;
+
+                // Update Clip
+                const selectedItem = findSelectedClip();
+                if (selectedItem) {
+                    const isText = selectedItem.type === 'text' || (!selectedItem.type && selectedItem.text);
+                    if (isText) {
+                        updateClip(selectedItem.id, {
+                            style: { ...selectedItem.style, fontSize: Math.max(10, newScale) }
+                        });
+                    } else {
+                        updateClip(selectedItem.id, {
+                            transform: { ...selectedItem.transform, scale: Math.max(10, newScale) }
+                        });
+                    }
+                }
+            }
+        }
+    };
+
+    const handleCanvasTouchEnd = () => {
+        setTouchStartDist(null);
+        if (dragAction === 'pinch') {
+            setIsDraggingCanvas(false);
+            setDragAction(null);
+        }
     };
 
 
@@ -1250,7 +1328,6 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
             selectedClipId,
             initialAdjustments: adjustments,
             effectIntensity,
-            activeEffectId,
             activeEffectId,
             activeFilterId,
             clipOverrides: selectedClipId ? { [selectedClipId]: { crop: cropData } } : null
@@ -2161,6 +2238,9 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                             }}
                             canvasDimensions={canvasDimensions}
                             onCanvasPointerUp={handleCanvasPointerUp}
+                            onTouchStart={handleCanvasTouchStart}
+                            onTouchMove={handleCanvasTouchMove}
+                            onTouchEnd={handleCanvasTouchEnd}
                             isMaskMode={isMaskMode}
                         />
                     </div>
@@ -2229,6 +2309,64 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                         onToggleFullscreen={handleToggleFullscreen}
                     />
                 }
+                mobileToolPanel={
+                    activeMobileTool && (
+                        <MobileToolPanel
+                            isOpen={!!activeMobileTool}
+                            onClose={() => setActiveMobileTool(null)}
+                            title={activeMobileTool === 'edit' ? 'Properties' : activeMobileTool}
+                        >
+                            {activeMobileTool === 'edit' ? (
+                                <PropertiesPanel
+                                    activeItem={getActiveItem()}
+                                    onUpdate={handleUpdateActiveItem}
+                                    currentTime={currentTime}
+                                    onAddKeyframe={addKeyframe}
+                                    onRemoveKeyframe={removeKeyframe}
+                                    getVideoElement={getVideoElement}
+                                    onAddAdjustmentLayer={handleAddAdjustmentLayer}
+                                    isCropMode={isCropMode}
+                                    onToggleCropMode={setIsCropMode}
+                                    isMaskMode={isMaskMode}
+                                    onToggleMaskMode={setIsMaskMode}
+                                    cropPreset={cropPreset}
+                                    onCropPresetChange={handleCropPresetChange}
+                                    onRemoveBackground={handleRemoveBackground}
+                                    onRestoreBackground={handleRestoreBackground}
+                                />
+                            ) : (
+                                <AssetsPanel
+                                    activeTab={activeMobileTool}
+                                    setActiveTab={setActiveTab}
+                                    onAddAsset={handleAddAsset}
+                                    adjustments={adjustments}
+                                    setAdjustments={handleSetAdjustments}
+                                    activeFilterId={activeFilterId}
+                                    setActiveFilterId={handleSetFilter}
+                                    activeEffectId={activeEffectId}
+                                    setActiveEffectId={handleSetEffect}
+                                    effectIntensity={effectIntensity}
+                                    setEffectIntensity={handleSetEffectIntensity}
+                                    mediaUrl={mediaUrl}
+                                    thumbnailUrl={thumbnailUrl}
+                                    suggestedFilter={suggestedFilter}
+                                    mediaLibrary={mediaLibrary}
+                                    onAddToLibrary={handleAddToLibrary}
+                                    mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
+                                    onUpdateMask={handleSetMask}
+                                    activeClip={getActiveItem()}
+                                    onUpdateClip={handleUpdateActiveItem}
+                                    onApplyTemplate={(newTracks) => {
+                                        setTracks(newTracks);
+                                        setAdjustments(getInitialAdjustments());
+                                        setActiveFilterId('normal');
+                                        setSelectedClipId(null);
+                                    }}
+                                />
+                            )}
+                        </MobileToolPanel>
+                    )
+                }
             />
 
 
@@ -2285,63 +2423,7 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 error={exportError}
             />
 
-            {/* Mobile Tool Panel */}
-            {isMobile && activeMobileTool && (
-                <MobileToolPanel
-                    isOpen={!!activeMobileTool}
-                    onClose={() => setActiveMobileTool(null)}
-                    title={activeMobileTool === 'edit' ? 'Properties' : activeMobileTool}
-                >
-                    {activeMobileTool === 'edit' ? (
-                        <PropertiesPanel
-                            activeItem={getActiveItem()}
-                            onUpdate={handleUpdateActiveItem}
-                            currentTime={currentTime}
-                            onAddKeyframe={addKeyframe}
-                            onRemoveKeyframe={removeKeyframe}
-                            getVideoElement={getVideoElement}
-                            onAddAdjustmentLayer={handleAddAdjustmentLayer}
-                            isCropMode={isCropMode}
-                            onToggleCropMode={setIsCropMode}
-                            isMaskMode={isMaskMode}
-                            onToggleMaskMode={setIsMaskMode}
-                            cropPreset={cropPreset}
-                            onCropPresetChange={handleCropPresetChange}
-                            onRemoveBackground={handleRemoveBackground}
-                            onRestoreBackground={handleRestoreBackground}
-                        />
-                    ) : (
-                        <AssetsPanel
-                            activeTab={activeMobileTool}
-                            setActiveTab={setActiveTab}
-                            onAddAsset={handleAddAsset}
-                            adjustments={adjustments}
-                            setAdjustments={handleSetAdjustments}
-                            activeFilterId={activeFilterId}
-                            setActiveFilterId={handleSetFilter}
-                            activeEffectId={activeEffectId}
-                            setActiveEffectId={handleSetEffect}
-                            effectIntensity={effectIntensity}
-                            setEffectIntensity={handleSetEffectIntensity}
-                            mediaUrl={mediaUrl}
-                            thumbnailUrl={thumbnailUrl}
-                            suggestedFilter={suggestedFilter}
-                            mediaLibrary={mediaLibrary}
-                            onAddToLibrary={handleAddToLibrary}
-                            mask={tracks.find(t => t.clips.some(c => c.id === selectedClipId))?.clips.find(c => c.id === selectedClipId)?.mask}
-                            onUpdateMask={handleSetMask}
-                            activeClip={getActiveItem()}
-                            onUpdateClip={handleUpdateActiveItem}
-                            onApplyTemplate={(newTracks) => {
-                                setTracks(newTracks);
-                                setAdjustments(getInitialAdjustments());
-                                setActiveFilterId('normal');
-                                setSelectedClipId(null);
-                            }}
-                        />
-                    )}
-                </MobileToolPanel>
-            )}
+
         </>
     );
 };

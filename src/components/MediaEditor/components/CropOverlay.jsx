@@ -23,6 +23,24 @@ export const CropOverlay = ({
 
     const { left = 0, top = 0, right = 0, bottom = 0 } = cropData;
 
+    const [displayScale, setDisplayScale] = useState(1);
+
+    useEffect(() => {
+        if (canvasRef.current && canvasDimensions?.width) {
+            const updateScale = () => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                if (rect.width > 0 && canvasDimensions.width > 0) {
+                    setDisplayScale(rect.width / canvasDimensions.width);
+                }
+            };
+
+            updateScale();
+            // Optional: Listen to resize
+            window.addEventListener('resize', updateScale);
+            return () => window.removeEventListener('resize', updateScale);
+        }
+    }, [canvasRef, canvasDimensions]);
+
     // Calculate Fitted Dimensions (Same logic as drawMediaToCanvas)
     let fittedWidth = 0;
     let fittedHeight = 0;
@@ -214,8 +232,6 @@ export const CropOverlay = ({
 
     if (!isActive || !canvasRef.current) return null;
 
-
-
     return (
         <div
             ref={overlayRef}
@@ -224,11 +240,16 @@ export const CropOverlay = ({
             <div
                 className="absolute"
                 style={{
-                    width: fittedWidth,
-                    height: fittedHeight,
+                    width: fittedWidth * displayScale,
+                    height: fittedHeight * displayScale,
                     left: '50%',
                     top: '50%',
-                    transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px) scale(${scale / 100}) rotate(${rotation}deg)`,
+                    // Scale translation by displayScale.
+                    // Scale rotation? No.
+                    // Scale scale? No, clip scale applies to the content.
+                    // But wait, if we resized the box 'fittedWidth * displayScale', 
+                    // then applying 'scale(clipScale)' naturally scales it relative to that new size. Correct.
+                    transform: `translate(-50%, -50%) translate(${tx * displayScale}px, ${ty * displayScale}px) scale(${scale / 100}) rotate(${rotation}deg)`,
                     transformOrigin: 'center center' // Rotation happens around its center
                 }}
             >
@@ -277,19 +298,36 @@ export const CropOverlay = ({
                             'right': { right: '-4px', top: '50%', transform: 'translateY(-50%)', cursor: 'ew-resize' }
                         };
 
+                        const inverseScale = 100 / (scale || 100) / displayScale;
+
                         return (
                             <div
                                 key={position}
                                 onPointerDown={(e) => handleResizeStart(e, position)}
-                                className="absolute bg-white border-2 border-blue-500 pointer-events-auto hover:scale-125 transition-transform shadow-md"
+                                className="absolute flex items-center justify-center pointer-events-auto shadow-md group"
                                 style={{
                                     ...positionStyles[position],
-                                    width: isCorner ? '14px' : '10px',
-                                    height: isCorner ? '14px' : '10px',
-                                    borderRadius: isCorner ? '4px' : '3px',
-                                    touchAction: 'none'
+                                    width: `${30 * inverseScale}px`, // Scaled hit area
+                                    height: `${30 * inverseScale}px`, // Scaled hit area
+                                    // Adjust offset to keep centered on corner despite size change
+                                    // If we increase size, we might need to adjust top/left if they are hardcoded pixels.
+                                    // But since they are centered via flex, let's just scale the hit box?
+                                    // Actually, if we use width/height, the transform origin matters?
+                                    // Let's just use transform scale instead.
+                                    transform: `${positionStyles[position].transform || ''} scale(${inverseScale})`,
+                                    zIndex: 10,
+                                    touchAction: 'none',
+                                    backgroundColor: 'transparent'
                                 }}
-                            />
+                            >
+                                {/* Visible Handle - Scaled relative to the hit area? No, parent is scaled inverse, so this is now "normal" size visually? 
+                                    Wait, if parent is scaled up 2x, child is 2x. 
+                                    If we set width/height of parent to 30 * inverse, it is physically larger in local space.
+                                    If we use transform: scale(inverse), then parent is larger.
+                                    Let's stick to transform.
+                                */}
+                                <div className={`bg-white border-2 border-blue-500 transition-transform group-hover:scale-125 ${isCorner ? 'w-3.5 h-3.5 rounded' : 'w-2.5 h-2.5 rounded-sm'}`} />
+                            </div>
                         );
                     })}
                 </div>

@@ -19,7 +19,10 @@ export const EditorCanvas = ({
     filterString = 'none',
     onCanvasPointerDown,
     onCanvasPointerMove,
-    onCanvasPointerUp
+    onCanvasPointerUp,
+    onTouchStart,
+    onTouchMove,
+    onTouchEnd
 }) => {
     return (
         <div className="relative w-full h-full flex items-center justify-center bg-black/50">
@@ -29,14 +32,21 @@ export const EditorCanvas = ({
                 className="max-w-full max-h-full shadow-2xl touch-none" // touch-none for better gesture handling
                 style={{
                     imageRendering: 'high-quality',
-                    imageRendering: 'high-quality',
-                    // filter: filterString, // REMOVED: Caused double application/flickering
-                    // WebkitFilter: filterString // REMOVED
+                    objectFit: 'contain', // Ensure aspect ratio is preserved
+                    width: 'auto',
+                    height: 'auto',
+                    maxWidth: '100%',
+                    maxHeight: '100%'
                 }}
                 onPointerDown={onCanvasPointerDown}
                 onPointerMove={onCanvasPointerMove}
                 onPointerUp={onCanvasPointerUp}
                 onPointerLeave={onCanvasPointerUp}
+                // Native Touch Events for Pinch
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                onTouchCancel={onTouchEnd}
             />
 
             {/* We removed HTML overlays to avoid duplication and use Canvas for everything */}

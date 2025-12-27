@@ -44,6 +44,7 @@ export const TimelinePanel = ({
     onToggleFullscreen
 }) => {
     const timelineRef = useRef(null);
+    const playheadHandleRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
     const [draggedTrackIndex, setDraggedTrackIndex] = useState(null);
     const [timelineZoom, setTimelineZoom] = useState(zoom);
@@ -112,9 +113,11 @@ export const TimelinePanel = ({
     useEffect(() => {
         const handleMouseMove = (e) => {
             if (!isDragging || !timelineRef.current) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+
             const rect = timelineRef.current.getBoundingClientRect();
             const scrollLeft = timelineRef.current.scrollLeft;
-            const x = (e.clientX - rect.left) + scrollLeft - sidebarWidth;
+            const x = (clientX - rect.left) + scrollLeft - sidebarWidth;
             const time = Math.max(0, Math.min(duration, x / scale));
             onSeek(time);
         };
@@ -126,13 +129,45 @@ export const TimelinePanel = ({
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchmove', handleMouseMove, { passive: false });
+            window.addEventListener('touchend', handleMouseUp);
         }
 
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleMouseMove);
+            window.removeEventListener('touchend', handleMouseUp);
         };
     }, [isDragging, duration, scale, onSeek]);
+
+
+    // Non-passive listener for Playhead Handle
+    useEffect(() => {
+        const handle = playheadHandleRef.current;
+        if (!handle) return;
+
+        const handleTouchStart = (e) => {
+            e.stopPropagation();
+            e.preventDefault(); // This works because we add it with passive: false
+            setIsDragging(true);
+
+            // Initial seek
+            if (timelineRef.current) {
+                const rect = timelineRef.current.getBoundingClientRect();
+                const scrollLeft = timelineRef.current.scrollLeft;
+                const x = (e.touches[0].clientX - rect.left) + scrollLeft - sidebarWidth;
+                const time = Math.max(0, Math.min(duration, x / scale));
+                onSeek(time);
+            }
+        };
+
+        handle.addEventListener('touchstart', handleTouchStart, { passive: false });
+
+        return () => {
+            handle.removeEventListener('touchstart', handleTouchStart);
+        };
+    }, [duration, scale, onSeek, sidebarWidth]); // Re-bind if dependencies change
 
     // Zoom with Ctrl + Scroll
     useEffect(() => {
@@ -379,6 +414,18 @@ export const TimelinePanel = ({
             <div className="flex h-10 border-b border-white/5 items-center justify-between px-4 bg-[#1a1a1f] overflow-x-auto hide-scrollbar gap-4 min-w-full">
                 {/* ... existing toolbar ... */}
                 <div className="flex items-center gap-2">
+                    {/* Playback Controls */}
+                    <button className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white">
+                        <SkipBack size={16} />
+                    </button>
+                    <button onClick={onPlayPause} className="p-1.5 hover:bg-white/10 rounded text-white hover:text-blue-400">
+                        {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+                    </button>
+                    <button className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white">
+                        <SkipForward size={16} />
+                    </button>
+                    <div className="w-px h-4 bg-white/10 mx-2" />
+
                     <button
                         onClick={undo}
                         disabled={!canUndo}
@@ -495,19 +542,6 @@ export const TimelinePanel = ({
                         }
                         return null;
                     })()}
-                    <div className="w-px h-4 bg-white/10 mx-2" />
-                    <button className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white">
-                        <SkipBack size={16} />
-                    </button>
-                    <button onClick={onPlayPause} className="p-1.5 hover:bg-white/10 rounded text-white hover:text-blue-400">
-                        {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-                    </button>
-                    <button className="p-1.5 hover:bg-white/10 rounded text-white/70 hover:text-white">
-                        <SkipForward size={16} />
-                    </button>
-                    <span className="text-xs font-mono text-blue-400 ml-2">
-                        {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -594,7 +628,14 @@ export const TimelinePanel = ({
                         className="absolute top-0 bottom-0 w-px bg-blue-500 z-30 pointer-events-none"
                         style={{ left: `${(currentTime * scale) + sidebarWidth}px` }}
                     >
-                        <div className="absolute -top-1 -left-1.5 w-3 h-3 bg-blue-500 transform rotate-45" />
+                        <div
+                            ref={playheadHandleRef}
+                            className="absolute -top-1 -left-1.5 w-3 h-3 bg-blue-500 transform rotate-45 pointer-events-auto cursor-ew-resize hover:scale-125 transition-transform"
+                            onMouseDown={(e) => {
+                                e.stopPropagation(); // Prevent falling through
+                                handleMouseDown(e);
+                            }}
+                        />
                     </div>
 
                     {/* Unified Tracks Rendering */}

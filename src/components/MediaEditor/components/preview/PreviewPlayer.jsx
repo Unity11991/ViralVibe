@@ -27,15 +27,19 @@ export const PreviewPlayer = ({
     isCropMode = false,
     activeClip,
     canvasDimensions,
-    onCropEnd
+    onCropEnd,
+    ...props
 }) => {
     return (
         <div className="relative w-full h-full flex items-center justify-center bg-[#0f0f12] overflow-hidden p-4">
             <div className="relative shadow-2xl max-w-full max-h-full flex items-center justify-center">
                 {/* Wrapper for Canvas and Overlay to ensure perfect alignment */}
-                <div className="relative transition-all duration-200 ease-in-out" style={{
-                    width: canvasRef.current?.style.width || 'auto',
-                    height: canvasRef.current?.style.height || 'auto'
+                <div className="relative transition-all duration-200 ease-in-out flex justify-center items-center" style={{
+                    width: 'auto',
+                    height: 'auto',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    aspectRatio: canvasDimensions ? `${canvasDimensions.width} / ${canvasDimensions.height}` : 'auto'
                 }}>
                     <EditorCanvas
                         canvasRef={canvasRef}
@@ -55,6 +59,10 @@ export const PreviewPlayer = ({
                         onCanvasPointerDown={onCanvasPointerDown}
                         onCanvasPointerMove={onCanvasPointerMove}
                         onCanvasPointerUp={onCanvasPointerUp}
+                        // Touch / Pinch
+                        onTouchStart={props.onTouchStart}
+                        onTouchMove={props.onTouchMove}
+                        onTouchEnd={props.onTouchEnd}
                     />
                     <CropOverlay
                         canvasRef={canvasRef}

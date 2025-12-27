@@ -14,6 +14,7 @@ export const EditorLayout = ({
     onToolSelect,
     activeTool,
     activeMobileTool, // Add this to know when panel is open
+    mobileToolPanel,
 
     // Timeline controls props
     onUndo,
@@ -115,19 +116,25 @@ export const EditorLayout = ({
                     {leftPanel}
                 </div>
 
-                {/* Center Area (Preview + Timeline) */}
                 <div className="flex-1 flex flex-col min-w-0 h-full relative">
-                    {/* Preview Area - Shifts up when panel is open */}
+                    {/* Preview Area - Flex grow to fill available space */}
                     <div
                         className={`
                             ${isMobile ? 'flex-1' : 'flex-1'} 
                             relative bg-[#0f0f12] flex items-center justify-center p-2 md:p-4 min-h-0 overflow-hidden 
-                            ${isMobile ? 'mb-[280px]' : ''}
-                            ${isMobile && activeMobileTool ? 'canvas-shifted' : ''}
+                            ${isMobile && !mobileToolPanel ? 'mb-[280px]' : ''}
                         `}
                     >
                         {centerPanel}
                     </div>
+
+                    {/* Mobile Tool Panel (In-Flow for resizing) */}
+                    {isMobile && mobileToolPanel && (
+                        <div className="w-full bg-[#1a1a1f] rounded-t-xl overflow-hidden shadow-2xl z-40 relative">
+                            {/* Remove absolute positioning from panel styles via wrapper or override */}
+                            {mobileToolPanel}
+                        </div>
+                    )}
 
                     {/* Desktop: Resize Handle */}
                     <div
@@ -149,8 +156,8 @@ export const EditorLayout = ({
                         {bottomPanel}
                     </div>
 
-                    {/* Mobile: Timeline (Always visible, above toolbar) */}
-                    {isMobile && (
+                    {/* Mobile: Timeline (Fixed overlay - ONLY when no tool panel) */}
+                    {isMobile && !mobileToolPanel && (
                         <div className="md:hidden fixed bottom-[72px] left-0 right-0 z-30">
                             <div className="h-[200px] border-t border-white/5 bg-[#1a1a1f] overflow-hidden">
                                 {bottomPanel}

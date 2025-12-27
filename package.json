@@ -12,9 +12,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
     "@imgly/background-removal": "^1.7.0",
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/selfie_segmentation": "^0.1.1675465747",
@@ -22,6 +22,7 @@
     "@supabase/supabase-js": "^2.86.0",
     "@tensorflow/tfjs-backend-webgl": "^4.17.0",
     "@tensorflow/tfjs-core": "^4.17.0",
+    "build": "^0.1.4",
     "cropperjs": "^1.6.2",
     "groq-sdk": "^0.37.0",
     "html2canvas": "^1.4.1",

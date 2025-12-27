@@ -8,4 +8,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
     console.warn('Missing Supabase URL or Anon Key. Authentication and Database features will not work.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Fallback to prevent crash if env vars are missing
+const validUrl = supabaseUrl || 'https://placeholder.supabase.co';
+const validKey = supabaseAnonKey || 'placeholder-key';
+
+export const supabase = createClient(validUrl, validKey);
