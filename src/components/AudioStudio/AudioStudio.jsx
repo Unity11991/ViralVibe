@@ -102,6 +102,7 @@ const AudioStudio = ({ onClose, isPro }) => {
     const [showTakesForTrack, setShowTakesForTrack] = useState(null);
     const [showSpectrogram, setShowSpectrogram] = useState(false); // Toggle Spectral View
     const [editingMidiClip, setEditingMidiClip] = useState(null); // { trackId, clipId } for Piano Roll
+    const [activeMobileView, setActiveMobileView] = useState('timeline'); // 'timeline', 'inputs', 'effects'
 
     const [isExporting, setIsExporting] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
@@ -1263,11 +1264,34 @@ const AudioStudio = ({ onClose, isPro }) => {
     return (
         <div className="fixed inset-0 z-50 bg-[#0a0a0a] text-white flex flex-col overflow-hidden">
             {/* Header Bar */}
-            <div className="h-14 bg-[#18181b] border-b border-white/10 flex items-center justify-between px-6 shrink-0">
+            <div className="h-14 bg-[#18181b] border-b border-white/10 flex items-center justify-between px-4 md:px-6 shrink-0 z-30 relative">
                 <div className="flex items-center gap-3">
                     <Volume2 className="text-green-400" size={24} />
-                    <h1 className="text-lg font-bold">Audio Studio</h1>
+                    <h1 className="text-lg font-bold hidden md:block">Audio Studio</h1>
                 </div>
+
+                {/* Mobile View Tabs */}
+                <div className="flex md:hidden bg-white/5 rounded-lg p-1 gap-1">
+                    <button
+                        onClick={() => setActiveMobileView('inputs')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeMobileView === 'inputs' ? 'bg-blue-600 text-white' : 'text-white/50'}`}
+                    >
+                        Inputs
+                    </button>
+                    <button
+                        onClick={() => setActiveMobileView('timeline')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeMobileView === 'timeline' ? 'bg-blue-600 text-white' : 'text-white/50'}`}
+                    >
+                        Studio
+                    </button>
+                    <button
+                        onClick={() => setActiveMobileView('effects')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeMobileView === 'effects' ? 'bg-blue-600 text-white' : 'text-white/50'}`}
+                    >
+                        Effects
+                    </button>
+                </div>
+
                 <button
                     onClick={onClose}
                     className="p-2 hover:bg-white/10 rounded-full transition-colors"
@@ -1279,7 +1303,10 @@ const AudioStudio = ({ onClose, isPro }) => {
             {/* Main Content Area */}
             <div className="flex-1 flex overflow-hidden">
                 {/* Left Panel - Inputs */}
-                <div className="w-64 bg-[#121214] border-r border-white/5 p-4 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+                <div className={`
+                    w-64 bg-[#121214] border-r border-white/5 p-4 flex flex-col gap-6 overflow-y-auto custom-scrollbar
+                    ${activeMobileView === 'inputs' ? 'fixed inset-0 top-14 bottom-20 z-20 w-full' : 'hidden md:flex'}
+                `}>
                     <div className="space-y-4">
                         <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Inputs</h3>
 
@@ -1410,7 +1437,10 @@ const AudioStudio = ({ onClose, isPro }) => {
                 </div>
 
                 {/* Right Panel - Effects & Settings */}
-                <div className="w-80 bg-[#18181b] border-l border-white/5 flex flex-col">
+                <div className={`
+                    w-80 bg-[#18181b] border-l border-white/5 flex flex-col
+                    ${activeMobileView === 'effects' ? 'fixed inset-0 top-14 bottom-20 z-20 w-full' : 'hidden md:flex'}
+                `}>
                     <div className="p-4 border-b border-white/5">
                         <h2 className="font-bold text-white">Properties</h2>
                     </div>

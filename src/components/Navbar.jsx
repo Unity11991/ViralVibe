@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { History, Coins, Sun, Moon, LogOut, User, Sparkles, TrendingUp, Globe, Menu, X, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick, onPremiumClick, onIntelligenceClick, onAboutClick }) => {
+const Navbar = ({ onHistoryClick, coinBalance, onCoinsClick, theme, toggleTheme, onLoginClick, onProfileClick, guestUsageCount, onToolsClick, onTrendsClick, onPremiumClick, onIntelligenceClick, onAboutClick, isLiteMode }) => {
     const { user } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 

@@ -1,0 +1,12 @@
+{
+    "assets": {
+        "ios": {
+            "icon": "src/assets/icon.png",
+            "splash": "src/assets/icon.png"
+        },
+        "android": {
+            "icon": "src/assets/icon.png",
+            "splash": "src/assets/icon.png"
+        }
+    }
+}

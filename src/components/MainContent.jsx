@@ -44,7 +44,8 @@ const MainContent = ({
     setLastLoginDate,
     setShowShareModal,
     onSelectTool,
-    onAboutClick
+    onAboutClick,
+    isLiteMode
 }) => {
     const navigate = useNavigate();
     const resultsRef = useRef(null);
@@ -122,6 +123,7 @@ const MainContent = ({
                         }}
                         onIntelligenceClick={() => navigate('/intelligence')}
                         onAboutClick={onAboutClick}
+                        isLiteMode={isLiteMode}
                     />
                 </header>
 
@@ -141,11 +143,11 @@ const MainContent = ({
                         settings={settings}
                     />
                 ) : (
-                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 min-h-0">
+                    <div className="lg:flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 lg:min-h-0 pb-40 lg:pb-0">
 
                         {/* Left Column: Controls (Scrollable) */}
-                        <div className="lg:col-span-5 h-full glass-panel overflow-hidden flex flex-col relative">
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8 flex flex-col gap-6">
+                        <div className="lg:col-span-5 lg:h-full glass-panel lg:overflow-hidden flex flex-col relative h-auto">
+                            <div className="lg:flex-1 lg:overflow-y-auto custom-scrollbar p-6 lg:p-8 flex flex-col gap-6">
                                 <div className="space-y-2">
                                     <h2 className="text-4xl font-light tracking-tight text-primary">
                                         Create <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-medium">Viral Magic</span>
@@ -159,6 +161,7 @@ const MainContent = ({
                                         isAnalyzing={isAnalyzing}
                                         onEdit={() => setShowMediaEditor(true)}
                                         selectedFile={image}
+                                        isLiteMode={isLiteMode}
                                     />
 
                                     <OptionsPanel
@@ -212,10 +215,10 @@ const MainContent = ({
                         {/* Right Column: Results (Scrollable) */}
                         <div
                             ref={resultsRef}
-                            className={`lg:col-span-7 h-full glass-panel overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}
+                            className={`lg:col-span-7 lg:h-full glass-panel lg:overflow-hidden flex-col relative ${results ? 'flex' : 'hidden lg:flex'}`}
                         >
                             {results ? (
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-8">
+                                <div className="lg:flex-1 lg:overflow-y-auto custom-scrollbar p-6 lg:p-8">
                                     <ResultsSection
                                         results={results}
                                         onOpenPremium={() => {
@@ -229,6 +232,7 @@ const MainContent = ({
                                         onOpenShare={() => setShowShareModal(true)}
                                         image={image}
                                         user={user}
+                                        isLiteMode={isLiteMode}
                                     />
                                 </div>
                             ) : (
@@ -244,7 +248,7 @@ const MainContent = ({
                     </div>
                 )}
             </div>
-        </div >
+        </div>
     );
 };
 

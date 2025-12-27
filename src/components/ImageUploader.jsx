@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, X, Image as ImageIcon, Sparkles, Video } from 'lucide-react';
 
-const ImageUploader = ({ onImageSelect, isAnalyzing, onEdit, selectedFile }) => {
+const ImageUploader = ({ onImageSelect, isAnalyzing, onEdit, selectedFile, isLiteMode }) => {
     const [preview, setPreview] = useState(null);
     const [fileType, setFileType] = useState(null); // 'image' or 'video'
     const [isDragging, setIsDragging] = useState(false);

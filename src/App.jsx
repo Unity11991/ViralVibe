@@ -55,6 +55,8 @@ function App() {
     location.pathname.includes('/shipping-policy') ||
     location.pathname.includes('/contact');
 
+  const isLiteMode = import.meta.env.VITE_APP_LITE_MODE === 'true';
+
   const [image, setImage] = useState(null);
   const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -528,7 +530,7 @@ function App() {
 
 
   return (
-    <div className="min-h-screen relative font-sans text-primary selection:bg-indigo-500/30">
+    <div className="h-screen overflow-y-auto custom-scrollbar relative font-sans text-primary selection:bg-indigo-500/30">
       <SeoWrapper />
 
       {/* Liquid Background */}
@@ -694,6 +696,7 @@ function App() {
             setShowShareModal={setShowShareModal}
             onSelectTool={handleToolSelect}
             onAboutClick={() => setShowAboutModal(true)}
+            isLiteMode={isLiteMode}
           />
         } />
         <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -716,7 +719,6 @@ function App() {
           />
         } />
       </Routes>
-      <Footer />
     </div>
   );
 }

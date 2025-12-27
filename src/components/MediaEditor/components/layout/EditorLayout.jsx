@@ -117,7 +117,7 @@ export const EditorLayout = ({
                         className={`
                             ${isMobile ? 'flex-1' : 'flex-1'} 
                             relative bg-[#0f0f12] flex items-center justify-center p-2 md:p-4 min-h-0 overflow-hidden 
-                            ${isMobile ? 'mb-[72px]' : ''}
+                            ${isMobile ? 'mb-[280px]' : ''}
                             ${isMobile && activeMobileTool ? 'canvas-shifted' : ''}
                         `}
                     >

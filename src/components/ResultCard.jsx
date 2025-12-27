@@ -84,7 +84,7 @@ const MusicPlayer = ({ song, artist }) => {
     );
 };
 
-export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare, image, user }) => {
+export const ResultsSection = ({ results, onOpenPremium, onOpenEditor, onOpenShare, image, user, isLiteMode }) => {
     const [activeMusicTab, setActiveMusicTab] = useState('trending');
 
     if (!results) return null;
