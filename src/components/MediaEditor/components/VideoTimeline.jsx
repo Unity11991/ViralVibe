@@ -39,16 +39,12 @@ export const VideoTimeline = ({
             const time = x * duration;
 
             if (isDragging === 'start') {
-                onTrimChange({ start: Math.min(time, trimRange.end - 1), end: trimRange.end });
+                onTrimChange({ start: Math.min(time, trimRange.end - 0.01), end: trimRange.end });
             } else if (isDragging === 'end') {
-                onTrimChange({ start: trimRange.start, end: Math.max(time, trimRange.start + 1) });
+                onTrimChange({ start: trimRange.start, end: Math.max(time, trimRange.start + 0.01) });
             } else if (isDragging === 'playhead') {
                 onSeek(time);
             }
-        };
-
-        const handlePointerUp = () => {
-            setIsDragging(null);
         };
 
         if (isDragging) {

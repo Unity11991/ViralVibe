@@ -139,7 +139,8 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
         groupSelectedClips,
         ungroupSelectedClips,
         addKeyframe,
-        removeKeyframe
+        removeKeyframe,
+        duplicateClip
     } = useTimelineState() || {};
 
     // Editor State
@@ -1912,11 +1913,19 @@ const MediaEditor = ({ mediaFile: initialMediaFile, onClose, initialText, initia
                 e.preventDefault(); // Prevent scrolling
                 togglePlay();
             }
+
+            // Duplicate (Ctrl+D)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                if (selectedClipId) {
+                    duplicateClip(selectedClipId);
+                }
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedClipId, handleDelete, undo, redo, canUndo, canRedo]);
+    }, [selectedClipId, handleDelete, undo, redo, canUndo, canRedo, duplicateClip]);
 
 
     const handleAddAdjustmentLayer = useCallback((targetClipId, adjustments) => {

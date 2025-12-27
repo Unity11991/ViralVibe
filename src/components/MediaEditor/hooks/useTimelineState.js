@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
  * Custom hook for managing timeline state (Tracks & Clips)
  * Includes History, Selection, and Magnetic Timeline logic.
  */
-const MIN_DURATION = 0.04; // ~1 frame at 25fps
+const MIN_DURATION = 0.01; // ~1 frame at 100fps or sub-frame precision
 
 export const useTimelineState = () => {
     // State
@@ -591,6 +591,69 @@ export const useTimelineState = () => {
         addToHistory(newTracks);
     }, [tracks, addToHistory]);
 
+    const duplicateClip = useCallback((clipId) => {
+        let tracksChanged = false;
+        let newTracks = [...tracks];
+
+        // Find the clip
+        let sourceTrackIndex = -1;
+        let sourceClipIndex = -1;
+        let clip = null;
+
+        tracks.forEach((t, ti) => {
+            const ci = t.clips.findIndex(c => c.id === clipId);
+            if (ci !== -1) {
+                sourceTrackIndex = ti;
+                sourceClipIndex = ci;
+                clip = t.clips[ci];
+            }
+        });
+
+        if (!clip) return;
+
+        const newClip = {
+            ...clip,
+            id: `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            startTime: clip.startTime + clip.duration,
+            name: `${clip.name} (Copy)`
+        };
+
+        // Try to add to same track
+        const sourceTrack = newTracks[sourceTrackIndex];
+        const hasCollision = sourceTrack.clips.some(c => {
+            const start = c.startTime;
+            const end = c.startTime + c.duration;
+            // Check overlap: (StartA < EndB) and (EndA > StartB)
+            return (newClip.startTime < end && (newClip.startTime + newClip.duration) > start);
+        });
+
+        if (!hasCollision) {
+            const newClips = [...sourceTrack.clips, newClip];
+            newClips.sort((a, b) => a.startTime - b.startTime);
+            newTracks[sourceTrackIndex] = { ...sourceTrack, clips: newClips };
+            tracksChanged = true;
+        } else {
+            // Collision detected, create new track
+            const newTrackId = `track-${sourceTrack.type}-${tracks.length + 1}-${Date.now()}`;
+            const newTrack = {
+                ...sourceTrack,
+                id: newTrackId,
+                clips: [newClip]
+            };
+            // Insert after current track
+            newTracks.splice(sourceTrackIndex + 1, 0, newTrack);
+            tracksChanged = true;
+        }
+
+        if (tracksChanged) {
+            setTracks(newTracks);
+            addToHistory(newTracks);
+            // Select the new clip
+            setSelectedClipId(newClip.id);
+            setSelectedClipIds(new Set([newClip.id]));
+        }
+    }, [tracks, addToHistory]);
+
     return {
         tracks,
         setTracks,
@@ -622,6 +685,7 @@ export const useTimelineState = () => {
         addMarkersToClip,
         addKeyframe,
         removeKeyframe,
+        duplicateClip,
         undo,
         redo,
         canUndo: historyState.past.length > 0,

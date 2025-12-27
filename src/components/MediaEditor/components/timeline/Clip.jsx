@@ -61,10 +61,10 @@ export const Clip = React.memo(({
             let newStartOffset = startOffset + deltaTime;
 
             // Constraints
-            if (newDuration < 0.5) { // Min duration 0.5s
-                newStartTime = startTime + duration - 0.5;
-                newDuration = 0.5;
-                newStartOffset = startOffset + duration - 0.5;
+            if (newDuration < 0.01) { // Min duration 0.01s
+                newStartTime = startTime + duration - 0.01;
+                newDuration = 0.01;
+                newStartOffset = startOffset + duration - 0.01;
             }
 
             if (newStartOffset < 0) {
@@ -80,7 +80,7 @@ export const Clip = React.memo(({
             // Trimming end: duration changes
             let newDuration = duration + deltaTime;
 
-            if (newDuration < 0.5) newDuration = 0.5;
+            if (newDuration < 0.1) newDuration = 0.1;
 
             if (propsRef.current.onTrim) propsRef.current.onTrim(clip.id, startTime, newDuration, startOffset);
 
@@ -153,8 +153,8 @@ export const Clip = React.memo(({
         <div
             ref={clipRef}
             className={`timeline-clip absolute top-1 bottom-1 rounded-md border-2 transition-all ${activeTool === 'razor'
-                    ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]'
-                    : 'cursor-pointer'
+                ? 'cursor-[url(https://img.icons8.com/ios-glyphs/30/ffffff/cut.png),_auto]'
+                : 'cursor-pointer'
                 } ${isSelected ? 'border-yellow-400 z-10' : 'border-transparent hover:border-white/30'
                 } ${clip.type === 'video' ? 'bg-blue-500/20' :
                     clip.type === 'audio' ? 'bg-green-500/20' :
